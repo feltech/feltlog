@@ -31,7 +31,12 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-sqlite", {"useSQLCipher": true}]
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

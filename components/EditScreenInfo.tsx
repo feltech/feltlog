@@ -1,13 +1,13 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import {StyleSheet} from 'react-native';
 
-import { ExternalLink } from './ExternalLink';
-import { MonoText } from './StyledText';
-import { Text, View } from './Themed';
+import {ExternalLink} from './ExternalLink';
+import {MonoText} from './StyledText';
+import {Text, View} from './Themed';
 
 import Colors from '@/constants/Colors';
 
-export default function EditScreenInfo({ path }: { path: string }) {
+export default function EditScreenInfo({path}: { path: string }) {
   return (
     <View>
       <View style={styles.getStartedContainer}>
