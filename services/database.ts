@@ -1,20 +1,18 @@
-import * as SQLite from 'expo-sqlite';
+import { DatabaseInitializer } from '@/src/infrastructure/database/DatabaseInitializer';
+import { useState, useEffect } from 'react';
 
-
-import {useState, useEffect} from 'react';
-
-export const useDatabase = (encryptionKey: string) => {
-  const [db, setDb] = useState<SQLite.SQLiteDatabase | null>(null);
+export const useDatabase = (encryptionKey?: string) => {
+  const [isInitialized, setIsInitialized] = useState(DatabaseInitializer.isInitialized());
 
   useEffect(() => {
     const initializeDatabase = async () => {
-      const db = await SQLite.openDatabaseAsync('encrypted.db');
-      // Set DB encryption key before making any requests!
-      await db.execAsync(`PRAGMA key='${encryptionKey}'`);
-      setDb(db);
+      if (!DatabaseInitializer.isInitialized()) {
+        await DatabaseInitializer.initialize(encryptionKey);
+        setIsInitialized(true);
+      }
     };
     initializeDatabase();
   }, [encryptionKey]);
 
-  return db;
+  return isInitialized;
 };
