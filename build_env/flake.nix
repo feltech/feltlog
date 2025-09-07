@@ -37,7 +37,16 @@
           shellHook = ''
             export PATH="${sdk}/bin:$PATH"
             ${(builtins.readFile "${sdk}/nix-support/setup-hook")}
-            alias create-avd="avdmanager create avd --force --name phone --package 'system-images;android-35;google_apis;x86_64'";
+            function create-avd () {
+              local name=phone
+              local sysimg="system-images;android-35;google_apis;x86_64"
+              local device="pixel_4"
+
+              avdmanager create avd --force --name "$name" --package "$sysimg" --device "$device"
+              local cfg="$HOME/.android/avd/$name.avd/config.ini"
+              sed -i 's/hw.keyboard=.*/hw.keyboard=yes/' "$cfg"
+              sed -i 's/hw.mainKeys=.*/hw.mainKeys=yes/' "$cfg"
+            }
           '';
 
         };
