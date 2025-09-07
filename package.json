@@ -4,11 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
+    "android": "nix develop ./build_env --command expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest",
-    "test-watch": "jest --watchAll"
+    "test-watch": "jest --watchAll",
+    "e2e": "nix develop ./build_env --command maestro test e2e"
   },
   "jest": {
     "preset": "jest-expo",
@@ -18,11 +19,15 @@
     "testTimeout": 10000,
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|uuid)"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@react-native-async-storage/async-storage$": "@react-native-async-storage/async-storage/jest/async-storage-mock"
+    }
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
     "@react-navigation/native": "^7.1.6",
+    "@react-native-async-storage/async-storage": "^2.1.0",
     "expo": "~53.0.20",
     "expo-dev-client": "~5.2.4",
     "expo-font": "~13.3.2",

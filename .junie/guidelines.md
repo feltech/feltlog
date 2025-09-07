@@ -28,6 +28,12 @@ level and data-oriented design at the lower level.
   directory
 - Minimal system dependencies, focused on Android development needs
 
+### Running tests
+
+- Unit tests are via jest and can be run using `npm test`
+- e2e tests are via android emulator and maestro and can be run using
+  `npm run e2e`.
+
 ## Technology Stack
 
 ### Frontend
@@ -117,6 +123,10 @@ level and data-oriented design at the lower level.
   for the error.
 - Use ES modules, never CommonJS.
 - Do not make git commits, the user will do that.
+- Add plenty of code comments, especially around conditionals.
+- All non-trivial functions should have docstrings.
+- All classes and interfaces should have docstrings.
+- Avoid the use of singletons, prefer dependency injection or contexts.
 
 ## Core Features
 

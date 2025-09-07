@@ -8,9 +8,10 @@ import 'react-native-reanimated';
 import { PaperProvider } from 'react-native-paper';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
+import { useDatabase } from '@/services/database';
+import SetupDatabaseScreen from '@/components/SetupDatabaseScreen';
 
 import {useColorScheme} from '@/components/useColorScheme';
-import { DatabaseInitializer } from '@/src/infrastructure/database/DatabaseInitializer';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -38,23 +39,11 @@ export default function RootLayout() {
     }, [error]);
 
     useEffect(() => {
-        const initializeApp = async () => {
-            try {
-                await DatabaseInitializer.initialize();
-                if (loaded) {
-                    // noinspection JSIgnoredPromiseFromCall
-                    SplashScreen.hideAsync();
-                }
-            } catch (error) {
-                console.error('Failed to initialize app:', error);
-                if (loaded) {
-                    // noinspection JSIgnoredPromiseFromCall
-                    SplashScreen.hideAsync();
-                }
-            }
-        };
-        
-        initializeApp();
+        // Hide splash once fonts are loaded; database readiness is handled in RootLayoutNav.
+        if (loaded) {
+            // noinspection JSIgnoredPromiseFromCall
+            SplashScreen.hideAsync();
+        }
     }, [loaded]);
 
     if (!loaded) {
@@ -65,9 +54,18 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
+    const { ready, db } = useDatabase();
     const colorScheme = useColorScheme();
 
-    const repository = new JournalRepositoryImpl();
+    if (!ready || !db) {
+        return (
+            <PaperProvider>
+                <SetupDatabaseScreen/>
+            </PaperProvider>
+        );
+    }
+
+    const repository = new JournalRepositoryImpl(db);
 
     return (
         <PaperProvider>

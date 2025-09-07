@@ -1,21 +1,25 @@
 import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
-import { DatabaseInitializer } from '../../../infrastructure/database/DatabaseInitializer';
-import { DatabaseConnection } from '../../database/connection';
+import { openKysely, closeSqlite } from '../../database/database';
+import { up } from '../../database/migrations';
 
 describe('JournalRepositoryImpl', () => {
   let repository: JournalRepositoryImpl;
 
+  let sqliteDb: any;
+
   beforeEach(async () => {
-    DatabaseInitializer.reset();
     const testDbName = `test_${Date.now()}_${Math.random()}.db`;
-    await DatabaseInitializer.initialize(undefined, testDbName);
-    repository = new JournalRepositoryImpl();
+    const result = await openKysely(undefined, testDbName);
+    await up(result.db);
+    sqliteDb = result.sqliteDb;
+    repository = new JournalRepositoryImpl(result.db);
   });
 
   afterEach(async () => {
-    const dbConnection = DatabaseConnection.getInstance();
-    await dbConnection.close();
-    DatabaseInitializer.reset();
+    if (sqliteDb) {
+      await closeSqlite(sqliteDb);
+      sqliteDb = null;
+    }
   });
 
   describe('Entry Management', () => {
