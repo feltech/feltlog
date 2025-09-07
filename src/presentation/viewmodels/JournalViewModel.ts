@@ -1,7 +1,7 @@
 import {useState, useEffect, useCallback, useRef} from 'react';
 import {JournalEntry, Tag} from '../../domain/entities/JournalEntry';
 import {JournalRepository} from '../../domain/repositories/JournalRepository';
-import {JournalRepositoryImpl} from '../../data/repositories/JournalRepositoryImpl';
+import { useRepository } from '@/src/domain/repositories/RepositoryContext';
 
 /**
  * Represents the state of a journal view model.
@@ -71,7 +71,7 @@ export const useJournalViewModel = () => {
     hasMore: true,
   });
 
-  const repository: JournalRepository = new JournalRepositoryImpl();
+  const repository: JournalRepository = useRepository();
   const batchSize = 10;
 
   /**
@@ -102,18 +102,17 @@ export const useJournalViewModel = () => {
    * @returns Promise that resolves when entries are loaded.
    */
   const loadEntries = useCallback(async (offset: number = 0, append: boolean = false) => {
-    // No loading toggling here; refreshData manages loading around calls
-    if (state.loading) return;
-
     updateState({error: null});
 
     try {
       let entries: JournalEntry[];
+      const query = state.searchQuery;
+      const tags = state.selectedTags;
 
-      if (state.searchQuery) {
-        entries = await repository.searchEntries(state.searchQuery, offset, batchSize);
-      } else if (state.selectedTags.length > 0) {
-        entries = await repository.getEntriesByTags(state.selectedTags, offset, batchSize);
+      if (query) {
+        entries = await repository.searchEntries(query, offset, batchSize);
+      } else if (tags.length > 0) {
+        entries = await repository.getEntriesByTags(tags, offset, batchSize);
       } else {
         entries = await repository.getAllEntries(offset, batchSize);
       }
@@ -125,7 +124,7 @@ export const useJournalViewModel = () => {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load entries');
     }
-  }, [state.loading, state.searchQuery, state.selectedTags, state.entries, updateState, setError, batchSize]);
+  }, [state.searchQuery, state.selectedTags, state.entries, updateState, setError, batchSize, repository]);
 
   /**
    * Loads the next batch of journal entries for infinite scrolling
@@ -153,7 +152,7 @@ export const useJournalViewModel = () => {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load tags');
     }
-  }, [updateState, setError]);
+  }, [updateState, setError, repository]);
 
   /**
    * Creates a new journal entry with the provided content and metadata.
@@ -234,7 +233,7 @@ export const useJournalViewModel = () => {
       updateState({loading: false});
       return null;
     }
-  }, [state.entries, updateState, setError, loadTags]);
+  }, [state.entries, updateState, setError, loadTags, repository]);
 
   /**
    * Deletes a journal entry by its ID.
@@ -261,7 +260,7 @@ export const useJournalViewModel = () => {
       updateState({loading: false});
       return false;
     }
-  }, [state.entries, updateState, setError]);
+  }, [state.entries, updateState, setError, repository]);
 
   /**
    * Searches for journal entries containing the specified query text.
@@ -271,8 +270,7 @@ export const useJournalViewModel = () => {
    */
   const search = useCallback(async (query: string) => {
     updateState({searchQuery: query});
-    await loadEntries(0, false);
-  }, [updateState, loadEntries]);
+  }, [updateState]);
 
   /**
    * Filters journal entries to show only those with the specified tags.
@@ -282,8 +280,7 @@ export const useJournalViewModel = () => {
    */
   const filterByTags = useCallback(async (tagNames: string[]) => {
     updateState({selectedTags: tagNames});
-    await loadEntries(0, false);
-  }, [updateState, loadEntries]);
+  }, [updateState]);
 
   /**
    * Clears all search and tag filters, showing all journal entries.
@@ -292,8 +289,7 @@ export const useJournalViewModel = () => {
    */
   const clearFilters = useCallback(async () => {
     updateState({searchQuery: '', selectedTags: []});
-    await loadEntries(0, false);
-  }, [updateState, loadEntries]);
+  }, [updateState]);
 
   /**
    * Refreshes all journal data (entries and tags) from the repository.
@@ -313,6 +309,16 @@ export const useJournalViewModel = () => {
       updateState({loading: false});
     }
   }, [loadEntries, loadTags, updateState]);
+
+  // Trigger entry reload whenever filters change.
+  useEffect(() => {
+    // Avoid triggering while already loading; refreshData handles its own call.
+    if (!state.loading) {
+      void loadEntries(0, false);
+    }
+    // We intentionally do not include loadEntries' dependencies directly here,
+    // only the filters and loading flag, to fire on filter changes.
+  }, [state.searchQuery, state.selectedTags, state.loading, loadEntries]);
 
   // Keep a stable ref to the latest refreshData implementation. This
   // is to break circular references. I.e. we can depend on the ref

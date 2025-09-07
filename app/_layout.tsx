@@ -6,6 +6,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import {useEffect} from 'react';
 import 'react-native-reanimated';
 import { PaperProvider } from 'react-native-paper';
+import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
+import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 
 import {useColorScheme} from '@/components/useColorScheme';
 import { DatabaseInitializer } from '@/src/infrastructure/database/DatabaseInitializer';
@@ -65,14 +67,18 @@ export default function RootLayout() {
 function RootLayoutNav() {
     const colorScheme = useColorScheme();
 
+    const repository = new JournalRepositoryImpl();
+
     return (
         <PaperProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <Stack>
-                    <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-                    <Stack.Screen name="modal" options={{presentation: 'modal'}}/>
-                </Stack>
-            </ThemeProvider>
+            <RepositoryProvider repository={repository}>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                    <Stack>
+                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+                        <Stack.Screen name="modal" options={{presentation: 'modal'}}/>
+                    </Stack>
+                </ThemeProvider>
+            </RepositoryProvider>
         </PaperProvider>
     );
 }

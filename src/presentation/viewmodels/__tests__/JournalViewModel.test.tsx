@@ -1,68 +1,154 @@
 import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { useJournalViewModel } from '../JournalViewModel';
-import { DatabaseInitializer } from '@/src/infrastructure/database/DatabaseInitializer';
-import { DatabaseConnection } from '@/src/data/database/connection';
+import type { JournalRepository } from '@/src/domain/repositories/JournalRepository';
+import type { JournalEntry, Tag } from '@/src/domain/entities/JournalEntry';
+import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 
-describe('JournalViewModel', () => {
-  beforeEach(async () => {
-    DatabaseInitializer.reset();
-    const testDbName = `test_${Date.now()}_${Math.random()}.db`;
-    await DatabaseInitializer.initialize(undefined, testDbName);
+type MockRepo = jest.Mocked<JournalRepository>;
+
+function createMockRepo(): MockRepo {
+  return {
+    // entries
+    createEntry: jest.fn(),
+    updateEntry: jest.fn(),
+    deleteEntry: jest.fn(),
+    getEntry: jest.fn(),
+    getAllEntries: jest.fn(),
+    searchEntries: jest.fn(),
+    getEntriesByTags: jest.fn(),
+    // tags
+    getAllTags: jest.fn(),
+    createTag: jest.fn(),
+    getOrCreateTag: jest.fn(),
+    deleteTag: jest.fn(),
+    getTagsForEntry: jest.fn(),
+  } as unknown as MockRepo;
+}
+
+function makeEntry(partial: Partial<JournalEntry> = {}): JournalEntry {
+  return {
+    id: partial.id ?? 'e1',
+    content: partial.content ?? 'content',
+    datetime: partial.datetime ?? new Date('2024-01-01T10:00:00Z'),
+    created_at: partial.created_at ?? new Date('2024-01-01T10:00:00Z'),
+    modified_at: partial.modified_at ?? new Date('2024-01-01T10:00:00Z'),
+    tags: partial.tags ?? [],
+    location: partial.location,
+  } as JournalEntry;
+}
+
+function makeTag(name: string): Tag { return { id: name, name }; }
+
+describe('useJournalViewModel with repository from context', () => {
+  const makeWrapper = (repo: MockRepo) => ({ children }: any) => (
+    <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+  );
+  let repo: MockRepo;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    repo = createMockRepo();
+    // defaults
+    repo.getAllEntries.mockResolvedValue([]);
+    repo.getAllTags.mockResolvedValue([]);
   });
 
-  afterEach(async () => {
-    const dbConnection = DatabaseConnection.getInstance();
-    await dbConnection.close();
-    DatabaseInitializer.reset();
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it('should initialize and create entry', async () => {
-    const { result } = renderHook(() => useJournalViewModel());
+  it('initializes by calling getAllEntries and getAllTags', async () => {
+    const wrapper = makeWrapper(repo);
+    const { result } = renderHook(() => useJournalViewModel(), { wrapper });
 
-    // Wait for initial load
-    await waitFor(() => {
-      expect(result.current.state.loading).toBe(false);
-    }, {timeout: 1000});
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
 
-    expect(result.current.state.error).toBe(null);
+    expect(repo.getAllEntries).toHaveBeenCalledWith(0, 10);
+    expect(repo.getAllTags).toHaveBeenCalledTimes(1);
     expect(result.current.state.entries).toEqual([]);
+    expect(result.current.state.tags).toEqual([]);
+  });
 
-    // Create entry
-    let createdEntry: any;
+  it('createEntry calls repository and refreshes entries and tags', async () => {
+    const created = makeEntry({ id: 'e1', content: 'Test entry content', tags: ['test', 'journal'] });
+    repo.createEntry.mockResolvedValue(created);
+    // After creation, loadEntries() will ask repo again; provide one entry
+    repo.getAllEntries.mockResolvedValue([created]);
+
+    const wrapper = makeWrapper(repo);
+    const { result } = renderHook(() => useJournalViewModel(), { wrapper });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    let returned: any;
     await act(async () => {
-      createdEntry = await result.current.actions.createEntry(
+      returned = await result.current.actions.createEntry(
         'Test entry content',
         new Date('2024-01-01T10:00:00Z'),
         ['test', 'journal']
       );
     });
 
-    expect(createdEntry).toBeDefined();
-    expect(createdEntry.content).toBe('Test entry content');
-    expect(createdEntry.tags.sort()).toEqual(['test', 'journal'].sort());
+    expect(repo.createEntry).toHaveBeenCalledWith({
+      content: 'Test entry content',
+      datetime: new Date('2024-01-01T10:00:00Z'),
+      tags: ['test', 'journal'],
+      location: undefined,
+    });
+    expect(returned).toEqual(created);
 
-    // Check state is updated
+    // After creation it reloads entries and tags
+    expect(repo.getAllEntries).toHaveBeenCalledWith(0, 10);
+    expect(repo.getAllTags).toHaveBeenCalledTimes(1 + 1); // initial + after create
+
     await waitFor(() => {
-      expect(result.current.state.entries).toHaveLength(1);
-      expect(result.current.state.entries[0].content).toBe('Test entry content');
-    }, { timeout: 5000 });
+      expect(result.current.state.entries).toEqual([created]);
+    });
   });
 
-  it('should handle empty content error', async () => {
-    const { result } = renderHook(() => useJournalViewModel());
+  it('search uses searchEntries with correct parameters', async () => {
+    const entry = makeEntry({ id: 'e2', content: 'found' });
+    repo.searchEntries.mockResolvedValue([entry]);
 
-    // Wait for initial load
-    await waitFor(() => {
-      expect(result.current.state.loading).toBe(false);
-    });
+    const wrapper = makeWrapper(repo);
+    const { result } = renderHook(() => useJournalViewModel(), { wrapper });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
 
-    // Try to create entry with empty content (should fail)
-    let entry: any;
     await act(async () => {
-      entry = await result.current.actions.createEntry('', new Date(), []);
+      await result.current.actions.search('foo');
     });
 
-    expect(entry).toBeNull();
+    expect(repo.searchEntries).toHaveBeenCalledWith('foo', 0, 10);
+    await waitFor(() => expect(result.current.state.entries).toEqual([entry]));
+  });
+
+  it('filterByTags uses getEntriesByTags with correct parameters', async () => {
+    const entry = makeEntry({ id: 'e3', content: 'tagged', tags: ['a', 'b'] });
+    repo.getEntriesByTags.mockResolvedValue([entry]);
+
+    const wrapper = makeWrapper(repo);
+    const { result } = renderHook(() => useJournalViewModel(), { wrapper });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.actions.filterByTags(['a', 'b']);
+    });
+
+    expect(repo.getEntriesByTags).toHaveBeenCalledWith(['a', 'b'], 0, 10);
+    await waitFor(() => expect(result.current.state.entries).toEqual([entry]));
+  });
+
+  it('rejects empty content without calling repository.createEntry', async () => {
+    const wrapper = makeWrapper(repo);
+    const { result } = renderHook(() => useJournalViewModel(), { wrapper });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    let returned: any;
+    await act(async () => {
+      returned = await result.current.actions.createEntry('   ');
+    });
+
+    expect(returned).toBeNull();
     expect(result.current.state.error).toBe('Content cannot be empty');
+    expect(repo.createEntry).not.toHaveBeenCalled();
   });
 });
