@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { FAB, Snackbar } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { JournalList } from '@/src/presentation/components/JournalList';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
@@ -9,6 +10,23 @@ import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewMo
 export default function JournalScreen() {
   const router = useRouter();
   const { state, actions } = useJournalViewModel();
+
+  // Refresh the list whenever this screen gains focus (e.g., after closing the modal).
+  // This ensures we pick up entries created/updated from a different ViewModel instance.
+  // Use a stable ref to avoid infinite loops: if we depend on `actions`,
+  // React will recreate the callback on every state change which re-triggers
+  // `useFocusEffect` while the screen remains focused. We want to refresh only
+  // when the screen gains focus, not on every render.
+  const refreshOnFocusRef = React.useRef(actions.refreshData);
+  React.useEffect(() => {
+    refreshOnFocusRef.current = actions.refreshData;
+  }, [actions.refreshData]);
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshOnFocusRef.current();
+    }, [])
+  );
+
 
   const handleCreateEntry = () => {
     router.push('/modal');
@@ -36,6 +54,8 @@ export default function JournalScreen() {
       <FAB
         style={styles.fab}
         icon="plus"
+        testID="create-entry-fab"
+        accessibilityLabel="Create entry"
         onPress={handleCreateEntry}
       />
 

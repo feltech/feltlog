@@ -111,6 +111,15 @@ level and data-oriented design at the lower level.
 - Tests must run on both:
   - Node.js environment (unit tests)
   - Android Emulator (integration tests)
+- When reading terminal output, ignore the expected error
+  > bash: history: : cannot create: No such file or directory
+- Add takeScreenshot commands to the maestro e2e tests as necessary to
+  aid diagnosis of errors.
+- When running e2e tests, additional logs from the expo dev server can  
+  be found in android.log to aid diagnostics.
+- Do NOT "fix" tests by marking them as skipped to get the unit tests
+  to pass - actually fix the tests or the code, or, if necessary, remove
+  the tests if they are no longer relevant.
 
 ## Coding guidelines
 

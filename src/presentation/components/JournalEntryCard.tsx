@@ -24,7 +24,12 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPre
   };
 
   return (
-    <Card style={styles.card} onPress={onPress}>
+    <Card
+      style={styles.card}
+      onPress={onPress}
+      testID="journal-entry-card"
+      accessibilityLabel="Journal entry card"
+    >
       <Card.Content>
         <Title style={styles.date}>{formatDate(entry.datetime)}</Title>
         <Paragraph style={styles.content}>

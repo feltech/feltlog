@@ -93,6 +93,8 @@ export default function JournalEntryModal() {
         <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
         <Appbar.Action 
           icon="check" 
+          testID="save-entry-button"
+          accessibilityLabel="Save entry"
           onPress={handleSave} 
           disabled={isLoading || !content.trim()}
         />
@@ -100,6 +102,8 @@ export default function JournalEntryModal() {
 
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput
+          testID="entry-content-input"
+          accessibilityLabel="Journal entry content"
           label="What's on your mind?"
           value={content}
           onChangeText={setContent}

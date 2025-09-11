@@ -54,13 +54,13 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-    const { ready, db } = useDatabase();
+    const { ready, db, initialize, lastDatabaseName, error } = useDatabase();
     const colorScheme = useColorScheme();
 
     if (!ready || !db) {
         return (
             <PaperProvider>
-                <SetupDatabaseScreen/>
+                <SetupDatabaseScreen initialize={initialize} lastDatabaseName={lastDatabaseName} error={error} />
             </PaperProvider>
         );
     }

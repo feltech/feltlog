@@ -61,7 +61,13 @@ export const JournalList: React.FC<JournalListProps> = ({
           onRefresh={onRefresh}
         />
       }
-      onEndReached={onLoadMore}
+      onEndReached={() => {
+        // Avoid triggering pagination on empty lists which can cause
+        // repeated calls and render loops on initial mount.
+        if (hasMore && entries.length > 0) {
+          onLoadMore();
+        }
+      }}
       onEndReachedThreshold={0.3}
       ListFooterComponent={renderFooter}
       ListEmptyComponent={renderEmpty}

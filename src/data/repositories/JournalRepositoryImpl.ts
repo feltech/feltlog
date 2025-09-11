@@ -1,3 +1,9 @@
+// Ensure UUID has a crypto source on React Native runtime.
+// This is a no-op in Node/Jest.
+if (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('react-native-get-random-values');
+}
 import { v4 as uuidv4 } from 'uuid';
 import { JournalRepository } from '../../domain/repositories/JournalRepository';
 import { JournalEntry, Tag, Location } from '../../domain/entities/JournalEntry';
@@ -31,18 +37,23 @@ export class JournalRepositoryImpl implements JournalRepository {
     dbEntry: JournalEntriesTable,
     tags: Tag[] = []
   ): JournalEntry {
-    const location: Location | undefined = 
-      dbEntry.location_latitude !== undefined && 
-      dbEntry.location_longitude !== undefined && 
-      dbEntry.location_elevation !== undefined
-        ? {
-            latitude: dbEntry.location_latitude,
-            longitude: dbEntry.location_longitude,
-            elevation: dbEntry.location_elevation,
-            accuracy: dbEntry.location_accuracy,
-            address: dbEntry.location_address,
-          }
-        : undefined;
+    // SQLite returns null for missing columns. We must ensure all required
+    // numeric fields are non-null before constructing the location object.
+    const hasLocation =
+      dbEntry.location_latitude != null &&
+      dbEntry.location_longitude != null &&
+      dbEntry.location_elevation != null;
+
+    const location: Location | undefined = hasLocation
+      ? {
+          latitude: dbEntry.location_latitude as number,
+          longitude: dbEntry.location_longitude as number,
+          elevation: dbEntry.location_elevation as number,
+          // These optional fields may still be null; only include if not null.
+          accuracy: dbEntry.location_accuracy ?? undefined,
+          address: dbEntry.location_address ?? undefined,
+        }
+      : undefined;
 
     return {
       id: dbEntry.id,
@@ -68,36 +79,33 @@ export class JournalRepositoryImpl implements JournalRepository {
     const now = new Date();
     const id = uuidv4();
 
-    await db.transaction().execute(async (trx) => {
-      // Create the entry
-      await trx
-        .insertInto('journal_entries')
+    await db
+      .insertInto('journal_entries')
+      .values({
+        id,
+        content: entry.content,
+        datetime: entry.datetime.toISOString(),
+        created_at: now.toISOString(),
+        modified_at: now.toISOString(),
+        location_latitude: entry.location?.latitude,
+        location_longitude: entry.location?.longitude,
+        location_elevation: entry.location?.elevation,
+        location_accuracy: entry.location?.accuracy,
+        location_address: entry.location?.address,
+      })
+      .execute();
+
+    // Handle tags
+    for (const tagName of entry.tags) {
+      const tag = await this.getOrCreateTag(tagName);
+      await db
+        .insertInto('journal_entry_tags')
         .values({
-          id,
-          content: entry.content,
-          datetime: entry.datetime.toISOString(),
-          created_at: now.toISOString(),
-          modified_at: now.toISOString(),
-          location_latitude: entry.location?.latitude,
-          location_longitude: entry.location?.longitude,
-          location_elevation: entry.location?.elevation,
-          location_accuracy: entry.location?.accuracy,
-          location_address: entry.location?.address,
+          entry_id: id,
+          tag_id: tag.id,
         })
         .execute();
-
-      // Handle tags
-      for (const tagName of entry.tags) {
-        const tag = await this.getOrCreateTag(tagName);
-        await trx
-          .insertInto('journal_entry_tags')
-          .values({
-            entry_id: id,
-            tag_id: tag.id,
-          })
-          .execute();
-      }
-    });
+    }
 
     const createdEntry = await this.getEntry(id);
     if (!createdEntry) {
@@ -110,61 +118,59 @@ export class JournalRepositoryImpl implements JournalRepository {
     const db = this.db;
     const now = new Date();
 
-    await db.transaction().execute(async (trx) => {
-      // Update the entry
-      const updateData: Partial<JournalEntriesTable> = {
-        modified_at: now.toISOString(),
-      };
+    // Update the entry (no explicit transaction to improve Expo compatibility)
+    const updateData: Partial<JournalEntriesTable> = {
+      modified_at: now.toISOString(),
+    };
 
-      if (updates.content !== undefined) {
-        updateData.content = updates.content;
+    if (updates.content !== undefined) {
+      updateData.content = updates.content;
+    }
+    if (updates.datetime !== undefined) {
+      updateData.datetime = updates.datetime.toISOString();
+    }
+    if (updates.location !== undefined) {
+      if (updates.location === null) {
+        updateData.location_latitude = undefined;
+        updateData.location_longitude = undefined;
+        updateData.location_elevation = undefined;
+        updateData.location_accuracy = undefined;
+        updateData.location_address = undefined;
+      } else {
+        updateData.location_latitude = updates.location.latitude;
+        updateData.location_longitude = updates.location.longitude;
+        updateData.location_elevation = updates.location.elevation;
+        updateData.location_accuracy = updates.location.accuracy;
+        updateData.location_address = updates.location.address;
       }
-      if (updates.datetime !== undefined) {
-        updateData.datetime = updates.datetime.toISOString();
-      }
-      if (updates.location !== undefined) {
-        if (updates.location === null) {
-          updateData.location_latitude = undefined;
-          updateData.location_longitude = undefined;
-          updateData.location_elevation = undefined;
-          updateData.location_accuracy = undefined;
-          updateData.location_address = undefined;
-        } else {
-          updateData.location_latitude = updates.location.latitude;
-          updateData.location_longitude = updates.location.longitude;
-          updateData.location_elevation = updates.location.elevation;
-          updateData.location_accuracy = updates.location.accuracy;
-          updateData.location_address = updates.location.address;
-        }
-      }
+    }
 
-      await trx
-        .updateTable('journal_entries')
-        .set(updateData)
-        .where('id', '=', id)
+    await db
+      .updateTable('journal_entries')
+      .set(updateData)
+      .where('id', '=', id)
+      .execute();
+
+    // Handle tags if provided
+    if (updates.tags !== undefined) {
+      // Remove existing tags
+      await db
+        .deleteFrom('journal_entry_tags')
+        .where('entry_id', '=', id)
         .execute();
 
-      // Handle tags if provided
-      if (updates.tags !== undefined) {
-        // Remove existing tags
-        await trx
-          .deleteFrom('journal_entry_tags')
-          .where('entry_id', '=', id)
+      // Add new tags
+      for (const tagName of updates.tags) {
+        const tag = await this.getOrCreateTag(tagName);
+        await db
+          .insertInto('journal_entry_tags')
+          .values({
+            entry_id: id,
+            tag_id: tag.id,
+          })
           .execute();
-
-        // Add new tags
-        for (const tagName of updates.tags) {
-          const tag = await this.getOrCreateTag(tagName);
-          await trx
-            .insertInto('journal_entry_tags')
-            .values({
-              entry_id: id,
-              tag_id: tag.id,
-            })
-            .execute();
-        }
       }
-    });
+    }
 
     const updatedEntry = await this.getEntry(id);
     if (!updatedEntry) {
@@ -208,6 +214,7 @@ export class JournalRepositoryImpl implements JournalRepository {
       .limit(limit)
       .offset(offset)
       .execute();
+
 
     const entriesWithTags: JournalEntry[] = [];
     for (const entry of entries) {

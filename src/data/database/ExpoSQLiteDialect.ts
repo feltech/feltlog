@@ -70,34 +70,30 @@ class ExpoSQLiteConnection implements DatabaseConnection {
     parameters: readonly unknown[];
   }): Promise<QueryResult<O>> {
     try {
-      const result = await this.database.getAllAsync(
-        compiledQuery.sql,
-        compiledQuery.parameters as any[]
-      );
+      const sql = compiledQuery.sql.trim();
+      const upper = sql.toUpperCase();
 
-      // For non-SELECT queries, we need to get the changes info
-      if (
-        compiledQuery.sql.trim().toUpperCase().startsWith('INSERT') ||
-        compiledQuery.sql.trim().toUpperCase().startsWith('UPDATE') ||
-        compiledQuery.sql.trim().toUpperCase().startsWith('DELETE')
-      ) {
-        // For these queries, we need to get the last insert id and changes
+      if (upper.startsWith('SELECT') || upper.startsWith('PRAGMA')) {
+        // Read query: use getAllAsync to fetch rows.
+        const rows = await this.database.getAllAsync(sql, compiledQuery.parameters as any[]);
+        return {
+          rows: rows as O[],
+          numChangedRows: undefined,
+          insertId: undefined,
+        };
+      } else {
+        // Write query (INSERT/UPDATE/DELETE/DDL): use runAsync so the statement executes reliably.
+        await this.database.runAsync(sql, ...(compiledQuery.parameters as any[]));
+        // Then get changes and last insert id.
         const changes = await this.database.getAllAsync(
           'SELECT changes() as changes, last_insert_rowid() as lastInsertRowid'
         );
-        
         return {
-          rows: result as O[],
+          rows: [] as unknown as O[],
           numChangedRows: changes[0]?.changes || 0,
           insertId: changes[0]?.lastInsertRowid || undefined,
         };
       }
-
-      return {
-        rows: result as O[],
-        numChangedRows: undefined,
-        insertId: undefined,
-      };
     } catch (error) {
       throw error;
     }

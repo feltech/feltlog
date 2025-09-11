@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
-import { Kysely } from 'kysely';
-import { Database } from './schema';
-import { ExpoSQLiteDialect } from './ExpoSQLiteDialect';
+import {Kysely} from 'kysely';
+import {Database} from './schema';
+import {ExpoSQLiteDialect} from './ExpoSQLiteDialect';
 
 export interface OpenDatabaseResult {
   db: Kysely<Database>;
@@ -38,7 +38,7 @@ export async function openKysely(
     }),
   });
 
-  return { db, sqliteDb };
+  return {db, sqliteDb};
 }
 
 /**

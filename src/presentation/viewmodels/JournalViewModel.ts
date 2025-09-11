@@ -68,7 +68,7 @@ export const useJournalViewModel = () => {
     error: null,
     searchQuery: '',
     selectedTags: [],
-    hasMore: true,
+    hasMore: false,
   });
 
   const repository: JournalRepository = useRepository();
@@ -116,6 +116,7 @@ export const useJournalViewModel = () => {
       } else {
         entries = await repository.getAllEntries(offset, batchSize);
       }
+
 
       updateState({
         entries: append ? [...state.entries, ...entries] : entries,
@@ -179,7 +180,8 @@ export const useJournalViewModel = () => {
     updateState({loading: true, error: null});
 
     try {
-      const entry = await repository.createEntry({
+      let entry: JournalEntry | null = null;
+      entry = await repository.createEntry({
         content: content.trim(),
         datetime,
         tags,
@@ -310,15 +312,20 @@ export const useJournalViewModel = () => {
     }
   }, [loadEntries, loadTags, updateState]);
 
+  // Keep a stable ref to the latest loadEntries implementation to avoid
+  // infinite loops caused by function identity changes.
+  const loadEntriesRef = useRef(loadEntries);
+  useEffect(() => {
+    loadEntriesRef.current = loadEntries;
+  }, [loadEntries]);
+
   // Trigger entry reload whenever filters change.
   useEffect(() => {
-    // Avoid triggering while already loading; refreshData handles its own call.
-    if (!state.loading) {
-      void loadEntries(0, false);
-    }
-    // We intentionally do not include loadEntries' dependencies directly here,
-    // only the filters and loading flag, to fire on filter changes.
-  }, [state.searchQuery, state.selectedTags, state.loading, loadEntries]);
+    // Call the latest loadEntries without depending on its identity to avoid
+    // re-running due to state updates inside loadEntries.
+    void loadEntriesRef.current(0, false);
+    // Only react to filter changes.
+  }, [state.searchQuery, state.selectedTags]);
 
   // Keep a stable ref to the latest refreshData implementation. This
   // is to break circular references. I.e. we can depend on the ref

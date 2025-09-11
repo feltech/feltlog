@@ -1,0 +1,93 @@
+appId: com.feltech.feltlog
+name: Create and view journal entry
+
+# This flow sets up the app on first run with a random database name and key,
+# creates a journal entry with unique content, and verifies it can be opened.
+---
+
+- clearState
+- launchApp
+
+# Handle Development Build intro page when running expo dev build.
+- runFlow:
+    when:
+      visible:
+        text: "http.*"
+    commands:
+      - tapOn: "http.*"
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Toggle performance monitor"
+    commands:
+      - tapOn:
+          point: 50%,10%
+
+# Wait for setup screen inputs and perform setup
+- evalScript: ${output.entryText = "Some entry"}
+- evalScript: ${output.dbName = "db_" + Date.now().toString() + ".db"}
+- evalScript: ${output.dbKey = "key_" + Date.now().toString()}
+- extendedWaitUntil:
+    visible:
+      id: "db-name-input"
+    timeout: 60000
+- takeScreenshot:
+    path: setup_screen
+- tapOn:
+    id: "db-name-input"
+- eraseText
+- inputText: ${output.dbName}
+- tapOn:
+    id: "db-key-input"
+- inputText: ${output.dbKey}
+- tapOn:
+    id: "db-open-btn"
+- takeScreenshot:
+    path: after_open
+- extendedWaitUntil:
+    visible: "Create entry"
+    timeout: 60000
+- takeScreenshot:
+    path: after_wait_fab
+
+# Create a new entry
+- tapOn:
+    id: "create-entry-fab"
+
+# Verify modal is open
+- assertVisible: "New Entry"
+
+# Type entry content
+- tapOn:
+    id: "entry-content-input"
+- inputText: ${output.entryText}
+
+# Save the entry
+- tapOn:
+    id: "save-entry-button"
+
+# Wait for list screen to be visible again (modal closed)
+- extendedWaitUntil:
+    visible:
+      id: "create-entry-fab"
+    timeout: 10000
+
+# Take a diagnostic screenshot after returning to list and swipes
+- takeScreenshot:
+    path: after_save_and_swipes
+
+- extendedWaitUntil:
+    visible: "Journal entry card"
+    timeout: 10000
+- tapOn: "Journal entry card"
+
+# Wait for the editor to be visible and verify content
+- extendedWaitUntil:
+    visible:
+      id: "entry-content-input"
+    timeout: 10000
+- assertVisible: ${output.entryText}
