@@ -1,6 +1,6 @@
-import { openKysely, closeSqlite } from '@/src/data/database/database';
 import { up } from '@/src/data/database/migrations';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
+import {closeSqlite, openKysely} from "@/src/data/database/database";
 
 /**
  * Integration tests against the repository using the expo-sqlite-mock shim.

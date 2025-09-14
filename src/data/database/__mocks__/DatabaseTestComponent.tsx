@@ -1,14 +1,16 @@
-import React from 'react';
+import {useEffect} from 'react';
 import {View, Text} from 'react-native';
 import {useDatabase} from '../database';
 
 const DatabaseTestComponent = ({encryptionKey}: { encryptionKey?: string }) => {
-  const { ready, initialize } = useDatabase();
+  const {ready, initialize} = useDatabase();
 
-  React.useEffect(() => {
+  useEffect(() => {
     // For tests, use a random db name to avoid collisions and always pass a key if provided
     const name = `test_${Date.now()}_${Math.random()}.db`;
-    initialize({ encryptionKey: encryptionKey ?? 'test-key', databaseName: name });
+    (async () => {
+      await initialize({encryptionKey: encryptionKey ?? 'test-key', databaseName: name});
+    })();
   }, [encryptionKey]);
 
   return (

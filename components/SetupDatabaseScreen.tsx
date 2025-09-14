@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Button, HelperText, Text, TextInput } from 'react-native-paper';
-import type { UseDatabaseApi } from '@/services/database';
+import type { UseDatabaseApi } from '@/src/data/database/database';
 
 /**
  * Simple setup screen that asks the user to choose a database filename/location

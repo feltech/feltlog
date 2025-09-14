@@ -1,6 +1,6 @@
 import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
-import { openKysely, closeSqlite } from '../../database/database';
 import { up } from '../../database/migrations';
+import {closeSqlite, openKysely} from "@/src/data/database/database";
 
 describe('JournalRepositoryImpl', () => {
   let repository: JournalRepositoryImpl;

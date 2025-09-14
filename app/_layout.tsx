@@ -8,7 +8,7 @@ import 'react-native-reanimated';
 import { PaperProvider } from 'react-native-paper';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
-import { useDatabase } from '@/services/database';
+import { useDatabase } from '@/src/data/database/database';
 import SetupDatabaseScreen from '@/components/SetupDatabaseScreen';
 
 import {useColorScheme} from '@/components/useColorScheme';
