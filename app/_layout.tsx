@@ -9,9 +9,9 @@ import { PaperProvider } from 'react-native-paper';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 import { useDatabase } from '@/src/data/database/database';
-import SetupDatabaseScreen from '@/components/SetupDatabaseScreen';
+import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScreen';
 
-import {useColorScheme} from '@/components/useColorScheme';
+import {useColorScheme} from '@/src/presentation/components/useColorScheme';
 
 export {
     // Catch any errors thrown by the Layout component.
