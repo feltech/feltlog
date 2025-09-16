@@ -4,12 +4,11 @@ if (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNat
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('react-native-get-random-values');
 }
-import { v4 as uuidv4 } from 'uuid';
-import { JournalRepository } from '../../domain/repositories/JournalRepository';
-import { JournalEntry, Tag, Location } from '../../domain/entities/JournalEntry';
-import { Kysely } from 'kysely';
-import { Database } from '../database/schema';
-import { JournalEntriesTable, TagsTable } from '../database/schema';
+import {v4 as uuidv4} from 'uuid';
+import {JournalRepository} from '../../domain/repositories/JournalRepository';
+import {JournalEntry, Location, Tag} from '../../domain/entities/JournalEntry';
+import {Kysely} from 'kysely';
+import {Database, JournalEntriesTable, TagsTable} from '../database/schema';
 
 /**
  * Concrete implementation of the JournalRepository backed by Kysely.
@@ -31,47 +30,6 @@ export class JournalRepositoryImpl implements JournalRepository {
    */
   constructor(db: Kysely<Database>) {
     this.db = db;
-  }
-
-  private mapDbEntryToDomain(
-    dbEntry: JournalEntriesTable,
-    tags: Tag[] = []
-  ): JournalEntry {
-    // SQLite returns null for missing columns. We must ensure all required
-    // numeric fields are non-null before constructing the location object.
-    const hasLocation =
-      dbEntry.location_latitude != null &&
-      dbEntry.location_longitude != null &&
-      dbEntry.location_elevation != null;
-
-    const location: Location | undefined = hasLocation
-      ? {
-          latitude: dbEntry.location_latitude as number,
-          longitude: dbEntry.location_longitude as number,
-          elevation: dbEntry.location_elevation as number,
-          // These optional fields may still be null; only include if not null.
-          accuracy: dbEntry.location_accuracy ?? undefined,
-          address: dbEntry.location_address ?? undefined,
-        }
-      : undefined;
-
-    return {
-      id: dbEntry.id,
-      content: dbEntry.content,
-      datetime: new Date(dbEntry.datetime),
-      created_at: new Date(dbEntry.created_at),
-      modified_at: new Date(dbEntry.modified_at),
-      tags: tags.map(tag => tag.name),
-      location,
-    };
-  }
-
-  private mapDbTagToDomain(dbTag: TagsTable): Tag {
-    return {
-      id: dbTag.id,
-      name: dbTag.name,
-      created_at: new Date(dbTag.created_at),
-    };
   }
 
   async createEntry(entry: Omit<JournalEntry, 'id' | 'created_at' | 'modified_at'>): Promise<JournalEntry> {
@@ -189,7 +147,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getEntry(id: string): Promise<JournalEntry | null> {
     const db = this.db;
-    
+
     const entry = await db
       .selectFrom('journal_entries')
       .selectAll()
@@ -206,7 +164,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getAllEntries(offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
     const db = this.db;
-    
+
     const entries = await db
       .selectFrom('journal_entries')
       .selectAll()
@@ -227,7 +185,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async searchEntries(query: string, offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
     const db = this.db;
-    
+
     const entries = await db
       .selectFrom('journal_entries')
       .selectAll()
@@ -248,7 +206,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getEntriesByTags(tagNames: string[], offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
     const db = this.db;
-    
+
     const entries = await db
       .selectFrom('journal_entries')
       .innerJoin('journal_entry_tags', 'journal_entries.id', 'journal_entry_tags.entry_id')
@@ -272,7 +230,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getAllTags(): Promise<Tag[]> {
     const db = this.db;
-    
+
     const tags = await db
       .selectFrom('tags')
       .selectAll()
@@ -305,7 +263,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getOrCreateTag(name: string): Promise<Tag> {
     const db = this.db;
-    
+
     const existingTag = await db
       .selectFrom('tags')
       .selectAll()
@@ -329,7 +287,7 @@ export class JournalRepositoryImpl implements JournalRepository {
 
   async getTagsForEntry(entryId: string): Promise<Tag[]> {
     const db = this.db;
-    
+
     const tags = await db
       .selectFrom('tags')
       .innerJoin('journal_entry_tags', 'tags.id', 'journal_entry_tags.tag_id')
@@ -338,5 +296,46 @@ export class JournalRepositoryImpl implements JournalRepository {
       .execute();
 
     return tags.map(tag => this.mapDbTagToDomain(tag));
+  }
+
+  private mapDbEntryToDomain(
+    dbEntry: JournalEntriesTable,
+    tags: Tag[] = []
+  ): JournalEntry {
+    // SQLite returns null for missing columns. We must ensure all required
+    // numeric fields are non-null before constructing the location object.
+    const hasLocation =
+      dbEntry.location_latitude != null &&
+      dbEntry.location_longitude != null &&
+      dbEntry.location_elevation != null;
+
+    const location: Location | undefined = hasLocation
+      ? {
+        latitude: dbEntry.location_latitude as number,
+        longitude: dbEntry.location_longitude as number,
+        elevation: dbEntry.location_elevation as number,
+        // These optional fields may still be null; only include if not null.
+        accuracy: dbEntry.location_accuracy ?? undefined,
+        address: dbEntry.location_address ?? undefined,
+      }
+      : undefined;
+
+    return {
+      id: dbEntry.id,
+      content: dbEntry.content,
+      datetime: new Date(dbEntry.datetime),
+      created_at: new Date(dbEntry.created_at),
+      modified_at: new Date(dbEntry.modified_at),
+      tags: tags.map(tag => tag.name),
+      location,
+    };
+  }
+
+  private mapDbTagToDomain(dbTag: TagsTable): Tag {
+    return {
+      id: dbTag.id,
+      name: dbTag.name,
+      created_at: new Date(dbTag.created_at),
+    };
   }
 }

@@ -1,26 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { Platform, StyleSheet, ScrollView } from 'react-native';
-import { 
-  Appbar, 
-  TextInput, 
-  Button, 
-  Chip, 
-  Text,
-  Snackbar,
-  Surface
-} from 'react-native-paper';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, {useEffect, useState} from 'react';
+import {StatusBar} from 'expo-status-bar';
+import {Platform, ScrollView, StyleSheet} from 'react-native';
+import {Appbar, Chip, Snackbar, Surface, Text, TextInput} from 'react-native-paper';
+import {useLocalSearchParams, useRouter} from 'expo-router';
+import {SafeAreaView} from 'react-native-safe-area-context';
 
-import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
-import { JournalEntry } from '@/src/domain/entities/JournalEntry';
+import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
 
 export default function JournalEntryModal() {
   const router = useRouter();
-  const { entryId } = useLocalSearchParams<{ entryId?: string }>();
-  const { state, actions } = useJournalViewModel();
-  
+  const {entryId} = useLocalSearchParams<{ entryId?: string }>();
+  const {state, actions} = useJournalViewModel();
+
   const [content, setContent] = useState('');
   const [datetime, setDatetime] = useState(new Date());
   const [tags, setTags] = useState<string[]>([]);
@@ -89,13 +80,13 @@ export default function JournalEntryModal() {
   return (
     <SafeAreaView style={styles.container}>
       <Appbar.Header>
-        <Appbar.BackAction onPress={handleClose} />
-        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
-        <Appbar.Action 
-          icon="check" 
+        <Appbar.BackAction onPress={handleClose}/>
+        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'}/>
+        <Appbar.Action
+          icon="check"
           testID="save-entry-button"
           accessibilityLabel="Save entry"
-          onPress={handleSave} 
+          onPress={handleSave}
           disabled={isLoading || !content.trim()}
         />
       </Appbar.Header>
@@ -116,7 +107,7 @@ export default function JournalEntryModal() {
 
         <Surface style={styles.tagsSection}>
           <Text variant="titleMedium" style={styles.sectionTitle}>Tags</Text>
-          
+
           <TextInput
             label="Add tags"
             value={tagInput}
@@ -125,15 +116,16 @@ export default function JournalEntryModal() {
             mode="outlined"
             style={styles.tagInput}
             right={
-              <TextInput.Icon 
-                icon="plus" 
+              <TextInput.Icon
+                icon="plus"
                 onPress={handleAddTag}
                 disabled={!tagInput.trim()}
               />
             }
           />
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                      style={styles.tagsContainer}>
             {tags.map((tag, index) => (
               <Chip
                 key={index}
@@ -148,10 +140,10 @@ export default function JournalEntryModal() {
         </Surface>
 
         <Text variant="bodySmall" style={styles.dateText}>
-          {datetime.toLocaleDateString()} {datetime.toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
+          {datetime.toLocaleDateString()} {datetime.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
         </Text>
       </ScrollView>
 
@@ -167,7 +159,7 @@ export default function JournalEntryModal() {
         {error}
       </Snackbar>
 
-      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
+      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'}/>
     </SafeAreaView>
   );
 }

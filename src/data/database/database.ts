@@ -3,7 +3,7 @@ import {Database} from '@/src/data/database/schema';
 import {up} from '@/src/data/database/migrations';
 import {getLastDatabaseName, setLastDatabaseName} from './dbLocationStorage';
 import {CompiledQuery, Kysely} from "kysely";
-import {SQLiteDatabase, openDatabaseAsync} from "expo-sqlite";
+import {openDatabaseAsync, SQLiteDatabase} from "expo-sqlite";
 import {ExpoDialect} from "kysely-expo";
 
 export interface UseDatabaseState {

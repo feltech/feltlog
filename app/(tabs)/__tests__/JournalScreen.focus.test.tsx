@@ -1,18 +1,17 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import {render} from '@testing-library/react-native';
+import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
+import JournalScreen from '../index';
 
 // Mock router to avoid real navigation.
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
+  useRouter: () => ({push: jest.fn(), back: jest.fn()}),
 }));
 
 // Mock the view model to control actions and state.
 jest.mock('@/src/presentation/viewmodels/JournalViewModel', () => ({
   useJournalViewModel: jest.fn(),
 }));
-
-import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
-import JournalScreen from '../index';
 
 function setupMocks() {
   (useJournalViewModel as jest.Mock).mockReturnValue({
@@ -43,13 +42,13 @@ describe('JournalScreen focus behavior', () => {
   it('renders the create-entry FAB and does not crash', () => {
     setupMocks();
 
-    const { SafeAreaProvider } = require('react-native-safe-area-context');
-    const { PaperProvider } = require('react-native-paper');
+    const {SafeAreaProvider} = require('react-native-safe-area-context');
+    const {PaperProvider} = require('react-native-paper');
 
     const tree = render(
       <SafeAreaProvider>
         <PaperProvider>
-          <JournalScreen />
+          <JournalScreen/>
         </PaperProvider>
       </SafeAreaProvider>
     );

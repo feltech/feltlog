@@ -1,9 +1,9 @@
 import React from 'react';
-import { render, act } from '@testing-library/react-native';
-import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
-import { useJournalViewModel } from '../JournalViewModel';
-import type { JournalRepository } from '@/src/domain/repositories/JournalRepository';
-import type { JournalEntry, Tag } from '@/src/domain/entities/JournalEntry';
+import {act, render} from '@testing-library/react-native';
+import {RepositoryProvider} from '@/src/domain/repositories/RepositoryContext';
+import {useJournalViewModel} from '../JournalViewModel';
+import type {JournalRepository} from '@/src/domain/repositories/JournalRepository';
+import type {JournalEntry, Tag} from '@/src/domain/entities/JournalEntry';
 
 class MockRepo implements JournalRepository {
   // State for assertions
@@ -33,7 +33,7 @@ class MockRepo implements JournalRepository {
   }
 }
 
-function Harness({ repo, onReady }: { repo: JournalRepository; onReady: (api: any) => void }) {
+function Harness({onReady}: { onReady: (api: any) => void }) {
   const api = useJournalViewModel();
   React.useEffect(() => onReady(api), [api, onReady]);
   return null;
@@ -46,12 +46,15 @@ describe('JournalViewModel', () => {
 
     render(
       <RepositoryProvider repository={repo as unknown as JournalRepository}>
-        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => { vm = api; }} />
+        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => {
+          vm = api;
+        }}/>
       </RepositoryProvider>
     );
 
     // Initial mount should load entries at least once.
-    await act(async () => {});
+    await act(async () => {
+    });
     expect(repo.getAllEntriesCalls).toBeGreaterThanOrEqual(1);
     const initialCalls = repo.getAllEntriesCalls;
 
@@ -60,11 +63,13 @@ describe('JournalViewModel', () => {
       await vm!.actions.search('hello');
     });
 
-    await act(async () => {});
+    await act(async () => {
+    });
     expect(repo.searchEntriesCalls).toBe(1);
 
     // Ensure no runaway repeated loading after this point.
-    await act(async () => {});
+    await act(async () => {
+    });
     expect(repo.getAllEntriesCalls).toBe(initialCalls);
   });
 
@@ -74,12 +79,15 @@ describe('JournalViewModel', () => {
 
     render(
       <RepositoryProvider repository={repo as unknown as JournalRepository}>
-        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => { vm = api; }} />
+        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => {
+          vm = api;
+        }}/>
       </RepositoryProvider>
     );
 
     // Initial refresh
-    await act(async () => {});
+    await act(async () => {
+    });
     const initialCalls = repo.getAllEntriesCalls;
 
     // Try to load more with empty entries; should be a no-op

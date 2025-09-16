@@ -1,7 +1,7 @@
-import {useState, useEffect, useCallback, useRef} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {JournalEntry, Tag} from '../../domain/entities/JournalEntry';
 import {JournalRepository} from '../../domain/repositories/JournalRepository';
-import { useRepository } from '@/src/domain/repositories/RepositoryContext';
+import {useRepository} from '@/src/domain/repositories/RepositoryContext';
 
 /**
  * Represents the state of a journal view model.
@@ -180,8 +180,7 @@ export const useJournalViewModel = () => {
     updateState({loading: true, error: null});
 
     try {
-      let entry: JournalEntry | null = null;
-      entry = await repository.createEntry({
+      let entry: JournalEntry | null = await repository.createEntry({
         content: content.trim(),
         datetime,
         tags,

@@ -1,5 +1,5 @@
-import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
-import { up } from '../../database/migrations';
+import {JournalRepositoryImpl} from '../JournalRepositoryImpl';
+import {up} from '../../database/migrations';
 import {closeSqlite, openKysely} from "@/src/data/database/database";
 
 describe('JournalRepositoryImpl', () => {
@@ -93,7 +93,7 @@ describe('JournalRepositoryImpl', () => {
       };
 
       const createdEntry = await repository.createEntry(entryData);
-      
+
       const updates = {
         content: 'Updated content',
         tags: ['updated', 'modified'],

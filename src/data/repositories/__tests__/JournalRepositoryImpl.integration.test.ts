@@ -1,5 +1,5 @@
-import { up } from '@/src/data/database/migrations';
-import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
+import {up} from '@/src/data/database/migrations';
+import {JournalRepositoryImpl} from '@/src/data/repositories/JournalRepositoryImpl';
 import {closeSqlite, openKysely} from "@/src/data/database/database";
 
 /**
@@ -11,7 +11,7 @@ import {closeSqlite, openKysely} from "@/src/data/database/database";
 
 describe('JournalRepositoryImpl integration (sqlite mock)', () => {
   it('creates and retrieves an entry without location (location remains undefined)', async () => {
-    const { db, sqliteDb } = await openKysely(undefined, `jest_${Date.now()}.db`);
+    const {db, sqliteDb} = await openKysely(undefined, `jest_${Date.now()}.db`);
     try {
       await up(db);
       const repo = new JournalRepositoryImpl(db);

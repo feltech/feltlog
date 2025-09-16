@@ -1,5 +1,5 @@
-import React, { createContext, useContext } from 'react';
-import type { JournalRepository } from './JournalRepository';
+import React, {createContext, useContext} from 'react';
+import type {JournalRepository} from './JournalRepository';
 
 /**
  * React context for providing a JournalRepository instance across the app.
@@ -19,7 +19,7 @@ export interface RepositoryProviderProps {
 /**
  * Provider to supply a concrete JournalRepository instance to descendants.
  */
-export function RepositoryProvider({ repository, children }: RepositoryProviderProps) {
+export function RepositoryProvider({repository, children}: RepositoryProviderProps) {
   return (
     <RepositoryContext.Provider value={repository}>{children}</RepositoryContext.Provider>
   );

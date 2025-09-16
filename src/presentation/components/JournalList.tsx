@@ -1,8 +1,8 @@
 import React from 'react';
-import { FlatList, StyleSheet, RefreshControl } from 'react-native';
-import { ActivityIndicator, Text } from 'react-native-paper';
-import { JournalEntry } from '../../domain/entities/JournalEntry';
-import { JournalEntryCard } from './JournalEntryCard';
+import {FlatList, RefreshControl, StyleSheet} from 'react-native';
+import {ActivityIndicator, Text} from 'react-native-paper';
+import {JournalEntry} from '../../domain/entities/JournalEntry';
+import {JournalEntryCard} from './JournalEntryCard';
 
 interface JournalListProps {
   entries: JournalEntry[];
@@ -14,14 +14,14 @@ interface JournalListProps {
 }
 
 export const JournalList: React.FC<JournalListProps> = ({
-  entries,
-  loading,
-  hasMore,
-  onLoadMore,
-  onRefresh,
-  onEntryPress,
-}) => {
-  const renderEntry = ({ item }: { item: JournalEntry }) => (
+                                                          entries,
+                                                          loading,
+                                                          hasMore,
+                                                          onLoadMore,
+                                                          onRefresh,
+                                                          onEntryPress,
+                                                        }) => {
+  const renderEntry = ({item}: { item: JournalEntry }) => (
     <JournalEntryCard
       entry={item}
       onPress={() => onEntryPress?.(item)}
@@ -30,10 +30,10 @@ export const JournalList: React.FC<JournalListProps> = ({
 
   const renderFooter = () => {
     if (!hasMore) return null;
-    
+
     return (
-      <ActivityIndicator 
-        animating={loading} 
+      <ActivityIndicator
+        animating={loading}
         style={styles.loadingFooter}
         size="large"
       />
@@ -42,7 +42,7 @@ export const JournalList: React.FC<JournalListProps> = ({
 
   const renderEmpty = () => {
     if (loading) return null;
-    
+
     return (
       <Text style={styles.emptyText}>
         No journal entries found. Create your first entry!

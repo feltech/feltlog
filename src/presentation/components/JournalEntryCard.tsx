@@ -1,14 +1,14 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Card, Title, Paragraph, Chip, Text } from 'react-native-paper';
-import { JournalEntry } from '../../domain/entities/JournalEntry';
+import {StyleSheet, View} from 'react-native';
+import {Card, Chip, Text} from 'react-native-paper';
+import {JournalEntry} from '../../domain/entities/JournalEntry';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
   onPress?: () => void;
 }
 
-export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPress }) => {
+export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPress}) => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {
       hour: '2-digit',
@@ -31,16 +31,16 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPre
       accessibilityLabel="Journal entry card"
     >
       <Card.Content>
-        <Title style={styles.date}>{formatDate(entry.datetime)}</Title>
-        <Paragraph style={styles.content}>
+        <Text variant="titleLarge" style={styles.date}>{formatDate(entry.datetime)}</Text>
+        <Text variant="bodyMedium" style={styles.content}>
           {getPreviewContent(entry.content)}
-        </Paragraph>
-        
+        </Text>
+
         {entry.location && (
           <View style={styles.locationContainer}>
             <Text style={styles.locationText}>
-              📍 {entry.location.address || 
-                `${entry.location.latitude.toFixed(4)}, ${entry.location.longitude.toFixed(4)}`}
+              📍 {entry.location.address ||
+              `${entry.location.latitude.toFixed(4)}, ${entry.location.longitude.toFixed(4)}`}
             </Text>
           </View>
         )}

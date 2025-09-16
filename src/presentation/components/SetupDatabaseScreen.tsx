@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
-import type { UseDatabaseApi } from '@/src/data/database/database';
+import React, {useMemo, useState} from 'react';
+import {View} from 'react-native';
+import {Button, HelperText, Text, TextInput} from 'react-native-paper';
+import type {UseDatabaseApi} from '@/src/data/database/database';
 
 /**
  * Simple setup screen that asks the user to choose a database filename/location
@@ -14,7 +14,11 @@ export interface SetupDatabaseScreenProps {
   error: unknown | null;
 }
 
-export default function SetupDatabaseScreen({ initialize, lastDatabaseName, error }: SetupDatabaseScreenProps) {
+export default function SetupDatabaseScreen({
+                                              initialize,
+                                              lastDatabaseName,
+                                              error
+                                            }: SetupDatabaseScreenProps) {
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [key, setKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -23,13 +27,13 @@ export default function SetupDatabaseScreen({ initialize, lastDatabaseName, erro
 
   const onSubmit = async () => {
     setSubmitting(true);
-    await initialize({ encryptionKey: key, databaseName });
+    await initialize({encryptionKey: key, databaseName});
     setSubmitting(false);
   };
 
   return (
-    <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
-      <Text variant="headlineMedium" style={{ marginBottom: 16 }}>Set up database</Text>
+    <View style={{flex: 1, padding: 16, justifyContent: 'center'}}>
+      <Text variant="headlineMedium" style={{marginBottom: 16}}>Set up database</Text>
 
       <TextInput
         testID="db-name-input"
@@ -39,7 +43,7 @@ export default function SetupDatabaseScreen({ initialize, lastDatabaseName, erro
         onChangeText={setDatabaseName}
         autoCapitalize="none"
         autoCorrect={false}
-        style={{ marginBottom: 12 }}
+        style={{marginBottom: 12}}
       />
 
       <TextInput
@@ -49,12 +53,14 @@ export default function SetupDatabaseScreen({ initialize, lastDatabaseName, erro
         value={key}
         onChangeText={setKey}
         secureTextEntry
-        style={{ marginBottom: 8 }}
+        style={{marginBottom: 8}}
       />
-      <HelperText type="info">The location will be remembered. The key is required on every startup.</HelperText>
+      <HelperText type="info">The location will be remembered. The key is required on every
+        startup.</HelperText>
 
       {error ? (
-        <HelperText type="error" testID="db-error-text" accessibilityLabel="Database error message">{String(error)}</HelperText>
+        <HelperText type="error" testID="db-error-text"
+                    accessibilityLabel="Database error message">{String(error)}</HelperText>
       ) : null}
 
       <Button

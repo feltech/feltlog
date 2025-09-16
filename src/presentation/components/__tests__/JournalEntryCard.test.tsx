@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
-import { JournalEntryCard } from '../JournalEntryCard';
-import { JournalEntry } from '@/src/domain/entities/JournalEntry';
+import {fireEvent, render} from '@testing-library/react-native';
+import {JournalEntryCard} from '../JournalEntryCard';
+import {JournalEntry} from '@/src/domain/entities/JournalEntry';
 
 /**
  * Basic render test for JournalEntryCard ensuring testID is present and
@@ -20,7 +20,7 @@ describe('JournalEntryCard', () => {
 
   it('renders with testID and responds to onPress', () => {
     const onPress = jest.fn();
-    const { getByTestId } = render(<JournalEntryCard entry={sampleEntry} onPress={onPress} />);
+    const {getByTestId} = render(<JournalEntryCard entry={sampleEntry} onPress={onPress}/>);
 
     const card = getByTestId('journal-entry-card');
     expect(card).toBeTruthy();

@@ -1,15 +1,15 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { FAB, Snackbar } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import {StyleSheet, View} from 'react-native';
+import {FAB, Snackbar} from 'react-native-paper';
+import {useRouter} from 'expo-router';
+import {useFocusEffect} from '@react-navigation/native';
 
-import { JournalList } from '@/src/presentation/components/JournalList';
-import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
+import {JournalList} from '@/src/presentation/components/JournalList';
+import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
 
 export default function JournalScreen() {
   const router = useRouter();
-  const { state, actions } = useJournalViewModel();
+  const {state, actions} = useJournalViewModel();
 
   // Refresh the list whenever this screen gains focus (e.g., after closing the modal).
   // This ensures we pick up entries created/updated from a different ViewModel instance.
@@ -50,7 +50,7 @@ export default function JournalScreen() {
         onRefresh={actions.refreshData}
         onEntryPress={handleEntryPress}
       />
-      
+
       <FAB
         style={styles.fab}
         icon="plus"

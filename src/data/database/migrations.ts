@@ -1,5 +1,5 @@
-import { Kysely, sql } from 'kysely';
-import { Database } from './schema';
+import {Kysely} from 'kysely';
+import {Database} from './schema';
 
 export async function up(db: Kysely<Database>): Promise<void> {
   // Create tags table
@@ -31,9 +31,9 @@ export async function up(db: Kysely<Database>): Promise<void> {
   await db.schema
     .createTable('journal_entry_tags')
     .ifNotExists()
-    .addColumn('entry_id', 'text', (col) => 
+    .addColumn('entry_id', 'text', (col) =>
       col.references('journal_entries.id').onDelete('cascade').notNull())
-    .addColumn('tag_id', 'text', (col) => 
+    .addColumn('tag_id', 'text', (col) =>
       col.references('tags.id').onDelete('cascade').notNull())
     .addPrimaryKeyConstraint('journal_entry_tags_pk', ['entry_id', 'tag_id'])
     .execute();
