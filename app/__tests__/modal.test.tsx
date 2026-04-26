@@ -82,4 +82,15 @@ describe('JournalEntryModal', () => {
     jest.advanceTimersByTime(1000);
     jest.useRealTimers();
   });
+
+  it('renders undo/redo capable modal', () => {
+    const {toJSON} = render(
+      <SafeAreaProvider>
+        <PaperProvider>
+          <JournalEntryModal />
+        </PaperProvider>
+      </SafeAreaProvider>
+    );
+    expect(toJSON()).toBeTruthy();
+  });
 });

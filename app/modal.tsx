@@ -11,6 +11,7 @@ import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewMode
 import type {JournalEntry} from '@/src/domain/entities/JournalEntry';
 
 const AUTOSAVE_DELAY_MS = 2000;
+const MAX_HISTORY_LENGTH = 50;
 
 export default function JournalEntryModal() {
   const router = useRouter();
@@ -23,9 +24,13 @@ export default function JournalEntryModal() {
   const [tagInput, setTagInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
+const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>();
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Undo/redo history stack
+  const [history, setHistory] = useState<string[]>(['']);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   // Location state for map rendering when creating a new entry.
   const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(undefined);
@@ -181,9 +186,58 @@ export default function JournalEntryModal() {
     router.back();
   };
 
+  // Update content and maintain undo/redo history
+  const updateContent = useCallback((newContent: string) => {
+    setContent(newContent);
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(newContent);
+      if (newHistory.length > MAX_HISTORY_LENGTH) {
+        newHistory.shift();
+        return newHistory;
+      }
+      return newHistory;
+    });
+    setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY_LENGTH - 1));
+  }, [historyIndex]);
+
+  // Undo action
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex(prev => prev - 1);
+      setContent(history[historyIndex - 1]);
+    }
+  }, [historyIndex, history]);
+
+  // Redo action
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(prev => prev + 1);
+      setContent(history[historyIndex + 1]);
+    }
+  }, [historyIndex, history]);
+
+  // Check if undo/redo available
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
   return (
     <SafeAreaView style={styles.container}>
       <Appbar.Header>
+        <Appbar.Action
+          icon="undo"
+          testID="undo-button"
+          accessibilityLabel="Undo"
+          onPress={handleUndo}
+          disabled={!canUndo}
+        />
+        <Appbar.Action
+          icon="redo"
+          testID="redo-button"
+          accessibilityLabel="Redo"
+          onPress={handleRedo}
+          disabled={!canRedo}
+        />
         <Appbar.BackAction onPress={handleClose}/>
         <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'}/>
         <Appbar.Action
@@ -201,7 +255,7 @@ export default function JournalEntryModal() {
           accessibilityLabel="Journal entry content"
           label="What's on your mind?"
           value={content}
-          onChangeText={setContent}
+          onChangeText={updateContent}
           multiline
           numberOfLines={10}
           style={styles.contentInput}
