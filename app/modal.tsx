@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {StatusBar} from 'expo-status-bar';
 import {Platform, ScrollView, StyleSheet, View} from 'react-native';
 import {Appbar, Chip, Snackbar, Surface, Text, TextInput, ActivityIndicator} from 'react-native-paper';
@@ -9,6 +9,8 @@ import * as ExpoLocation from 'expo-location';
 
 import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
 import type {JournalEntry} from '@/src/domain/entities/JournalEntry';
+
+const AUTOSAVE_DELAY_MS = 2000;
 
 export default function JournalEntryModal() {
   const router = useRouter();
@@ -21,6 +23,9 @@ export default function JournalEntryModal() {
   const [tagInput, setTagInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>();
 
   // Location state for map rendering when creating a new entry.
   const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(undefined);
@@ -83,6 +88,36 @@ export default function JournalEntryModal() {
     void fetchLocation();
     return () => { cancelled = true; };
   }, [isEditing]);
+
+  // Autosave: debounced save when content changes (only for editing existing entries)
+  const triggerAutosave = useCallback(async () => {
+    if (!isEditing || !entryId || !content.trim()) return;
+    setAutoSaving(true);
+    try {
+      await actions.updateEntry(entryId, {
+        content: content.trim(),
+        datetime,
+        tags,
+      });
+      setLastSaved(new Date());
+    } catch {
+      // silently fail autosave - user can manually save
+    } finally {
+      setAutoSaving(false);
+    }
+  }, [isEditing, entryId, content, datetime, tags, actions]);
+
+  useEffect(() => {
+    if (!isEditing || !content.trim()) return;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(triggerAutosave, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(autosaveTimerRef.current);
+  }, [isEditing, content, triggerAutosave]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(autosaveTimerRef.current);
+  }, []);
 
   const mapLocation = useMemo(() => {
     return existingEntry?.location ?? currentLocation;
@@ -152,7 +187,7 @@ export default function JournalEntryModal() {
         <Appbar.BackAction onPress={handleClose}/>
         <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'}/>
         <Appbar.Action
-          icon="check"
+          icon={autoSaving ? 'progress-clock' : 'check'}
           testID="save-entry-button"
           accessibilityLabel="Save entry"
           onPress={handleSave}
@@ -214,6 +249,17 @@ export default function JournalEntryModal() {
           minute: '2-digit'
         })}
         </Text>
+
+        {autoSaving && (
+          <Text variant="bodySmall" style={styles.autoSaveText}>
+            Auto-saving...
+          </Text>
+        )}
+        {lastSaved && !autoSaving && (
+          <Text variant="bodySmall" style={styles.autoSaveText}>
+            Saved {lastSaved.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+          </Text>
+        )}
 
         <Surface style={styles.locationSection}>
           <Text variant="titleMedium" style={styles.sectionTitle}>Location</Text>
@@ -305,6 +351,11 @@ const styles = StyleSheet.create({
   dateText: {
     textAlign: 'center',
     color: '#666',
+  },
+  autoSaveText: {
+    textAlign: 'center',
+    color: '#999',
+    marginTop: 4,
   },
   locationSection: {
     padding: 16,

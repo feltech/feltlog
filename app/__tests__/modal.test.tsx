@@ -69,4 +69,17 @@ describe('JournalEntryModal', () => {
     const json = toJSON();
     expect(json).toBeTruthy();
   });
+
+  it('uses fake timers for autosave debounce', () => {
+    jest.useFakeTimers();
+    render(
+      <SafeAreaProvider>
+        <PaperProvider>
+          <JournalEntryModal />
+        </PaperProvider>
+      </SafeAreaProvider>
+    );
+    jest.advanceTimersByTime(1000);
+    jest.useRealTimers();
+  });
 });
