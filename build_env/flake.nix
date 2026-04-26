@@ -27,6 +27,9 @@
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             nodejs
+            # javascript bundler and package manager - used for oh my opencode
+            bun
+
             # Watch files and take action when change
             # TODO(DF): not sure what its a dependency of.
             watchman

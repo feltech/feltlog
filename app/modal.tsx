@@ -1,11 +1,14 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {StatusBar} from 'expo-status-bar';
-import {Platform, ScrollView, StyleSheet} from 'react-native';
-import {Appbar, Chip, Snackbar, Surface, Text, TextInput} from 'react-native-paper';
+import {Platform, ScrollView, StyleSheet, View} from 'react-native';
+import {Appbar, Chip, Snackbar, Surface, Text, TextInput, ActivityIndicator} from 'react-native-paper';
 import {useLocalSearchParams, useRouter} from 'expo-router';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import MapView, {Marker, PROVIDER_GOOGLE, Region} from 'react-native-maps';
+import * as ExpoLocation from 'expo-location';
 
 import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
+import type {JournalEntry} from '@/src/domain/entities/JournalEntry';
 
 export default function JournalEntryModal() {
   const router = useRouter();
@@ -19,6 +22,11 @@ export default function JournalEntryModal() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Location state for map rendering when creating a new entry.
+  const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(undefined);
+  const [locLoading, setLocLoading] = useState(false);
+  const [locDenied, setLocDenied] = useState(false);
+
   const existingEntry = entryId ? state.entries.find(e => e.id === entryId) : null;
   const isEditing = !!existingEntry;
 
@@ -29,6 +37,66 @@ export default function JournalEntryModal() {
       setTags(existingEntry.tags);
     }
   }, [existingEntry]);
+
+  // On create (not editing), request permission and fetch current location
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLocation = async () => {
+      if (isEditing) return; // Only for new entries
+      try {
+        setLocLoading(true);
+        setLocDenied(false);
+        const perm = await ExpoLocation.requestForegroundPermissionsAsync();
+        if (perm.status !== 'granted') {
+          if (!cancelled) setLocDenied(true);
+          return;
+        }
+        const pos = await ExpoLocation.getCurrentPositionAsync({accuracy: ExpoLocation.Accuracy.Balanced});
+        // Reverse geocode is optional; keep fast path. Attempt but ignore failure.
+        let address: string | undefined = undefined;
+        try {
+          const geos = await ExpoLocation.reverseGeocodeAsync({latitude: pos.coords.latitude, longitude: pos.coords.longitude});
+          if (geos && geos.length > 0) {
+            const g = geos[0];
+            address = [g.name, g.street, g.city, g.region, g.postalCode, g.country]
+              .filter(Boolean)
+              .join(', ');
+          }
+        } catch {
+          // ignore reverse geocode errors
+        }
+        const elevation = typeof pos.coords.altitude === 'number' ? (pos.coords.altitude ?? 0) : 0;
+        const loc: JournalEntry['location'] = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          elevation: elevation,
+          accuracy: pos.coords.accuracy ?? undefined,
+          address,
+        };
+        if (!cancelled) setCurrentLocation(loc);
+      } catch (e) {
+        if (!cancelled) setLocDenied(true);
+      } finally {
+        if (!cancelled) setLocLoading(false);
+      }
+    };
+    void fetchLocation();
+    return () => { cancelled = true; };
+  }, [isEditing]);
+
+  const mapLocation = useMemo(() => {
+    return existingEntry?.location ?? currentLocation;
+  }, [existingEntry?.location, currentLocation]);
+
+  const mapRegion: Region | undefined = useMemo(() => {
+    if (!mapLocation) return undefined;
+    return {
+      latitude: mapLocation.latitude,
+      longitude: mapLocation.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+  }, [mapLocation]);
 
   const handleSave = async () => {
     if (!content.trim()) {
@@ -50,7 +118,8 @@ export default function JournalEntryModal() {
         await actions.createEntry(
           content.trim(),
           datetime,
-          tags
+          tags,
+          mapLocation
         );
       }
       router.back();
@@ -145,6 +214,40 @@ export default function JournalEntryModal() {
           minute: '2-digit'
         })}
         </Text>
+
+        <Surface style={styles.locationSection}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>Location</Text>
+          {isEditing && !existingEntry?.location && (
+            <Text variant="bodySmall" style={styles.locationHint}>
+              No location was recorded for this entry.
+            </Text>
+          )}
+
+          {!isEditing && locDenied && (
+            <Text variant="bodySmall" style={styles.locationHint}>
+              Location permission not granted. You can still save the entry without a location.
+            </Text>
+          )}
+
+          {!mapRegion && !locDenied && (
+            <View style={styles.mapLoading}>
+              <ActivityIndicator animating={true} />
+              <Text variant="bodySmall" style={styles.locationHint}>Loading map…</Text>
+            </View>
+          )}
+
+          {mapRegion && mapLocation && (
+            <MapView
+              testID="entry-location-map"
+              provider={PROVIDER_GOOGLE}
+              style={styles.map}
+              initialRegion={mapRegion}
+              pointerEvents="none"
+            >
+              <Marker coordinate={{latitude: mapLocation.latitude, longitude: mapLocation.longitude}} />
+            </MapView>
+          )}
+        </Surface>
       </ScrollView>
 
       <Snackbar
@@ -202,6 +305,25 @@ const styles = StyleSheet.create({
   dateText: {
     textAlign: 'center',
     color: '#666',
+  },
+  locationSection: {
+    padding: 16,
+    borderRadius: 8,
     marginTop: 16,
+    marginBottom: 24,
+  },
+  locationHint: {
+    color: '#666',
+    marginBottom: 8,
+  },
+  map: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+  },
+  mapLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 200,
   },
 });
