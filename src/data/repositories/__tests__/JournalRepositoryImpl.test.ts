@@ -247,6 +247,10 @@ describe('JournalRepositoryImpl', () => {
 
       const personalEntries = await repository.getEntriesByTags(['personal']);
       expect(personalEntries).toHaveLength(2);
+
+      // Note: multiple tags is an "OR", not "AND".
+      const importantPersonalEntries = await repository.getEntriesByTags(['personal', 'important']);
+      expect(importantPersonalEntries).toHaveLength(3);
     });
   });
 });
