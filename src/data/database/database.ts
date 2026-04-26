@@ -92,12 +92,12 @@ export const useDatabase = (): UseDatabaseApi => {
 
     const initialize = async ({encryptionKey, databaseName}: { encryptionKey: string; databaseName: string }) => {
         try {
-            const {db} = await openKysely(encryptionKey || undefined, databaseName || undefined);
+            const {db} = await openKysely(encryptionKey, databaseName);
             await up(db);
             setState({ready: true, db, error: null});
             try {
                 if (databaseName) await setLastDatabaseName(databaseName);
-                setLastDatabaseNameState(databaseName || null);
+                setLastDatabaseNameState(databaseName);
             } catch {
                 // ignore storage errors
             }

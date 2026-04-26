@@ -16,17 +16,9 @@ export async function getLastDatabaseName(): Promise<string | null> {
 }
 
 export async function setLastDatabaseName(name: string): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY, name);
-  } catch {
-    // ignore storage errors
-  }
+  await AsyncStorage.setItem(KEY, name);
 }
 
 export async function clearLastDatabaseName(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(KEY);
-  } catch {
-    // ignore storage errors
-  }
+  await AsyncStorage.removeItem(KEY);
 }
