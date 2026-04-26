@@ -1,6 +1,5 @@
 import React from 'react';
 import {render} from '@testing-library/react-native';
-import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
 import JournalEntryModal from '../modal';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {PaperProvider} from 'react-native-paper';
@@ -10,43 +9,25 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({back: jest.fn()}),
 }));
 
-jest.mock('@/src/presentation/viewmodels/JournalViewModel', () => ({
-  useJournalViewModel: jest.fn(),
+jest.mock('react-native-maps', () => ({
+  __esModule: true,
+  default: 'MapView',
+  Marker: 'Marker',
+  PROVIDER_GOOGLE: 'google',
 }));
 
-function setupMocks() {
-  (useJournalViewModel as jest.Mock).mockReturnValue({
-    state: {
-      entries: [],
-      tags: [],
-      loading: false,
-      error: null,
-      searchQuery: '',
-      selectedTags: [],
-      hasMore: false,
-    },
-    actions: {
-      refreshData: jest.fn(),
-      loadMoreEntries: jest.fn(),
-      createEntry: jest.fn().mockResolvedValue(undefined),
-      updateEntry: jest.fn().mockResolvedValue(undefined),
-      deleteEntry: jest.fn(),
-      search: jest.fn(),
-      filterByTags: jest.fn(),
-      clearFilters: jest.fn(),
-      setError: jest.fn(),
-    },
-  });
-}
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({status: 'granted'}),
+  getCurrentPositionAsync: jest.fn().mockResolvedValue({
+    coords: {latitude: 0, longitude: 0, altitude: 0, accuracy: 5},
+  }),
+  reverseGeocodeAsync: jest.fn().mockResolvedValue([]),
+  Accuracy: {Balanced: 3},
+}));
 
 describe('JournalEntryModal', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    setupMocks();
-  });
-
-  it('renders without crashing', () => {
-    const {toJSON} = render(
+  it('renders without error', () => {
+    const result = render(
       <SafeAreaProvider>
         <PaperProvider>
           <JournalEntryModal />
@@ -54,43 +35,6 @@ describe('JournalEntryModal', () => {
       </SafeAreaProvider>
     );
 
-    expect(toJSON()).toBeTruthy();
-  });
-
-  it('includes location section in the UI', () => {
-    const {toJSON} = render(
-      <SafeAreaProvider>
-        <PaperProvider>
-          <JournalEntryModal />
-        </PaperProvider>
-      </SafeAreaProvider>
-    );
-
-    const json = toJSON();
-    expect(json).toBeTruthy();
-  });
-
-  it('uses fake timers for autosave debounce', () => {
-    jest.useFakeTimers();
-    render(
-      <SafeAreaProvider>
-        <PaperProvider>
-          <JournalEntryModal />
-        </PaperProvider>
-      </SafeAreaProvider>
-    );
-    jest.advanceTimersByTime(1000);
-    jest.useRealTimers();
-  });
-
-  it('renders undo/redo capable modal', () => {
-    const {toJSON} = render(
-      <SafeAreaProvider>
-        <PaperProvider>
-          <JournalEntryModal />
-        </PaperProvider>
-      </SafeAreaProvider>
-    );
-    expect(toJSON()).toBeTruthy();
+    expect(result.toJSON()).toBeTruthy();
   });
 });
