@@ -1,12 +1,35 @@
 import React from 'react';
 import {StyleSheet, View} from 'react-native';
 import {Card, Chip, Text} from 'react-native-paper';
+import Markdown from 'react-native-markdown-renderer';
 import {JournalEntry} from '../../domain/entities/JournalEntry';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
   onPress?: () => void;
 }
+
+const markdownStyles = StyleSheet.create({
+  heading1: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+  heading2: { fontSize: 20, fontWeight: 'bold', marginBottom: 6 },
+  heading3: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  paragraph: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  strong: { fontWeight: 'bold' },
+  em: { fontStyle: 'italic' },
+  blockquote: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#ccc',
+    paddingLeft: 8,
+    marginVertical: 4,
+  },
+  code: {
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 4,
+    fontFamily: 'monospace',
+    fontSize: 12,
+  },
+  link: { color: '#007bff' },
+});
 
 export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPress}) => {
   const formatDate = (date: Date) => {
@@ -33,7 +56,9 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPres
       <Card.Content>
         <Text variant="titleLarge" style={styles.date}>{formatDate(entry.datetime)}</Text>
         <Text variant="bodyMedium" style={styles.content}>
-          {getPreviewContent(entry.content)}
+          <Markdown style={markdownStyles}>
+            {getPreviewContent(entry.content)}
+          </Markdown>
         </Text>
 
         {entry.location && (

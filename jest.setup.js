@@ -30,3 +30,12 @@ jest.mock('expo-location', () => ({
   reverseGeocodeAsync: jest.fn(async () => ([])),
   Accuracy: { Balanced: 3 },
 }));
+
+jest.mock('react-native-markdown-renderer', () => {
+  const React = require('react');
+  const {Text} = require('react-native');
+  return {
+    __esModule: true,
+    default: (props) => React.createElement(Text, null, props.children),
+  };
+});
