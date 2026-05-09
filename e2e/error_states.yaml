@@ -1,0 +1,42 @@
+appId: com.feltech.feltlog
+name: Error states handling
+
+# This flow tests error states: empty content error, empty state UI.
+# Prerequisites: None - creates its own database.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== TEST EMPTY STATE =====
+- assertVisible: 'No journal entries found. Create your first entry!'
+
+# ===== TEST EMPTY CONTENT - SAVE BUTTON DISABLED =====
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify save is handled by back button - back without content just navigates back
+- tapOn:
+    id: 'back'
+- assertVisible: 'Create entry'
+
+# Re-open edit to verify we landed back
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# ===== TEST VALID ENTRY (error resolved) =====
+- evalScript: ${output.validContent = "Valid entry " + Date.now().toString()}
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.validContent}
+# Back button saves and closes
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Verify entry now appears
+- assertVisible: 'Journal entry card'

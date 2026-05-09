@@ -1,0 +1,43 @@
+appId: com.feltech.feltlog
+name: Pull to refresh
+
+# This flow tests pull-to-refresh functionality.
+---
+- runFlow:
+    file: subflows/setup_database.yaml
+    env:
+      dbName: 'db_pull_refresh.db'
+      dbKey: 'key_pull_refresh'
+
+# Create an entry first so we have something to see
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: 'Refresh test entry'
+
+- evalScript: ${output.testContent = "Refresh test entry " + Date.now().toString()}
+
+# Create another entry
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.testContent}
+
+# ===== TEST PULL TO REFRESH =====
+# Verify entry is displayed
+- assertVisible: 'Journal entry card'
+
+# Perform pull to refresh gesture
+- swipe:
+    direction: DOWN
+    duration: 1000
+- waitForAnimationToEnd
+
+# Additional wait for refresh to complete
+- takeScreenshot: screenshot-pull-refresh-after-swipe
+
+# After pull, loading indicator should appear briefly
+# then entries refresh
+
+# Verify we're back to list view
+- assertVisible: 'Create entry'

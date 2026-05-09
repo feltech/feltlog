@@ -56,12 +56,16 @@ To run the end-to-end tests, follow these steps:
 
 4. **Run Maestro Tests**:
 
-   ```bash
-   maestro --verbose test e2e/
-   ```
+It is best to `cd` into the directory, since artifacts such as screenshots will be saved relative
+to that.
 
-   Or run a specific test:
+```bash
+cd e2e
+maestro test .
+```
 
-   ```bash
-   maestro --verbose test e2e/create_and_view_entry.yaml
-   ```
+Or run a specific test:
+
+```bash
+maestro test e2e/create_and_view_entry.yaml
+```

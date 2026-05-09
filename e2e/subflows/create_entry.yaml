@@ -1,0 +1,15 @@
+# Subflow to create a journal entry
+appId: com.feltech.feltlog
+---
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${content || "Default entry content"}
+# Back button saves and closes
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'

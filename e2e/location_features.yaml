@@ -1,0 +1,74 @@
+appId: com.feltech.feltlog
+name: Location features - capture and verify
+
+# This flow tests location capture on new entry creation and location display in entry cards.
+# Prerequisites: None - this test is independent and creates its own entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== SET PERMISSIONS AND MOCK LOCATION =====
+- setPermissions:
+    permissions:
+      all: allow
+
+# Set a known location before creating the entry
+- setLocation:
+    latitude: 51.5074
+    longitude: -0.1278
+
+# ===== TEST 1: Location capture on new entry =====
+- evalScript: ${output.entryText = "Entry with location " + Date.now().toString()}
+
+# Create new entry - location should be captured automatically
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify map is showing (location should be captured)
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'entry-location-map'
+
+# Type content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryText}
+
+# Save entry (back saves)
+- tapOn:
+    id: 'back'
+
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Wait for list to fully render with new entry
+- waitForAnimationToEnd
+
+# Take a screenshot to debug location display
+- takeScreenshot: screenshot-location-after-save
+
+# ===== TEST 2: Verify entry card is visible (location verified in TEST 3) =====
+- assertVisible: 'Journal entry card'
+
+# Wait a bit for card to fully render
+- waitForAnimationToEnd
+
+# ===== TEST 3: Open entry - verify map shows location from saved entry =====
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify the entry content matches
+- assertVisible: ${output.entryText}
+
+# Verify map shows location from saved entry
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'entry-location-map'
+
+# Go back to list
+- tapOn:
+    id: 'back'
+
+- assertVisible: 'Create entry'

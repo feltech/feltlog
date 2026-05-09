@@ -1,0 +1,99 @@
+appId: com.feltech.feltlog
+name: Tag management in entry
+
+# This flow tests adding, viewing, and managing tags in journal entries.
+# Prerequisites: None - creates its own database and entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== TEST ADD TAGS TO NEW ENTRY =====
+- evalScript: ${output.entryContent = "Entry with tags " + Date.now().toString()}
+- evalScript: ${output.tag1 = "personal"}
+- evalScript: ${output.tag2 = "work"}
+- evalScript: ${output.tag3 = "important"}
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Enter content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryContent}
+
+# Wait for tags section to be visible
+- assertVisible: 'Tags'
+
+# Find tag input field
+- tapOn:
+    id: 'tag-input'
+
+- assertVisible:
+    id: 'tag-input'
+- inputText: ${output.tag1}
+
+# Press enter/submit to add the tag
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Wait and add the second tag
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- eraseText
+- inputText: ${output.tag2}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Add third tag
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- eraseText
+- inputText: ${output.tag3}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Close and save entry (back button saves)
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'
+
+# ===== TEST VIEW TAGS IN ENTRY CARD =====
+- assertVisible: 'Journal entry card'
+
+# ===== TEST EDIT TAGS =====
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify we're in edit mode
+- assertVisible: 'Edit Entry'
+
+# Remove one tag - look for close icon on chip
+- runFlow:
+    when:
+      visible: 'personal'
+    commands:
+      - tapOn: 'personal'
+
+# Add a new tag in edit mode if we can
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- eraseText
+- evalScript: ${output.newTag = "updated"}
+- inputText: ${output.newTag}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Close and save changes (back button saves)
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'

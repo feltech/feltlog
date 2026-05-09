@@ -1,0 +1,12 @@
+testOutputDir: ./test_output
+executionOrder:
+  continueOnFailure: false # Default is true
+  flowsOrder:
+    - "Create and view journal entry"
+    - "Error states handling"
+    - "Edit entry flow"
+    - "Autosave and undo/redo features"
+    - "Tag management in entry"
+    - "Location features - capture and verify"
+    - "Pull to refresh"
+    - "Infinite scroll and pagination"

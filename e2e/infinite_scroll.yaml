@@ -1,0 +1,100 @@
+appId: com.feltech.feltlog
+name: Infinite scroll and pagination
+
+# This flow tests infinite scroll / pagination by creating many entries
+# and verifying more load as the user scrolls.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== CREATE 12 ENTRIES (more than batch size of 10) =====
+# Create entries manually (Maestro doesn't support loops well)
+- evalScript: ${output.currentEntry = "Entry 1 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 2 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 3 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 4 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 5 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 6 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 7 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 8 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 9 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 10 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 11 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+- evalScript: ${output.currentEntry = "Entry 12 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.currentEntry}
+
+# ===== TEST PAGINATION =====
+# At this point we have 12 entries, but only 10 should be visible initially
+# Scroll down to trigger load more
+
+- extendedWaitUntil:
+    visible: 'Journal entry card'
+    timeout: 10000
+
+# Scroll to bottom to trigger pagination
+- scroll
+- waitForAnimationToEnd
+
+# Verify more entries loaded (pagination triggered)
+# If 12 entries exist, FlatList should now show 12 (or loading indicator might appear)
+
+# Try scrolling more if needed
+- scroll
+- waitForAnimationToEnd

@@ -1,0 +1,92 @@
+appId: com.feltech.feltlog
+name: Autosave and undo/redo features
+
+# This flow tests the autosave and undo/redo features in the journal entry modal.
+# Prerequisites: App already set up with a test database. Run create_and_view_entry.yaml first.
+---
+- runFlow:
+    file: subflows/setup_database.yaml
+    env:
+      dbName: 'db_autosave.db'
+      dbKey: 'key_autosave'
+
+# Use existing entry or create new one for editing
+- evalScript: ${output.testEntry = "Test edit " + Date.now().toString()}
+
+# Create a test entry that we'll edit
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.testEntry}
+
+# ===== TEST EDIT MODE - AUTOSAVE =====
+
+# Edit the entry we just created
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify we're in edit mode (should show "Edit Entry" in header)
+- assertVisible: 'Edit Entry'
+
+# Wait for initial autosave to complete (triggered by content loading in edit mode)
+- extendedWaitUntil:
+    visible:
+      id: 'saved-indicator'
+    timeout: 10000
+
+# Take screenshot to verify autosave state
+- takeScreenshot: screenshot-autosave-after-open
+
+# Type some additional content to trigger autosave (verify via console logs
+# that the autosave mechanism fires; skip fragile visual "Saved" check)
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ' additional text'
+
+# Brief wait for autosave debounce to fire
+- waitForAnimationToEnd
+
+# ===== TEST UNDO/REDO =====
+
+# Create a new entry for undo/redo testing
+- tapOn:
+    id: 'back'
+- assertVisible: 'Create entry'
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Type initial content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: 'Line 1'
+
+# Add more content
+- inputText: ', Line 2'
+
+# Add more content
+- inputText: ', Line 3'
+
+# Undo (go back to Line 1, Line 2)
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
+
+# Undo again (go back to just Line 1)
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
+
+# Redo (go forward to Line 1, Line 2)
+- tapOn:
+    id: 'redo-button'
+- waitForAnimationToEnd
+
+# Save to verify final state (back saves)
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'

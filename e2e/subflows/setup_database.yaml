@@ -1,0 +1,20 @@
+# Subflow to setup the database
+appId: com.feltech.feltlog
+---
+- clearState
+- launchApp
+- evalScript: ${output.dbName = dbName || "test_" + Date.now().toString() + ".db"}
+- evalScript: ${output.dbKey = dbKey || "key_" + Date.now().toString()}
+- assertVisible:
+    id: 'db-name-input'
+- tapOn:
+    id: 'db-name-input'
+    point: '95%,50%'
+- eraseText
+- inputText: ${output.dbName}
+- tapOn:
+    id: 'db-key-input'
+- inputText: ${output.dbKey}
+- tapOn:
+    id: 'db-open-btn'
+- assertVisible: 'Create entry'

@@ -1,0 +1,67 @@
+appId: com.feltech.feltlog
+name: Edit entry flow
+
+# This flow tests editing an existing entry.
+# Prerequisites: None - creates its own entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+- evalScript: ${output.originalContent = "Original content " + Date.now().toString()}
+
+# ===== CREATE INITIAL ENTRY =====
+
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.originalContent}
+
+- assertVisible:
+    # Back button arrow
+    id: 'cross-fade-icon-current'
+
+# ===== TEST EDIT EXISTING ENTRY =====
+
+- assertVisible: 'Journal entry card'
+
+# Tap on the entry to edit
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify we're in edit mode
+- assertVisible: 'Edit Entry'
+
+# Verify original content is loaded
+- assertVisible: ${output.originalContent}
+
+# Clear and type new content
+- tapOn:
+    id: 'entry-content-input'
+    point: '95%,95%'
+- eraseText
+
+- evalScript: ${output.editedContent = "Edited content " + Date.now().toString()}
+- inputText: ${output.editedContent}
+
+# Close and save (back button saves)
+- tapOn:
+    id: 'back'
+- assertVisible:
+    id: 'create-entry-fab'
+
+# ===== VERIFY EDIT WAS SAVED =====
+
+- assertVisible: 'Journal entry card'
+
+# Open entry again
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify edited content is there
+- assertVisible: ${output.editedContent}
+
+# Go back
+- tapOn:
+    id: 'back'
+- assertVisible: 'Create entry'
