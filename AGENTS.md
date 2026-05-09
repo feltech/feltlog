@@ -2,9 +2,8 @@
 
 ## Project Overview
 
-FeltNote is an Android diary/journal application built with React Native
-and TypeScript, following domain-driven design principles at the high
-level and data-oriented design at the lower level.
+FeltNote is an Android diary/journal application built with React Native and TypeScript, following
+domain-driven design principles at the high level and data-oriented design at the lower level.
 
 ## Development Environment
 
@@ -18,18 +17,25 @@ level and data-oriented design at the lower level.
 
 ### Development Shell
 
-- Nix Flake for reproducible development environment in build_env
-  directory
+- Nix Flake for reproducible development environment in build_env directory
 - Minimal system dependencies, focused on Android development needs
-- All shell commands must be prefixed with:
-  `nix develop ./build_env --command` in order to execute in the correct
-  environment.
+- All shell commands must be prefixed with: `nix develop ./build_env --command` in order to execute
+  in the correct environment.
 
 ### Running tests
 
 - Unit tests are via jest and can be run using `npm test`
-- e2e tests are via android emulator and maestro and can be run using
-  `npm run e2e`.
+- e2e tests are via android emulator and maestro.
+- To run e2e tests:
+  1. Restart ADB (if in a bad state):
+     `nix develop ./build_env --command adb kill-server && nix develop ./build_env --command adb start-server`
+  2. Start the emulator via Maestro:
+     `nix develop ./build_env --command maestro start-device --platform \`
+     `android --device-model "pixel_6" --device-os android-35`
+  3. Build and install the app (in separate terminal or background):
+     `nix develop ./build_env --command npm run android`
+  4. Run the tests: `nix develop ./build_env --command npm run e2e` or
+     `nix develop ./build_env --command maestro test e2e/`
 
 ## Technology Stack
 
@@ -40,15 +46,15 @@ level and data-oriented design at the lower level.
 
 ### Database
 
-- Encrypted expo-sqlite for production and e2e tests, shimmed to sqlite
-  for nodejs for unit tests
+- Encrypted expo-sqlite for production and e2e tests, shimmed to sqlite for nodejs for unit tests
 - Kysely query builder
 - Schema for a diary entry:
+
   ```typescript
   interface JournalEntry {
     id: string;
     content: string;
-    datetime: Date;  // User-adjustable timestamp
+    datetime: Date; // User-adjustable timestamp
     created_at: Date;
     modified_at: Date;
     tags: string[];
@@ -61,6 +67,7 @@ level and data-oriented design at the lower level.
     };
   }
   ```
+
 - Tags in separate table with many-to-many relationship
 - No explicit indices in initial version
 
@@ -85,18 +92,31 @@ level and data-oriented design at the lower level.
 - Strict mode enabled
 - Comprehensive type checking
 
-### Code Formatting
+### Linting and Formatting
 
 - ESLint for linting
 - Prettier for formatting
 - 99 character line limit for code
+- Markdownlint for markdown files
+
+#### Commands
+
+Run these checks after every substantial change:
+
+- **Linting:** `nix develop ./build_env --command npm run lint`
+- **Formatting:** `nix develop ./build_env --command npm run format`
+- **Markdown Linting:** `nix develop ./build_env --command npm run lint:md`
+- **Combined Check:**
+  `nix develop ./build_env --command bash -c "npm run format && npm run lint && npm run lint:md"`
+
+Use `npm run lint:fix` to automatically fix some linting issues.
 
 ## Comment formatting
 
-- 72 character line limit for comments
+- 88 character line limit for comments
+- 99 character line limit for markdown
 - Javadoc style docstrings.
-- Newlines separating summary, description body,
-  and parameters in docstrings.
+- Newlines separating summary, description body, and parameters in docstrings.
 - End parameter and return descriptions with a period.
 
 ### Testing
@@ -110,23 +130,19 @@ level and data-oriented design at the lower level.
   - Android Emulator (integration tests)
 - When reading terminal output, ignore the expected error
   > bash: history: : cannot create: No such file or directory
-- Add takeScreenshot commands to the maestro e2e tests as necessary to
-  aid diagnosis of errors.
+- Add takeScreenshot commands to the maestro e2e tests as necessary to aid diagnosis of errors.
 - When running e2e tests, additional logs from the expo dev server can  
   be found in android.log to aid diagnostics.
-- Do NOT "fix" tests by marking them as skipped to get the unit tests
-  to pass - actually fix the tests or the code, or, if necessary, remove
-  the tests if they are no longer relevant.
+- Do NOT "fix" tests by marking them as skipped to get the unit tests to pass - actually fix the
+  tests or the code, or, if necessary, remove the tests if they are no longer relevant.
 
 ## Coding guidelines
 
 - Do NOT modify files in node_modules.
-- Use as few mocks as possible when testing. Especially avoid global
-  mocks that affect every test. Try to fix the configuration of the
-  project before resorting to mocking.
-- Read the stack trace of error messages and check the code in the last
-  couple of mentioned files to better understand the reason
-  for the error.
+- Use as few mocks as possible when testing. Especially avoid global mocks that affect every test.
+  Try to fix the configuration of the project before resorting to mocking.
+- Read the stack trace of error messages and check the code in the last couple of mentioned files
+  to better understand the reason for the error.
 - Use ES modules, never CommonJS.
 - Do not make git commits, the user will do that.
 - Add plenty of code comments, especially around conditionals.
@@ -156,8 +172,7 @@ level and data-oriented design at the lower level.
 ### Storage
 
 - User-selected database location via Storage Access Framework
-- Import/export sqlite database file using Storage Access Framework on
-  Android
+- Import/export sqlite database file using Storage Access Framework on Android
 
 ### Search Functionality
 
@@ -253,5 +268,3 @@ level and data-oriented design at the lower level.
 - Advanced search features
 - Performance optimizations
 - Database migration strategies
-    
-

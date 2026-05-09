@@ -1,0 +1,19 @@
+# Default state for all rules
+default: true
+
+# MD013/line-length - Max line length
+MD013:
+  line_length: 99
+  code_blocks: false
+  tables: false
+
+# MD033/no-inline-html - Inline HTML
+# Disabling for now as some MD files might use it for specific formatting
+MD033: false
+
+# MD041/first-line-h1 - First line in file should be a top level heading
+# Disabling because some documents start with metadata or other structures
+MD041: false
+
+# MD031/blanks-around-fences - Fenced code blocks should be surrounded by blank lines
+MD031: true

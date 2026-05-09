@@ -1,8 +1,8 @@
 import React from 'react';
-import {StyleSheet, View} from 'react-native';
-import {Card, Chip, Text} from 'react-native-paper';
+import { StyleSheet, View } from 'react-native';
+import { Card, Chip, Text } from 'react-native-paper';
 import Markdown from 'react-native-markdown-renderer';
-import {JournalEntry} from '../../domain/entities/JournalEntry';
+import { JournalEntry } from '../../domain/entities/JournalEntry';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
@@ -31,14 +31,42 @@ const markdownStyles = StyleSheet.create({
   link: { color: '#007bff' },
 });
 
-export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPress}) => {
+/**
+ * Component for rendering a single journal entry as a card.
+ *
+ * @param props - Component props.
+ * @param props.entry - The journal entry to display.
+ * @param props.onPress - Optional callback when the card is pressed.
+ *
+ * @returns The rendered journal entry card.
+ */
+export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPress }) => {
+  /**
+   * Formats a date object into a localized string.
+   *
+   * @param date - The date to format.
+   *
+   * @returns The formatted date string.
+   */
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return (
+      date.toLocaleDateString() +
+      ' ' +
+      date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    );
   };
 
+  /**
+   * Generates a preview snippet of the entry content.
+   *
+   * @param content - The full content string.
+   * @param maxLength - The maximum length of the preview snippet.
+   *
+   * @returns The preview snippet.
+   */
   const getPreviewContent = (content: string, maxLength: number = 150) => {
     if (content.length <= maxLength) {
       return content;
@@ -54,18 +82,19 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPres
       accessibilityLabel="Journal entry card"
     >
       <Card.Content>
-        <Text variant="titleLarge" style={styles.date}>{formatDate(entry.datetime)}</Text>
+        <Text variant="titleLarge" style={styles.date}>
+          {formatDate(entry.datetime)}
+        </Text>
         <Text variant="bodyMedium" style={styles.content}>
-          <Markdown style={markdownStyles}>
-            {getPreviewContent(entry.content)}
-          </Markdown>
+          <Markdown style={markdownStyles}>{getPreviewContent(entry.content)}</Markdown>
         </Text>
 
         {entry.location && (
           <View style={styles.locationContainer}>
             <Text style={styles.locationText}>
-              📍 {entry.location.address ||
-              `${entry.location.latitude.toFixed(4)}, ${entry.location.longitude.toFixed(4)}`}
+              📍{' '}
+              {entry.location.address ||
+                `${entry.location.latitude.toFixed(4)}, ${entry.location.longitude.toFixed(4)}`}
             </Text>
           </View>
         )}
@@ -81,9 +110,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({entry, onPres
         )}
 
         {entry.created_at !== entry.modified_at && (
-          <Text style={styles.modifiedText}>
-            Modified: {formatDate(entry.modified_at)}
-          </Text>
+          <Text style={styles.modifiedText}>Modified: {formatDate(entry.modified_at)}</Text>
         )}
       </Card.Content>
     </Card>

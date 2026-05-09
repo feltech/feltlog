@@ -1,22 +1,35 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {StatusBar} from 'expo-status-bar';
-import {Platform, ScrollView, StyleSheet, View} from 'react-native';
-import {Appbar, Chip, Snackbar, Surface, Text, TextInput, ActivityIndicator} from 'react-native-paper';
-import {useLocalSearchParams, useRouter} from 'expo-router';
-import {SafeAreaView} from 'react-native-safe-area-context';
-import MapView, {Marker, PROVIDER_GOOGLE, Region} from 'react-native-maps';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Appbar,
+  Chip,
+  Snackbar,
+  Surface,
+  Text,
+  TextInput,
+  ActivityIndicator,
+} from 'react-native-paper';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as ExpoLocation from 'expo-location';
 
-import {useJournalViewModel} from '@/src/presentation/viewmodels/JournalViewModel';
-import type {JournalEntry} from '@/src/domain/entities/JournalEntry';
+import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
+import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
 const AUTOSAVE_DELAY_MS = 2000;
 const MAX_HISTORY_LENGTH = 50;
 
+/**
+ * Modal screen for creating or editing a journal entry.
+ *
+ * @returns The rendered modal screen.
+ */
 export default function JournalEntryModal() {
   const router = useRouter();
-  const {entryId} = useLocalSearchParams<{ entryId?: string }>();
-  const {state, actions} = useJournalViewModel();
+  const { entryId } = useLocalSearchParams<{ entryId?: string }>();
+  const { state, actions } = useJournalViewModel();
 
   const [content, setContent] = useState('');
   const [datetime, setDatetime] = useState(new Date());
@@ -24,7 +37,7 @@ export default function JournalEntryModal() {
   const [tagInput, setTagInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-const [autoSaving, setAutoSaving] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -33,8 +46,9 @@ const [autoSaving, setAutoSaving] = useState(false);
   const [historyIndex, setHistoryIndex] = useState(0);
 
   // Location state for map rendering when creating a new entry.
-  const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(undefined);
-  const [locLoading, setLocLoading] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(
+    undefined,
+  );
   const [locDenied, setLocDenied] = useState(false);
 
   const existingEntry = entryId ? state.entries.find(e => e.id === entryId) : null;
@@ -51,21 +65,26 @@ const [autoSaving, setAutoSaving] = useState(false);
   // On create (not editing), request permission and fetch current location
   useEffect(() => {
     let cancelled = false;
+    /** Fetches the current location and reverse geocodes it. */
     const fetchLocation = async () => {
       if (isEditing) return; // Only for new entries
       try {
-        setLocLoading(true);
         setLocDenied(false);
         const perm = await ExpoLocation.requestForegroundPermissionsAsync();
         if (perm.status !== 'granted') {
           if (!cancelled) setLocDenied(true);
           return;
         }
-        const pos = await ExpoLocation.getCurrentPositionAsync({accuracy: ExpoLocation.Accuracy.Balanced});
+        const pos = await ExpoLocation.getCurrentPositionAsync({
+          accuracy: ExpoLocation.Accuracy.Balanced,
+        });
         // Reverse geocode is optional; keep fast path. Attempt but ignore failure.
         let address: string | undefined = undefined;
         try {
-          const geos = await ExpoLocation.reverseGeocodeAsync({latitude: pos.coords.latitude, longitude: pos.coords.longitude});
+          const geos = await ExpoLocation.reverseGeocodeAsync({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
           if (geos && geos.length > 0) {
             const g = geos[0];
             address = [g.name, g.street, g.city, g.region, g.postalCode, g.country]
@@ -84,17 +103,22 @@ const [autoSaving, setAutoSaving] = useState(false);
           address,
         };
         if (!cancelled) setCurrentLocation(loc);
-      } catch (e) {
+      } catch {
         if (!cancelled) setLocDenied(true);
       } finally {
-        if (!cancelled) setLocLoading(false);
+        if (!cancelled) {
+          // fetchLocation finished
+        }
       }
     };
     void fetchLocation();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isEditing]);
 
-  // Autosave: debounced save when content changes (only for editing existing entries)
+  // Autosave: debounced save when content changes (only for editing existing
+  // entries)
   const triggerAutosave = useCallback(async () => {
     if (!isEditing || !entryId || !content.trim()) return;
     setAutoSaving(true);
@@ -138,6 +162,7 @@ const [autoSaving, setAutoSaving] = useState(false);
     };
   }, [mapLocation]);
 
+  /** Saves the current journal entry. */
   const handleSave = async () => {
     if (!content.trim()) {
       setError('Content cannot be empty');
@@ -155,12 +180,7 @@ const [autoSaving, setAutoSaving] = useState(false);
           tags,
         });
       } else {
-        await actions.createEntry(
-          content.trim(),
-          datetime,
-          tags,
-          mapLocation
-        );
+        await actions.createEntry(content.trim(), datetime, tags, mapLocation);
       }
       router.back();
     } catch (err) {
@@ -170,6 +190,7 @@ const [autoSaving, setAutoSaving] = useState(false);
     }
   };
 
+  /** Adds a new tag to the entry. */
   const handleAddTag = () => {
     const trimmedTag = tagInput.trim();
     if (trimmedTag && !tags.includes(trimmedTag)) {
@@ -178,28 +199,37 @@ const [autoSaving, setAutoSaving] = useState(false);
     }
   };
 
+  /**
+   * Removes a tag from the entry.
+   *
+   * @param tagToRemove - The name of the tag to remove.
+   */
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
+  /** Closes the modal and returns to the previous screen. */
   const handleClose = () => {
     router.back();
   };
 
   // Update content and maintain undo/redo history
-  const updateContent = useCallback((newContent: string) => {
-    setContent(newContent);
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(newContent);
-      if (newHistory.length > MAX_HISTORY_LENGTH) {
-        newHistory.shift();
+  const updateContent = useCallback(
+    (newContent: string) => {
+      setContent(newContent);
+      setHistory(prev => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(newContent);
+        if (newHistory.length > MAX_HISTORY_LENGTH) {
+          newHistory.shift();
+          return newHistory;
+        }
         return newHistory;
-      }
-      return newHistory;
-    });
-    setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY_LENGTH - 1));
-  }, [historyIndex]);
+      });
+      setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY_LENGTH - 1));
+    },
+    [historyIndex],
+  );
 
   // Undo action
   const handleUndo = useCallback(() => {
@@ -238,8 +268,8 @@ const [autoSaving, setAutoSaving] = useState(false);
           onPress={handleRedo}
           disabled={!canRedo}
         />
-        <Appbar.BackAction onPress={handleClose}/>
-        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'}/>
+        <Appbar.BackAction onPress={handleClose} />
+        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
         <Appbar.Action
           icon={autoSaving ? 'progress-clock' : 'check'}
           testID="save-entry-button"
@@ -264,9 +294,12 @@ const [autoSaving, setAutoSaving] = useState(false);
         />
 
         <Surface style={styles.tagsSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Tags</Text>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Tags
+          </Text>
 
           <TextInput
+            testID="tag-input"
             label="Add tags"
             value={tagInput}
             onChangeText={setTagInput}
@@ -276,14 +309,18 @@ const [autoSaving, setAutoSaving] = useState(false);
             right={
               <TextInput.Icon
                 icon="plus"
+                testID="add-tag-icon"
                 onPress={handleAddTag}
                 disabled={!tagInput.trim()}
               />
             }
           />
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                      style={styles.tagsContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tagsContainer}
+          >
             {tags.map((tag, index) => (
               <Chip
                 key={index}
@@ -298,10 +335,11 @@ const [autoSaving, setAutoSaving] = useState(false);
         </Surface>
 
         <Text variant="bodySmall" style={styles.dateText}>
-          {datetime.toLocaleDateString()} {datetime.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit'
-        })}
+          {datetime.toLocaleDateString()}{' '}
+          {datetime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </Text>
 
         {autoSaving && (
@@ -311,12 +349,14 @@ const [autoSaving, setAutoSaving] = useState(false);
         )}
         {lastSaved && !autoSaving && (
           <Text variant="bodySmall" style={styles.autoSaveText}>
-            Saved {lastSaved.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+            Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         )}
 
         <Surface style={styles.locationSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Location</Text>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Location
+          </Text>
           {isEditing && !existingEntry?.location && (
             <Text variant="bodySmall" style={styles.locationHint}>
               No location was recorded for this entry.
@@ -332,7 +372,9 @@ const [autoSaving, setAutoSaving] = useState(false);
           {!mapRegion && !locDenied && (
             <View style={styles.mapLoading}>
               <ActivityIndicator animating={true} />
-              <Text variant="bodySmall" style={styles.locationHint}>Loading map…</Text>
+              <Text variant="bodySmall" style={styles.locationHint}>
+                Loading map…
+              </Text>
             </View>
           )}
 
@@ -344,7 +386,9 @@ const [autoSaving, setAutoSaving] = useState(false);
               initialRegion={mapRegion}
               pointerEvents="none"
             >
-              <Marker coordinate={{latitude: mapLocation.latitude, longitude: mapLocation.longitude}} />
+              <Marker
+                coordinate={{ latitude: mapLocation.latitude, longitude: mapLocation.longitude }}
+              />
             </MapView>
           )}
         </Surface>
@@ -362,7 +406,7 @@ const [autoSaving, setAutoSaving] = useState(false);
         {error}
       </Snackbar>
 
-      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'}/>
+      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
     </SafeAreaView>
   );
 }

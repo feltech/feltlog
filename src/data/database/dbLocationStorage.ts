@@ -3,8 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const KEY = 'feltlog.lastDatabaseName';
 
 /**
- * Persist and retrieve the last used database name/location.
- * We only store the filename/path; never store the encryption key.
+ * Persist and retrieve the last used database name/location. We only store the
+ * filename/path; never store the encryption key.
+ *
+ * @returns The last used database name or null if not set.
  */
 export async function getLastDatabaseName(): Promise<string | null> {
   try {
@@ -15,10 +17,16 @@ export async function getLastDatabaseName(): Promise<string | null> {
   }
 }
 
+/**
+ * Update the last used database name.
+ *
+ * @param name The name of the database to persist.
+ */
 export async function setLastDatabaseName(name: string): Promise<void> {
   await AsyncStorage.setItem(KEY, name);
 }
 
+/** Clear the last used database name from storage. */
 export async function clearLastDatabaseName(): Promise<void> {
   await AsyncStorage.removeItem(KEY);
 }

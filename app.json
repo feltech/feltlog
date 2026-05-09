@@ -18,15 +18,13 @@
       "bundleIdentifier": "com.feltech.feltlog"
     },
     "android": {
+      "jsEngine": "hermes",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.feltech.feltlog",
-      "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
-      ],
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
       "config": {
         "googleMaps": {
           "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY_HERE"
@@ -44,12 +42,6 @@
         "expo-sqlite",
         {
           "useSQLCipher": true
-        }
-      ],
-      [
-        "expo-dev-client",
-        {
-          "launchMode": "most-recent"
         }
       ]
     ],

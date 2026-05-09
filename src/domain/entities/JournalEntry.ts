@@ -9,7 +9,7 @@ export interface Location {
 export interface JournalEntry {
   id: string;
   content: string;
-  datetime: Date;  // User-adjustable timestamp
+  datetime: Date; // User-adjustable timestamp
   created_at: Date;
   modified_at: Date;
   tags: string[];

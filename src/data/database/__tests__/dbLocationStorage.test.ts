@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   clearLastDatabaseName,
   getLastDatabaseName,
-  setLastDatabaseName
+  setLastDatabaseName,
 } from '../dbLocationStorage';
 
 describe('dbLocationStorage', () => {

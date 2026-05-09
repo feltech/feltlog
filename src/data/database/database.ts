@@ -1,110 +1,135 @@
-import {useEffect, useState} from 'react';
-import {Database} from '@/src/data/database/schema';
-import {up} from '@/src/data/database/migrations';
-import {getLastDatabaseName, setLastDatabaseName} from './dbLocationStorage';
-import {CompiledQuery, Kysely} from "kysely";
-import {openDatabaseAsync, SQLiteDatabase} from "expo-sqlite";
-import {ExpoDialect} from "kysely-expo";
+import { useEffect, useState } from 'react';
+import { Database } from '@/src/data/database/schema';
+import { up } from '@/src/data/database/migrations';
+import { getLastDatabaseName, setLastDatabaseName } from './dbLocationStorage';
+import { CompiledQuery, Kysely } from 'kysely';
+import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite';
+import { ExpoDialect } from 'kysely-expo';
 
 export interface UseDatabaseState {
-    ready: boolean;
-    db: Kysely<Database> | null;
-    error: unknown | null;
+  ready: boolean;
+  db: Kysely<Database> | null;
+  error: unknown | null;
 }
 
 export interface OpenDatabaseResult {
-    db: Kysely<Database>;
-    sqliteDb: SQLiteDatabase;
+  db: Kysely<Database>;
+  sqliteDb: SQLiteDatabase;
 }
 
 /**
  * Open a new Kysely database backed by Expo SQLite.
  *
- * This function is stateless and does not use singletons. Callers are
- * responsible for holding onto the returned handle and closing the
- * underlying SQLite database when finished.
+ * This function is stateless and does not use singletons. Callers are responsible for
+ * holding onto the returned handle and closing the underlying SQLite database when
+ * finished.
  *
- * @param encryptionKey Optional SQLCipher key to use for encryption.
- * @param databaseName Optional database name (filename). Defaults to 'feltlog.db'.
- * @returns An object containing both the Kysely instance and the underlying SQLite database.
+ * @param encryptionKey - Optional SQLCipher key to use for encryption.
+ * @param databaseName - Optional database name (filename). Defaults to 'feltlog.db'.
+ *
+ * @returns An object containing both the Kysely instance and the underlying SQLite
+ *   database.
  */
 export async function openKysely(
-    encryptionKey?: string,
-    databaseName?: string
+  encryptionKey?: string,
+  databaseName?: string,
 ): Promise<OpenDatabaseResult> {
-    const dbName = databaseName || 'feltlog.db';
-    const sqliteDb = await openDatabaseAsync(dbName);
+  const dbName = databaseName || 'feltlog.db';
+  const sqliteDb = await openDatabaseAsync(dbName);
 
-    const db = new Kysely<Database>({
-        dialect: new ExpoDialect({database: sqliteDb})
-    });
+  const db = new Kysely<Database>({
+    dialect: new ExpoDialect({ database: sqliteDb }),
+  });
 
-    // Apply encryption key if provided. We do not attempt to validate here,
-    // callers should handle errors thrown by SQLite when the key is wrong.
-    if (encryptionKey) {
-        await db.executeQuery(CompiledQuery.raw(`PRAGMA key='${encryptionKey}'`));
-    }
-    return {db, sqliteDb};
+  // Apply encryption key if provided. We do not attempt to validate here,
+  // callers should handle errors thrown by SQLite when the key is wrong.
+  if (encryptionKey) {
+    await db.executeQuery(CompiledQuery.raw(`PRAGMA key='${encryptionKey}'`));
+  }
+  return { db, sqliteDb };
 }
 
 /**
- * Close the given Expo SQLite database. This does not explicitly dispose the
- * Kysely instance; once the underlying connection is closed, the Kysely
- * instance becomes unusable.
+ * Close the given Expo SQLite database. This does not explicitly dispose the Kysely
+ * instance; once the underlying connection is closed, the Kysely instance becomes
+ * unusable.
  *
- * @param sqliteDb The SQLite database to close.
+ * @param sqliteDb - The SQLite database to close.
+ *
+ * @returns A promise that resolves when the database is closed.
  */
 export async function closeSqlite(sqliteDb: SQLiteDatabase): Promise<void> {
-    await sqliteDb.closeAsync();
+  await sqliteDb.closeAsync();
 }
 
 /**
  * Hook that opens and migrates the database once and returns its state.
  *
- * This avoids any singleton patterns by keeping the db handle in React
- * state at the app root (or test) level.
+ * This avoids any singleton patterns by keeping the db handle in React state at the app
+ * root (or test) level.
  */
 export interface UseDatabaseApi extends UseDatabaseState {
-    initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
-    lastDatabaseName: string | null;
+  initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
+  lastDatabaseName: string | null;
 }
 
+/**
+ * Hook that opens and migrates the database once and returns its state.
+ *
+ * This avoids any singleton patterns by keeping the db handle in React state at the app
+ * root (or test) level.
+ *
+ * @returns The database state and initialize function.
+ */
 export const useDatabase = (): UseDatabaseApi => {
-    const [state, setState] = useState<UseDatabaseState>({ready: false, db: null, error: null});
+  const [state, setState] = useState<UseDatabaseState>({ ready: false, db: null, error: null });
 
-    const [lastDatabaseName, setLastDatabaseNameState] = useState<string | null>(null);
+  const [lastDatabaseName, setLastDatabaseNameState] = useState<string | null>(null);
 
-    useEffect(() => {
-        let cancelled = false;
-        // Load last database name from storage for autofill purposes.
-        (async () => {
-            try {
-                const name = await getLastDatabaseName();
-                if (!cancelled) setLastDatabaseNameState(name);
-            } catch (e) {
-                // ignore
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    const initialize = async ({encryptionKey, databaseName}: { encryptionKey: string; databaseName: string }) => {
-        try {
-            const {db} = await openKysely(encryptionKey, databaseName);
-            await up(db);
-            setState({ready: true, db, error: null});
-            try {
-                if (databaseName) await setLastDatabaseName(databaseName);
-                setLastDatabaseNameState(databaseName);
-            } catch {
-                // ignore storage errors
-            }
-        } catch (error) {
-            setState({ready: false, db: null, error});
-        }
+  useEffect(() => {
+    let cancelled = false;
+    // Load last database name from storage for autofill purposes.
+    (async () => {
+      try {
+        const name = await getLastDatabaseName();
+        if (!cancelled) setLastDatabaseNameState(name);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
+  }, []);
 
-    return {...state, initialize, lastDatabaseName};
+  /**
+   * Initializes the database with the given encryption key and name.
+   *
+   * @param params - The initialization parameters.
+   * @param params.encryptionKey - The encryption key to use.
+   * @param params.databaseName - The name of the database file.
+   */
+  const initialize = async ({
+    encryptionKey,
+    databaseName,
+  }: {
+    encryptionKey: string;
+    databaseName: string;
+  }) => {
+    try {
+      const { db } = await openKysely(encryptionKey, databaseName);
+      await up(db);
+      setState({ ready: true, db, error: null });
+      try {
+        if (databaseName) await setLastDatabaseName(databaseName);
+        setLastDatabaseNameState(databaseName);
+      } catch {
+        // ignore storage errors
+      }
+    } catch (error) {
+      setState({ ready: false, db: null, error });
+    }
+  };
+
+  return { ...state, initialize, lastDatabaseName };
 };

@@ -1,6 +1,6 @@
 ---
-description: "Agent development guidelines - redirects to root AGENTS.md"
-globs: [ "*" ]
+description: 'Agent development guidelines - redirects to root AGENTS.md'
+globs: ['*']
 alwaysApply: true
 ---
 

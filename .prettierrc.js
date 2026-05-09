@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   arrowParens: 'avoid',
   bracketSameLine: false,
   bracketSpacing: true,
@@ -9,4 +9,8 @@ export default {
   printWidth: 99,
   proseWrap: 'always',
   endOfLine: 'lf',
+  plugins: ['prettier-plugin-jsdoc'],
+  jsdocPrintWidth: 88,
+  jsdocSeparateReturnsFromParam: true,
+  jsdocSeparateTagGroups: true,
 };

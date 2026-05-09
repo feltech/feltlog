@@ -1,7 +1,7 @@
 import React from 'react';
-import {fireEvent, render} from '@testing-library/react-native';
-import {JournalEntryCard} from '../JournalEntryCard';
-import {JournalEntry} from '@/src/domain/entities/JournalEntry';
+import { fireEvent, render } from '@testing-library/react-native';
+import { JournalEntryCard } from '../JournalEntryCard';
+import { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
 describe('JournalEntryCard', () => {
   const sampleEntry: JournalEntry = {
@@ -15,8 +15,8 @@ describe('JournalEntryCard', () => {
 
   it('renders with testID and responds to onPress', () => {
     const onPress = jest.fn();
-    const {getByTestId} = render(<JournalEntryCard entry={sampleEntry} onPress={onPress}/>);
- 
+    const { getByTestId } = render(<JournalEntryCard entry={sampleEntry} onPress={onPress} />);
+
     const card = getByTestId('journal-entry-card');
     expect(card).toBeTruthy();
 
@@ -29,7 +29,7 @@ describe('JournalEntryCard', () => {
       ...sampleEntry,
       content: '# Heading\n\nThis is **bold** and *italic* text.',
     };
-    const {getByText} = render(<JournalEntryCard entry={markdownEntry}/>);
+    const { getByText } = render(<JournalEntryCard entry={markdownEntry} />);
     expect(getByText(/# Heading/)).toBeTruthy();
   });
 });

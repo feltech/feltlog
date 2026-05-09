@@ -23,12 +23,32 @@
             ndk-27-1-12297006
             cmake-3-22-1
           ]);
+        create-avd = pkgs.writeShellScriptBin "create-avd" ''
+            set -euo pipefail
+
+            name=phone
+            sysimg="system-images;android-35;google_apis;x86_64"
+            device="pixel_4"
+
+            avdmanager create avd --force --name "$name" --package "$sysimg" --device "$device"
+
+            cfg="$HOME/.android/avd/$name.avd/config.ini"
+            sed -i 's/hw.keyboard=.*/hw.keyboard=yes/' "$cfg"
+            sed -i 's/hw.mainKeys=.*/hw.mainKeys=yes/' "$cfg"
+          '';
       in {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             nodejs
+            # Java Development Kit for Android builds
+            openjdk
             # javascript bundler and package manager - used for oh my opencode
             bun
+            # GitHub CLI
+            gh
+
+            # Custom script (above) to create an appropriate AVD.
+            create-avd
 
             # Watch files and take action when change
             # TODO(DF): not sure what its a dependency of.
@@ -40,18 +60,7 @@
           shellHook = ''
             export PATH="${sdk}/bin:$PATH"
             ${(builtins.readFile "${sdk}/nix-support/setup-hook")}
-            function create-avd () {
-              local name=phone
-              local sysimg="system-images;android-35;google_apis;x86_64"
-              local device="pixel_4"
-
-              avdmanager create avd --force --name "$name" --package "$sysimg" --device "$device"
-              local cfg="$HOME/.android/avd/$name.avd/config.ini"
-              sed -i 's/hw.keyboard=.*/hw.keyboard=yes/' "$cfg"
-              sed -i 's/hw.mainKeys=.*/hw.mainKeys=yes/' "$cfg"
-            }
           '';
-
         };
       }
     );

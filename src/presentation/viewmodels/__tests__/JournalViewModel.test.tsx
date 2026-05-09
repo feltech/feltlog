@@ -1,10 +1,11 @@
 import React from 'react';
-import {act, render} from '@testing-library/react-native';
-import {RepositoryProvider} from '@/src/domain/repositories/RepositoryContext';
-import {useJournalViewModel} from '../JournalViewModel';
-import type {JournalRepository} from '@/src/domain/repositories/JournalRepository';
-import type {JournalEntry, Tag} from '@/src/domain/entities/JournalEntry';
+import { act, render } from '@testing-library/react-native';
+import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
+import { useJournalViewModel } from '../JournalViewModel';
+import type { JournalRepository } from '@/src/domain/repositories/JournalRepository';
+import type { JournalEntry, Tag } from '@/src/domain/entities/JournalEntry';
 
+/** Mock repository for testing JournalViewModel. */
 class MockRepo implements JournalRepository {
   // State for assertions
   getAllEntriesCalls = 0;
@@ -22,18 +23,36 @@ class MockRepo implements JournalRepository {
   deleteTag = jest.fn();
   getTagsForEntry = jest.fn();
 
+  /**
+   * Retrieves all journal entries.
+   *
+   * @returns An empty array for testing.
+   */
   async getAllEntries(): Promise<JournalEntry[]> {
     this.getAllEntriesCalls++;
     return [];
   }
 
+  /**
+   * Searches for journal entries.
+   *
+   * @returns An empty array for testing.
+   */
   async searchEntries(): Promise<JournalEntry[]> {
     this.searchEntriesCalls++;
     return [];
   }
 }
 
-function Harness({onReady}: { onReady: (api: any) => void }) {
+/**
+ * Test harness component to expose the view model state and actions.
+ *
+ * @param props - Component props.
+ * @param props.onReady - Callback invoked with the view model API.
+ *
+ * @returns Null.
+ */
+function Harness({ onReady }: { onReady: (api: ReturnType<typeof useJournalViewModel>) => void }) {
   const api = useJournalViewModel();
   React.useEffect(() => onReady(api), [api, onReady]);
   return null;
@@ -45,16 +64,17 @@ describe('JournalViewModel', () => {
     let vm: ReturnType<typeof useJournalViewModel> | null = null;
 
     render(
-      <RepositoryProvider repository={repo as unknown as JournalRepository}>
-        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => {
-          vm = api;
-        }}/>
-      </RepositoryProvider>
+      <RepositoryProvider repository={repo}>
+        <Harness
+          onReady={api => {
+            vm = api;
+          }}
+        />
+      </RepositoryProvider>,
     );
 
     // Initial mount should load entries at least once.
-    await act(async () => {
-    });
+    await act(async () => {});
     expect(repo.getAllEntriesCalls).toBeGreaterThanOrEqual(1);
     const initialCalls = repo.getAllEntriesCalls;
 
@@ -63,13 +83,11 @@ describe('JournalViewModel', () => {
       await vm!.actions.search('hello');
     });
 
-    await act(async () => {
-    });
+    await act(async () => {});
     expect(repo.searchEntriesCalls).toBe(1);
 
     // Ensure no runaway repeated loading after this point.
-    await act(async () => {
-    });
+    await act(async () => {});
     expect(repo.getAllEntriesCalls).toBe(initialCalls);
   });
 
@@ -78,16 +96,17 @@ describe('JournalViewModel', () => {
     let vm: ReturnType<typeof useJournalViewModel> | null = null;
 
     render(
-      <RepositoryProvider repository={repo as unknown as JournalRepository}>
-        <Harness repo={repo as unknown as JournalRepository} onReady={(api) => {
-          vm = api;
-        }}/>
-      </RepositoryProvider>
+      <RepositoryProvider repository={repo}>
+        <Harness
+          onReady={api => {
+            vm = api;
+          }}
+        />
+      </RepositoryProvider>,
     );
 
     // Initial refresh
-    await act(async () => {
-    });
+    await act(async () => {});
     const initialCalls = repo.getAllEntriesCalls;
 
     // Try to load more with empty entries; should be a no-op

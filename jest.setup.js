@@ -1,3 +1,6 @@
+import React from 'react';
+import { View, Text } from 'react-native';
+
 // Define environment variables
 process.env.EXPO_OS = 'android';
 process.env.EXPO_ROUTER = 'false';
@@ -5,10 +8,19 @@ process.env.EXPO_DEV_CLIENT = 'false';
 
 // Mocks for native modules not available in Jest environment
 jest.mock('react-native-maps', () => {
-  const React = require('react');
-  const {View} = require('react-native');
-  const MockMapView = React.forwardRef((props, ref) => React.createElement(View, {ref, ...props}));
-  const MockMarker = (props) => React.createElement(View, props);
+  const MockMapView = React.forwardRef((props, ref) =>
+    React.createElement(View, { ref, ...props }),
+  );
+  MockMapView.displayName = 'MockMapView';
+
+  /**
+   * Mock for the Marker component.
+   *
+   * @param props - The component props.
+   *
+   * @returns The rendered mock marker.
+   */
+  const MockMarker = props => React.createElement(View, props);
   return {
     __esModule: true,
     default: MockMapView,
@@ -27,15 +39,21 @@ jest.mock('expo-location', () => ({
       accuracy: 5,
     },
   })),
-  reverseGeocodeAsync: jest.fn(async () => ([])),
+  reverseGeocodeAsync: jest.fn(async () => []),
   Accuracy: { Balanced: 3 },
 }));
 
 jest.mock('react-native-markdown-renderer', () => {
-  const React = require('react');
-  const {Text} = require('react-native');
+  /**
+   * Mock for the Markdown component.
+   *
+   * @param props - The component props.
+   *
+   * @returns The rendered mock markdown text.
+   */
+  const MockMarkdown = props => React.createElement(Text, null, props.children);
   return {
     __esModule: true,
-    default: (props) => React.createElement(Text, null, props.children),
+    default: MockMarkdown,
   };
 });

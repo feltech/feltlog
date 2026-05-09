@@ -1,17 +1,18 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import {DarkTheme, DefaultTheme, ThemeProvider} from '@react-navigation/native';
-import {useFonts} from 'expo-font';
-import {Stack} from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import {useEffect} from 'react';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
-import {PaperProvider} from 'react-native-paper';
-import {RepositoryProvider} from '@/src/domain/repositories/RepositoryContext';
-import {JournalRepositoryImpl} from '@/src/data/repositories/JournalRepositoryImpl';
-import {useDatabase} from '@/src/data/database/database';
+import { PaperProvider } from 'react-native-paper';
+import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
+import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
+import { useDatabase } from '@/src/data/database/database';
 import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScreen';
 
-import {useColorScheme} from '@/src/presentation/components/useColorScheme';
+import { useColorScheme } from '@/src/presentation/components/useColorScheme';
+import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -22,9 +23,14 @@ export {
 // noinspection JSIgnoredPromiseFromCall
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Root layout component that handles asset loading and navigation.
+ *
+ * @returns The rendered root layout or null if fonts are not loaded.
+ */
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    SpaceMono,
     ...FontAwesome.font,
   });
 
@@ -34,9 +40,12 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    // Hide splash once fonts are loaded; database readiness is handled in RootLayoutNav.
+    // Hide splash once fonts are loaded; database readiness is handled in
+    // RootLayoutNav.
     if (loaded) {
-      (async () => { await SplashScreen.hideAsync(); })();
+      (async () => {
+        await SplashScreen.hideAsync();
+      })();
     }
   }, [loaded]);
 
@@ -44,18 +53,27 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav/>;
+  return <RootLayoutNav />;
 }
 
+/**
+ * Navigation component for the root layout. Handles database initialization and
+ * providing the repository context.
+ *
+ * @returns The rendered navigation tree or the setup database screen.
+ */
 function RootLayoutNav() {
-  const {ready, db, initialize, lastDatabaseName, error} = useDatabase();
+  const { ready, db, initialize, lastDatabaseName, error } = useDatabase();
   const colorScheme = useColorScheme();
 
   if (!ready || !db) {
     return (
       <PaperProvider>
-        <SetupDatabaseScreen initialize={initialize} lastDatabaseName={lastDatabaseName}
-                             error={error}/>
+        <SetupDatabaseScreen
+          initialize={initialize}
+          lastDatabaseName={lastDatabaseName}
+          error={error}
+        />
       </PaperProvider>
     );
   }
@@ -67,8 +85,8 @@ function RootLayoutNav() {
       <RepositoryProvider repository={repository}>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack>
-            <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-            <Stack.Screen name="modal" options={{presentation: 'modal'}}/>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>
       </RepositoryProvider>

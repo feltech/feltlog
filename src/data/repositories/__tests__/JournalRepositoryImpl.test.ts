@@ -1,11 +1,12 @@
-import {JournalRepositoryImpl} from '../JournalRepositoryImpl';
-import {up} from '../../database/migrations';
-import {closeSqlite, openKysely} from "@/src/data/database/database";
+import { SQLiteDatabase } from 'expo-sqlite';
+import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
+import { up } from '../../database/migrations';
+import { closeSqlite, openKysely } from '@/src/data/database/database';
 
 describe('JournalRepositoryImpl', () => {
   let repository: JournalRepositoryImpl;
 
-  let sqliteDb: any;
+  let sqliteDb: SQLiteDatabase | null;
 
   beforeEach(async () => {
     const testDbName = `test_${Date.now()}_${Math.random()}.db`;
@@ -48,7 +49,7 @@ describe('JournalRepositoryImpl', () => {
         tags: [],
         location: {
           latitude: 40.7128,
-          longitude: -74.0060,
+          longitude: -74.006,
           elevation: 10,
           accuracy: 5,
           address: 'New York, NY',
@@ -59,7 +60,7 @@ describe('JournalRepositoryImpl', () => {
 
       expect(entry.location).toBeDefined();
       expect(entry.location?.latitude).toBe(40.7128);
-      expect(entry.location?.longitude).toBe(-74.0060);
+      expect(entry.location?.longitude).toBe(-74.006);
       expect(entry.location?.elevation).toBe(10);
       expect(entry.location?.accuracy).toBe(5);
       expect(entry.location?.address).toBe('New York, NY');
@@ -103,7 +104,9 @@ describe('JournalRepositoryImpl', () => {
 
       expect(updatedEntry.content).toBe(updates.content);
       expect(updatedEntry.tags.sort()).toEqual(updates.tags.sort());
-      expect(updatedEntry.modified_at.getTime()).toBeGreaterThan(updatedEntry.created_at.getTime());
+      expect(updatedEntry.modified_at.getTime()).toBeGreaterThan(
+        updatedEntry.created_at.getTime(),
+      );
     });
 
     it('should delete an entry', async () => {
@@ -249,7 +252,10 @@ describe('JournalRepositoryImpl', () => {
       expect(personalEntries).toHaveLength(2);
 
       // Note: multiple tags is an "OR", not "AND".
-      const importantPersonalEntries = await repository.getEntriesByTags(['personal', 'important']);
+      const importantPersonalEntries = await repository.getEntriesByTags([
+        'personal',
+        'important',
+      ]);
       expect(importantPersonalEntries).toHaveLength(3);
     });
   });

@@ -1,21 +1,23 @@
 // Ensure UUID has a crypto source on React Native runtime.
 // This is a no-op in Node/Jest.
-if (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative') {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('react-native-get-random-values');
+if (
+  typeof navigator !== 'undefined' &&
+  (navigator as { product?: string }).product === 'ReactNative'
+) {
+  import('react-native-get-random-values');
 }
-import {v4 as uuidv4} from 'uuid';
-import {JournalRepository} from '../../domain/repositories/JournalRepository';
-import {JournalEntry, Location, Tag} from '../../domain/entities/JournalEntry';
-import {Kysely} from 'kysely';
-import {Database, JournalEntriesTable, TagsTable} from '../database/schema';
+import { v4 as uuidv4 } from 'uuid';
+import { JournalRepository } from '../../domain/repositories/JournalRepository';
+import { JournalEntry, Location, Tag } from '../../domain/entities/JournalEntry';
+import { Kysely } from 'kysely';
+import { Database, JournalEntriesTable, TagsTable } from '../database/schema';
 
 /**
  * Concrete implementation of the JournalRepository backed by Kysely.
  *
- * The repository does not create or manage the database connection.
- * A fully initialized Kysely<Database> instance must be injected,
- * enabling easier testing and separation of concerns.
+ * The repository does not create or manage the database connection. A fully initialized
+ * Kysely<Database> instance must be injected, enabling easier testing and separation of
+ * concerns.
  */
 export class JournalRepositoryImpl implements JournalRepository {
   private db: Kysely<Database>;
@@ -23,8 +25,8 @@ export class JournalRepositoryImpl implements JournalRepository {
   /**
    * Create a repository using the provided database instance.
    *
-   * The caller is responsible for running migrations and managing
-   * the lifecycle of the database connection.
+   * The caller is responsible for running migrations and managing the lifecycle of the
+   * database connection.
    *
    * @param db The initialized Kysely database instance to use.
    */
@@ -32,7 +34,16 @@ export class JournalRepositoryImpl implements JournalRepository {
     this.db = db;
   }
 
-  async createEntry(entry: Omit<JournalEntry, 'id' | 'created_at' | 'modified_at'>): Promise<JournalEntry> {
+  /**
+   * Creates a new journal entry.
+   *
+   * @param entry - The journal entry data.
+   *
+   * @returns The created journal entry.
+   */
+  async createEntry(
+    entry: Omit<JournalEntry, 'id' | 'created_at' | 'modified_at'>,
+  ): Promise<JournalEntry> {
     const db = this.db;
     const now = new Date();
     const id = uuidv4();
@@ -72,7 +83,18 @@ export class JournalRepositoryImpl implements JournalRepository {
     return createdEntry;
   }
 
-  async updateEntry(id: string, updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>): Promise<JournalEntry> {
+  /**
+   * Updates an existing journal entry.
+   *
+   * @param id - The ID of the entry to update.
+   * @param updates - The updates to apply to the entry.
+   *
+   * @returns The updated journal entry.
+   */
+  async updateEntry(
+    id: string,
+    updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>,
+  ): Promise<JournalEntry> {
     const db = this.db;
     const now = new Date();
 
@@ -103,19 +125,12 @@ export class JournalRepositoryImpl implements JournalRepository {
       }
     }
 
-    await db
-      .updateTable('journal_entries')
-      .set(updateData)
-      .where('id', '=', id)
-      .execute();
+    await db.updateTable('journal_entries').set(updateData).where('id', '=', id).execute();
 
     // Handle tags if provided
     if (updates.tags !== undefined) {
       // Remove existing tags
-      await db
-        .deleteFrom('journal_entry_tags')
-        .where('entry_id', '=', id)
-        .execute();
+      await db.deleteFrom('journal_entry_tags').where('entry_id', '=', id).execute();
 
       // Add new tags
       for (const tagName of updates.tags) {
@@ -137,14 +152,25 @@ export class JournalRepositoryImpl implements JournalRepository {
     return updatedEntry;
   }
 
+  /**
+   * Deletes a journal entry by its ID.
+   *
+   * @param id - The ID of the entry to delete.
+   *
+   * @returns A promise that resolves when the entry is deleted.
+   */
   async deleteEntry(id: string): Promise<void> {
     const db = this.db;
-    await db
-      .deleteFrom('journal_entries')
-      .where('id', '=', id)
-      .execute();
+    await db.deleteFrom('journal_entries').where('id', '=', id).execute();
   }
 
+  /**
+   * Retrieves a single journal entry by its ID.
+   *
+   * @param id - The ID of the entry to retrieve.
+   *
+   * @returns The journal entry, or null if not found.
+   */
   async getEntry(id: string): Promise<JournalEntry | null> {
     const db = this.db;
 
@@ -162,6 +188,14 @@ export class JournalRepositoryImpl implements JournalRepository {
     return this.mapDbEntryToDomain(entry, tags);
   }
 
+  /**
+   * Retrieves all journal entries with pagination.
+   *
+   * @param offset - The number of entries to skip.
+   * @param limit - The maximum number of entries to retrieve.
+   *
+   * @returns A list of journal entries.
+   */
   async getAllEntries(offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
     const db = this.db;
 
@@ -173,7 +207,6 @@ export class JournalRepositoryImpl implements JournalRepository {
       .offset(offset)
       .execute();
 
-
     const entriesWithTags: JournalEntry[] = [];
     for (const entry of entries) {
       const tags = await this.getTagsForEntry(entry.id);
@@ -183,7 +216,20 @@ export class JournalRepositoryImpl implements JournalRepository {
     return entriesWithTags;
   }
 
-  async searchEntries(query: string, offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
+  /**
+   * Searches for journal entries containing the specified query string.
+   *
+   * @param query - The search query.
+   * @param offset - The number of entries to skip.
+   * @param limit - The maximum number of entries to retrieve.
+   *
+   * @returns A list of matching journal entries.
+   */
+  async searchEntries(
+    query: string,
+    offset: number = 0,
+    limit: number = 10,
+  ): Promise<JournalEntry[]> {
     const db = this.db;
 
     const entries = await db
@@ -204,7 +250,20 @@ export class JournalRepositoryImpl implements JournalRepository {
     return entriesWithTags;
   }
 
-  async getEntriesByTags(tagNames: string[], offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
+  /**
+   * Retrieves journal entries that have any of the specified tags.
+   *
+   * @param tagNames - The names of the tags to filter by.
+   * @param offset - The number of entries to skip.
+   * @param limit - The maximum number of entries to retrieve.
+   *
+   * @returns A list of matching journal entries.
+   */
+  async getEntriesByTags(
+    tagNames: string[],
+    offset: number = 0,
+    limit: number = 10,
+  ): Promise<JournalEntry[]> {
     const db = this.db;
 
     const entries = await db
@@ -228,18 +287,26 @@ export class JournalRepositoryImpl implements JournalRepository {
     return entriesWithTags;
   }
 
+  /**
+   * Retrieves all unique tags used in the system.
+   *
+   * @returns A list of all tags.
+   */
   async getAllTags(): Promise<Tag[]> {
     const db = this.db;
 
-    const tags = await db
-      .selectFrom('tags')
-      .selectAll()
-      .orderBy('name', 'asc')
-      .execute();
+    const tags = await db.selectFrom('tags').selectAll().orderBy('name', 'asc').execute();
 
     return tags.map(tag => this.mapDbTagToDomain(tag));
   }
 
+  /**
+   * Creates a new tag if it doesn't already exist.
+   *
+   * @param name - The name of the tag to create.
+   *
+   * @returns The created tag.
+   */
   async createTag(name: string): Promise<Tag> {
     const db = this.db;
     const now = new Date();
@@ -261,6 +328,13 @@ export class JournalRepositoryImpl implements JournalRepository {
     };
   }
 
+  /**
+   * Retrieves a tag by name, creating it if it doesn't exist.
+   *
+   * @param name - The name of the tag to retrieve or create.
+   *
+   * @returns The existing or newly created tag.
+   */
   async getOrCreateTag(name: string): Promise<Tag> {
     const db = this.db;
 
@@ -277,14 +351,25 @@ export class JournalRepositoryImpl implements JournalRepository {
     return await this.createTag(name);
   }
 
+  /**
+   * Deletes a tag by its ID.
+   *
+   * @param id - The ID of the tag to delete.
+   *
+   * @returns A promise that resolves when the tag is deleted.
+   */
   async deleteTag(id: string): Promise<void> {
     const db = this.db;
-    await db
-      .deleteFrom('tags')
-      .where('id', '=', id)
-      .execute();
+    await db.deleteFrom('tags').where('id', '=', id).execute();
   }
 
+  /**
+   * Retrieves all tags associated with a specific journal entry.
+   *
+   * @param entryId - The ID of the journal entry.
+   *
+   * @returns A list of tags.
+   */
   async getTagsForEntry(entryId: string): Promise<Tag[]> {
     const db = this.db;
 
@@ -298,10 +383,15 @@ export class JournalRepositoryImpl implements JournalRepository {
     return tags.map(tag => this.mapDbTagToDomain(tag));
   }
 
-  private mapDbEntryToDomain(
-    dbEntry: JournalEntriesTable,
-    tags: Tag[] = []
-  ): JournalEntry {
+  /**
+   * Maps a database entry and its tags to a domain-level JournalEntry object.
+   *
+   * @param dbEntry - The raw database entry.
+   * @param tags - The tags associated with the entry.
+   *
+   * @returns The domain-level journal entry.
+   */
+  private mapDbEntryToDomain(dbEntry: JournalEntriesTable, tags: Tag[] = []): JournalEntry {
     // SQLite returns null for missing columns. We must ensure all required
     // numeric fields are non-null before constructing the location object.
     const hasLocation =
@@ -311,13 +401,13 @@ export class JournalRepositoryImpl implements JournalRepository {
 
     const location: Location | undefined = hasLocation
       ? {
-        latitude: dbEntry.location_latitude as number,
-        longitude: dbEntry.location_longitude as number,
-        elevation: dbEntry.location_elevation as number,
-        // These optional fields may still be null; only include if not null.
-        accuracy: dbEntry.location_accuracy ?? undefined,
-        address: dbEntry.location_address ?? undefined,
-      }
+          latitude: dbEntry.location_latitude as number,
+          longitude: dbEntry.location_longitude as number,
+          elevation: dbEntry.location_elevation as number,
+          // These optional fields may still be null; only include if not null.
+          accuracy: dbEntry.location_accuracy ?? undefined,
+          address: dbEntry.location_address ?? undefined,
+        }
       : undefined;
 
     return {
@@ -331,6 +421,13 @@ export class JournalRepositoryImpl implements JournalRepository {
     };
   }
 
+  /**
+   * Maps a database tag to a domain-level Tag object.
+   *
+   * @param dbTag - The raw database tag.
+   *
+   * @returns The domain-level tag.
+   */
   private mapDbTagToDomain(dbTag: TagsTable): Tag {
     return {
       id: dbTag.id,

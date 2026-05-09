@@ -1,12 +1,12 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import JournalEntryModal from '../modal';
-import {SafeAreaProvider} from 'react-native-safe-area-context';
-import {PaperProvider} from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaperProvider } from 'react-native-paper';
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
-  useRouter: () => ({back: jest.fn()}),
+  useRouter: () => ({ back: jest.fn() }),
 }));
 
 jest.mock('react-native-maps', () => ({
@@ -17,12 +17,12 @@ jest.mock('react-native-maps', () => ({
 }));
 
 jest.mock('expo-location', () => ({
-  requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({status: 'granted'}),
+  requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   getCurrentPositionAsync: jest.fn().mockResolvedValue({
-    coords: {latitude: 0, longitude: 0, altitude: 0, accuracy: 5},
+    coords: { latitude: 0, longitude: 0, altitude: 0, accuracy: 5 },
   }),
   reverseGeocodeAsync: jest.fn().mockResolvedValue([]),
-  Accuracy: {Balanced: 3},
+  Accuracy: { Balanced: 3 },
 }));
 
 describe('JournalEntryModal', () => {
@@ -32,7 +32,7 @@ describe('JournalEntryModal', () => {
         <PaperProvider>
           <JournalEntryModal />
         </PaperProvider>
-      </SafeAreaProvider>
+      </SafeAreaProvider>,
     );
 
     expect(result.toJSON()).toBeTruthy();
