@@ -42,10 +42,12 @@
             nodejs
             # Java Development Kit for Android builds
             openjdk
-            # javascript bundler and package manager - used for oh my opencode
-            bun
             # GitHub CLI
             gh
+
+            # Tools that agents like to use
+            jq
+            python3
 
             # Custom script (above) to create an appropriate AVD.
             create-avd
