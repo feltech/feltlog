@@ -12,14 +12,15 @@ import {
 } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import { MapView, Camera, MarkerView } from '@maplibre/maplibre-react-native';
 import * as ExpoLocation from 'expo-location';
 
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
-const AUTOSAVE_DELAY_MS = 2000;
+const AUTOSAVE_DELAY_MS = 500;
 const MAX_HISTORY_LENGTH = 50;
+const MAP_STYLE_URL = 'https://demotiles.maplibre.org/style.json';
 
 /**
  * Modal screen for creating or editing a journal entry.
@@ -28,18 +29,23 @@ const MAX_HISTORY_LENGTH = 50;
  */
 export default function JournalEntryModal() {
   const router = useRouter();
-  const { entryId } = useLocalSearchParams<{ entryId?: string }>();
+  const { entryId } = useLocalSearchParams();
   const { state, actions } = useJournalViewModel();
 
   const [content, setContent] = useState('');
   const [datetime, setDatetime] = useState(new Date());
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const pendingSaveRef = useRef(false);
+  // Tracks whether a save API call is currently in-flight to prevent stacking.
+  const savingRef = useRef(false);
+  // Ref to a stable autosave function that always has access to latest state.
+  // Avoids re-running the debounce effect when non-content deps (like actions) change.
+  const autosaveFnRef = useRef<() => Promise<void>>();
 
   // Undo/redo history stack
   const [history, setHistory] = useState<string[]>(['']);
@@ -117,10 +123,16 @@ export default function JournalEntryModal() {
     };
   }, [isEditing]);
 
-  // Autosave: debounced save when content changes (only for editing existing
-  // entries)
-  const triggerAutosave = useCallback(async () => {
+  // Stable autosave fn — reassigned every render to close over latest state.
+  // Only called from the debounce timeout, never during render.
+  autosaveFnRef.current = async () => {
     if (!isEditing || !entryId || !content.trim()) return;
+    if (savingRef.current) {
+      pendingSaveRef.current = true;
+      return;
+    }
+    savingRef.current = true;
+    pendingSaveRef.current = false;
     setAutoSaving(true);
     try {
       await actions.updateEntry(entryId, {
@@ -130,18 +142,35 @@ export default function JournalEntryModal() {
       });
       setLastSaved(new Date());
     } catch {
-      // silently fail autosave - user can manually save
+      // silently fail autosave
     } finally {
       setAutoSaving(false);
+      savingRef.current = false;
+      // If content changed while saving, debounce another save so
+      // the "Saved" indicator is briefly visible between saves.
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = setTimeout(() => {
+          autosaveFnRef.current?.();
+        }, AUTOSAVE_DELAY_MS);
+      }
     }
-  }, [isEditing, entryId, content, datetime, tags, actions]);
+  };
 
+  // Autosave: debounced save after content changes (edit mode only).
   useEffect(() => {
     if (!isEditing || !content.trim()) return;
+    pendingSaveRef.current = true;
     clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = setTimeout(triggerAutosave, AUTOSAVE_DELAY_MS);
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveFnRef.current?.();
+    }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(autosaveTimerRef.current);
-  }, [isEditing, content, triggerAutosave]);
+    // NOTE: intentionally omit actions/date/tags from deps – the ref closure
+    // always reads latest values, and only content changes should trigger a save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, content]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -152,43 +181,41 @@ export default function JournalEntryModal() {
     return existingEntry?.location ?? currentLocation;
   }, [existingEntry?.location, currentLocation]);
 
-  const mapRegion: Region | undefined = useMemo(() => {
+  const mapCenter: [number, number] | undefined = useMemo(() => {
     if (!mapLocation) return undefined;
-    return {
-      latitude: mapLocation.latitude,
-      longitude: mapLocation.longitude,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
+    return [mapLocation.longitude, mapLocation.latitude];
   }, [mapLocation]);
 
-  /** Saves the current journal entry. */
-  const handleSave = async () => {
-    if (!content.trim()) {
-      setError('Content cannot be empty');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      if (isEditing && entryId) {
+  /**
+   * Persists the entry and navigates back. For edit mode, flushes any pending autosave.
+   * For create mode, creates the entry if there is content.
+   */
+  const handleSaveAndClose = useCallback(async () => {
+    // Flush any pending autosave for edit mode
+    clearTimeout(autosaveTimerRef.current);
+    if (isEditing && entryId && pendingSaveRef.current && content.trim()) {
+      try {
         await actions.updateEntry(entryId, {
           content: content.trim(),
           datetime,
           tags,
         });
-      } else {
-        await actions.createEntry(content.trim(), datetime, tags, mapLocation);
+      } catch {
+        // silently fail; navigate back anyway
       }
-      router.back();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save entry');
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+    // For create mode, save if there is content
+    if (!isEditing && content.trim()) {
+      try {
+        await actions.createEntry(content.trim(), datetime, tags, mapLocation);
+      } catch {
+        // silently fail; still navigate back
+      }
+    }
+
+    router.back();
+  }, [isEditing, entryId, content, datetime, tags, mapLocation, actions, router]);
 
   /** Adds a new tag to the entry. */
   const handleAddTag = () => {
@@ -206,11 +233,6 @@ export default function JournalEntryModal() {
    */
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter(tag => tag !== tagToRemove));
-  };
-
-  /** Closes the modal and returns to the previous screen. */
-  const handleClose = () => {
-    router.back();
   };
 
   // Update content and maintain undo/redo history
@@ -268,15 +290,12 @@ export default function JournalEntryModal() {
           onPress={handleRedo}
           disabled={!canRedo}
         />
-        <Appbar.BackAction onPress={handleClose} />
-        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
-        <Appbar.Action
-          icon={autoSaving ? 'progress-clock' : 'check'}
-          testID="save-entry-button"
-          accessibilityLabel="Save entry"
-          onPress={handleSave}
-          disabled={isLoading || !content.trim()}
+        <Appbar.BackAction
+          testID="back"
+          accessibilityLabel="Go back"
+          onPress={handleSaveAndClose}
         />
+        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
       </Appbar.Header>
 
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
@@ -342,17 +361,6 @@ export default function JournalEntryModal() {
           })}
         </Text>
 
-        {autoSaving && (
-          <Text variant="bodySmall" style={styles.autoSaveText}>
-            Auto-saving...
-          </Text>
-        )}
-        {lastSaved && !autoSaving && (
-          <Text variant="bodySmall" style={styles.autoSaveText}>
-            Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        )}
-
         <Surface style={styles.locationSection}>
           <Text variant="titleMedium" style={styles.sectionTitle}>
             Location
@@ -369,7 +377,7 @@ export default function JournalEntryModal() {
             </Text>
           )}
 
-          {!mapRegion && !locDenied && (
+          {!mapCenter && !locDenied && (
             <View style={styles.mapLoading}>
               <ActivityIndicator animating={true} />
               <Text variant="bodySmall" style={styles.locationHint}>
@@ -378,21 +386,47 @@ export default function JournalEntryModal() {
             </View>
           )}
 
-          {mapRegion && mapLocation && (
-            <MapView
-              testID="entry-location-map"
-              provider={PROVIDER_GOOGLE}
-              style={styles.map}
-              initialRegion={mapRegion}
-              pointerEvents="none"
-            >
-              <Marker
-                coordinate={{ latitude: mapLocation.latitude, longitude: mapLocation.longitude }}
-              />
-            </MapView>
+          {mapCenter && mapLocation && (
+            <View style={styles.mapContainer}>
+              <MapView
+                testID="entry-location-map"
+                mapStyle={MAP_STYLE_URL}
+                style={styles.map}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+              >
+                <Camera
+                  defaultSettings={{
+                    centerCoordinate: mapCenter,
+                    zoomLevel: 15,
+                  }}
+                />
+                <MarkerView coordinate={mapCenter}>
+                  <View style={styles.markerDot} />
+                </MarkerView>
+              </MapView>
+            </View>
           )}
         </Surface>
       </ScrollView>
+
+      {autoSaving && (
+        <Text variant="bodySmall" style={styles.autoSaveText}>
+          Auto-saving...
+        </Text>
+      )}
+      {isEditing && lastSaved && (
+        <Text
+          variant="bodySmall"
+          testID="saved-indicator"
+          accessibilityLabel="Saved"
+          style={styles.autoSaveText}
+        >
+          Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
 
       <Snackbar
         visible={!!error}
@@ -465,14 +499,25 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
   },
+  mapContainer: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   map: {
     width: '100%',
     height: 200,
-    borderRadius: 8,
   },
   mapLoading: {
     alignItems: 'center',
     justifyContent: 'center',
     height: 200,
+  },
+  markerDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e74c3c',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
 });

@@ -1,31 +1,54 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Define environment variables
 process.env.EXPO_OS = 'android';
 process.env.EXPO_ROUTER = 'false';
 process.env.EXPO_DEV_CLIENT = 'false';
 
 // Mocks for native modules not available in Jest environment
-jest.mock('react-native-maps', () => {
-  const MockMapView = React.forwardRef((props, ref) =>
-    React.createElement(View, { ref, ...props }),
-  );
-  MockMapView.displayName = 'MockMapView';
+jest.mock('@maplibre/maplibre-react-native', () => {
+  const RN = require('react-native');
+  const React = require('react');
 
   /**
-   * Mock for the Marker component.
+   * Mock for the MapView component.
    *
    * @param props - The component props.
    *
-   * @returns The rendered mock marker.
+   * @returns The rendered mock view.
    */
-  const MockMarker = props => React.createElement(View, props);
+  const MockMapView = props => {
+    // eslint-disable-next-line react/prop-types
+    const { defaultSettings, children, ...rest } = props;
+    void defaultSettings;
+    return React.createElement(RN.View, rest, children);
+  };
+  MockMapView.displayName = 'MockMapView';
+
+  /**
+   * Mock for the Camera component.
+   *
+   * @param props - The component props.
+   *
+   * @returns The rendered mock view.
+   */
+  const MockCamera = props => React.createElement(RN.View, props);
+  MockCamera.displayName = 'MockCamera';
+
+  /**
+   * Mock for the MarkerView component.
+   *
+   * @param props - The component props.
+   *
+   * @returns The rendered mock view.
+   */
+  const MockMarkerView = props => React.createElement(RN.View, props);
+  MockMarkerView.displayName = 'MockMarkerView';
+
   return {
     __esModule: true,
-    default: MockMapView,
-    Marker: MockMarker,
-    PROVIDER_GOOGLE: 'google',
+    MapView: MockMapView,
+    Camera: MockCamera,
+    MarkerView: MockMarkerView,
   };
 });
 
@@ -44,14 +67,18 @@ jest.mock('expo-location', () => ({
 }));
 
 jest.mock('react-native-markdown-renderer', () => {
+  const RN = require('react-native');
+  const React = require('react');
+
   /**
    * Mock for the Markdown component.
    *
    * @param props - The component props.
+   * @param props.children - The children to render.
    *
    * @returns The rendered mock markdown text.
    */
-  const MockMarkdown = props => React.createElement(Text, null, props.children);
+  const MockMarkdown = props => React.createElement(RN.Text, null, props.children);
   return {
     __esModule: true,
     default: MockMarkdown,

@@ -9,11 +9,11 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn() }),
 }));
 
-jest.mock('react-native-maps', () => ({
+jest.mock('@maplibre/maplibre-react-native', () => ({
   __esModule: true,
-  default: 'MapView',
-  Marker: 'Marker',
-  PROVIDER_GOOGLE: 'google',
+  MapView: 'MapView',
+  Camera: 'Camera',
+  MarkerView: 'MarkerView',
 }));
 
 jest.mock('expo-location', () => ({
