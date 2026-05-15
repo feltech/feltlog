@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Text, View } from 'react-native';
-import { useDatabase } from '../database';
+import { useDatabase } from './database';
 
 /**
  * Component used for testing database initialization.
