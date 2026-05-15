@@ -168,11 +168,6 @@ export const useJournalViewModel = () => {
       tags: string[] = [],
       location?: JournalEntry['location'],
     ): Promise<JournalEntry | null> => {
-      if (!content.trim()) {
-        setError('Content cannot be empty');
-        return null;
-      }
-
       updateState({ loading: true, error: null });
 
       try {
