@@ -20,7 +20,9 @@ import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
 const AUTOSAVE_DELAY_MS = 500;
 const MAX_HISTORY_LENGTH = 50;
-const MAP_STYLE_URL = 'https://demotiles.maplibre.org/style.json';
+// OpenFreeMap — free OpenStreetMap-based vector tiles, no API key required.
+// See: https://openfreemap.org
+const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
 /**
  * Modal screen for creating or editing a journal entry.
