@@ -2,25 +2,28 @@
 
 ## Project Overview
 
-FeltNote is an Android diary/journal application built with React Native and TypeScript, following
-domain-driven design principles at the high level and data-oriented design at the lower level.
+FeltLog is an Android diary/journal application built with React Native (Expo) and TypeScript,
+following domain-driven design principles at the high level and data-oriented design at the lower
+level.
 
 ## Development Environment
 
 ### Core Tools
 
-- NixOS development environment
+- NixOS development environment with Direnv auto-activation via `.envrc`
 - WebStorm IDE (though terminal-based development should be supported)
-- Android Emulator with x86_64 images
+- Android Emulator with x86_64 images (API 35)
 - Node.js (stable version)
-- React Native using Expo
+- React Native via Expo (SDK 53)
 
 ### Development Shell
 
-- Nix Flake for reproducible development environment in build_env directory
+- Nix Flake for reproducible development environment in `build_env/` directory
 - Minimal system dependencies, focused on Android development needs
 - All shell commands must be prefixed with: `nix develop ./build_env --command` in order to execute
   in the correct environment.
+- Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `python3`, `create-avd`
+  helper
 
 ### Running tests
 
@@ -41,35 +44,39 @@ domain-driven design principles at the high level and data-oriented design at th
 
 ### Frontend
 
-- React Native with TypeScript
-- MVVM architecture pattern for potential cross-platform portability
+- React Native with TypeScript (strict mode), Expo SDK 53
+- Expo Router v5 (file-based routing with `app/` directory, typed routes enabled)
+- React Native Paper (Material Design 3 UI components)
+- MVVM architecture pattern
+- Hermes JS engine (Android), React Native New Architecture enabled
+
+### Maps
+
+- Maplibre GL Native for map display on the entry creation/edit screen
+- OpenStreetMap reverse geocoding via `expo-location` (no API key required)
 
 ### Database
 
-- Encrypted expo-sqlite for production and e2e tests, shimmed to sqlite for nodejs for unit tests
-- Kysely query builder
-- Schema for a diary entry:
+- Encrypted expo-sqlite (SQLCipher via `useSQLCipher: true` in app.json) for production and e2e
+  tests; shimmed via `expo-sqlite-mock` for Node.js unit tests
+- Kysely query builder with `kysely-expo` dialect adapter
+- UUID generation via `uuid` + `react-native-get-random-values`
 
-  ```typescript
-  interface JournalEntry {
-    id: string;
-    content: string;
-    datetime: Date; // User-adjustable timestamp
-    created_at: Date;
-    modified_at: Date;
-    tags: string[];
-    location?: {
-      latitude: number;
-      longitude: number;
-      elevation: number;
-      accuracy?: number;
-      address?: string;
-    };
-  }
-  ```
+Tables:
 
-- Tags in separate table with many-to-many relationship
-- No explicit indices in initial version
+- `journal_entries`: id, content, datetime, created_at, modified_at, location columns (inline)
+- `tags`: id, name (unique), created_at
+- `journal_entry_tags`: entry_id, tag_id (composite PK, cascading deletes)
+
+Domain `JournalEntry` interface uses `Date` objects, but persistence uses ISO 8601 strings. Tags
+use a many-to-many relationship via the junction table. No explicit indices.
+
+### Testing
+
+- `jest` with `jest-expo` preset (configured in `package.json`)
+- `expo-sqlite-mock` shims SQLite for Node.js unit tests
+- `@testing-library/react-native` for component testing
+- `jest.setup.js` mocks Maplibre, expo-location, markdown renderer for all tests
 
 ## Architecture Overview
 
@@ -77,27 +84,55 @@ domain-driven design principles at the high level and data-oriented design at th
 
 - Data-oriented design at lower level
 - Repository pattern for data access abstraction
+- Context-based dependency injection (no singletons)
 
 ### Application Layers
 
-- Domain layer (business logic and entities)
-- Data layer (repositories and data sources)
-- Presentation layer (components and viewmodels)
-- Infrastructure layer (platform-specific implementations)
+- **Domain layer** (`src/domain/`): entities (`JournalEntry`, `Tag`, `Location`), repository
+  interface (`JournalRepository`), React context for DI (`RepositoryContext`)
+- **Data layer** (`src/data/`): Kysely-backed `JournalRepositoryImpl`, database bootstrap and
+  migrations, AsyncStorage helper for DB name persistence
+- **Presentation layer** (`src/presentation/`): ViewModel hook (`useJournalViewModel`), UI
+  components (`JournalList`, `JournalEntryCard`, `SetupDatabaseScreen`), theming
+- **App layer** (`app/`): Expo Router screens (root `_layout`, tabs, modal), file-based routing
+
+### Key Files
+
+| File                                              | Purpose                                                                       |
+| ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `app/_layout.tsx`                                 | Root layout: loads fonts, initializes DB, provides Repository + Paper + Theme |
+| `app/(tabs)/_layout.tsx`                          | Tab navigator (Journal, Settings)                                             |
+| `app/(tabs)/index.tsx`                            | Journal list screen with FAB and Snackbar errors                              |
+| `app/modal.tsx`                                   | Create/edit entry modal with autosave, undo/redo, tags, location              |
+| `src/domain/entities/JournalEntry.ts`             | Domain interfaces: JournalEntry, Location, Tag, JournalEntryTag               |
+| `src/domain/repositories/JournalRepository.ts`    | Repository interface (12 methods)                                             |
+| `src/domain/repositories/RepositoryContext.tsx`   | React context providing JournalRepository via DI                              |
+| `src/data/database/schema.ts`                     | Kysely table type definitions                                                 |
+| `src/data/database/migrations.ts`                 | `up()`/`down()` for schema creation/destruction                               |
+| `src/data/database/database.ts`                   | `openKysely()`, `useDatabase()` React hook                                    |
+| `src/data/repositories/JournalRepositoryImpl.ts`  | Kysely-backed repository implementation                                       |
+| `src/presentation/viewmodels/JournalViewModel.ts` | Core MVVM hook: state + actions                                               |
+| `build_env/flake.nix`                             | Nix dev shell with Android SDK, Maestro, Node                                 |
 
 ## Code Quality
 
 ### TypeScript Configuration
 
-- Strict mode enabled
-- Comprehensive type checking
+- Strict mode enabled, extends `expo/tsconfig.base`
+- Path alias `@/*` maps to project root
+- Includes `.expo/types/` for typed route auto-generation
 
 ### Linting and Formatting
 
-- ESLint for linting
-- Prettier for formatting
-- 99 character line limit for code
-- Markdownlint for markdown files
+- ESLint with `@typescript-eslint`, `react`, `react-hooks`, `jsdoc`, `jest`, `prettier` plugins
+- Prettier with `prettier-plugin-jsdoc`
+- 99 character line limit for code (`printWidth: 99`)
+- 88 character line limit for JSDoc comments (`jsdocPrintWidth: 88`)
+- Markdownlint for markdown files (99 char limit for prose)
+
+- `.eslintrc.js`, `.prettierrc.js`, `babel.config.js`, and `jest.setup.js` use CommonJS (required
+  by these tools at the project root). All application source code under `src/` and `app/` uses ES
+  modules.
 
 #### Commands
 
@@ -105,13 +140,14 @@ Run these checks after every substantial change:
 
 - **Linting:** `nix develop ./build_env --command npm run lint`
 - **Formatting:** `nix develop ./build_env --command npm run format`
+- **Format check (no write):** `nix develop ./build_env --command npm run format:check`
 - **Markdown Linting:** `nix develop ./build_env --command npm run lint:md`
 - **Combined Check:**
   `nix develop ./build_env --command bash -c "npm run format && npm run lint && npm run lint:md"`
 
 Use `npm run lint:fix` to automatically fix some linting issues.
 
-## Comment formatting
+### Comment formatting
 
 - 88 character line limit for comments
 - 99 character line limit for markdown
@@ -119,76 +155,74 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Newlines separating summary, description body, and parameters in docstrings.
 - End parameter and return descriptions with a period.
 
-### Testing
+### Test conventions
 
-- Unit tests alongside source files
-- Integration tests in separate e2e directory mirroring source structure
-- maestro for integration testing
+- Unit tests alongside source files in `__tests__/` directories
+- Integration tests in `e2e/` directory using Maestro
+- `e2e/subflows/` contains reusable Maestro flow snippets
 - No specific coverage threshold
 - Tests must run on both:
   - Node.js environment (unit tests)
   - Android Emulator (integration tests)
 - When reading terminal output, ignore the expected error
   > bash: history: : cannot create: No such file or directory
-- Add takeScreenshot commands to the maestro e2e tests as necessary to aid diagnosis of errors.
-- When running e2e tests, additional logs from the expo dev server can  
-  be found in android.log to aid diagnostics.
-- Do NOT "fix" tests by marking them as skipped to get the unit tests to pass - actually fix the
+- Add `takeScreenshot` commands to the maestro e2e tests as necessary to aid diagnosis of errors.
+- When running e2e tests, additional logs from the expo dev server can be found in `android.log` to
+  aid diagnostics.
+- Do NOT "fix" tests by marking them as skipped to get the unit tests to pass — actually fix the
   tests or the code, or, if necessary, remove the tests if they are no longer relevant.
 
 ## Coding guidelines
 
-- Do NOT modify files in node_modules.
+- Do NOT modify files in `node_modules/`.
 - Use as few mocks as possible when testing. Especially avoid global mocks that affect every test.
   Try to fix the configuration of the project before resorting to mocking.
 - Read the stack trace of error messages and check the code in the last couple of mentioned files
   to better understand the reason for the error.
-- Use ES modules, never CommonJS.
+- Use ES modules in all application source code (`src/`, `app/`).
 - Do not make git commits, the user will do that.
 - Add plenty of code comments, especially around conditionals.
-- All non-trivial functions should have docstrings.
-- All classes and interfaces should have docstrings.
+- All non-trivial functions must have docstrings.
+- All classes and interfaces must have docstrings.
 - Avoid the use of singletons, prefer dependency injection or contexts.
+- Keep transactions minimal in Expo SQLite (avoid complex multi-table transactions).
 
 ## Core Features
 
 ### Journal Entry Management
 
-- Markdown support for content (basic formatting)
+- Markdown support for content (basic formatting via `react-native-markdown-renderer`)
 - Autosave during editing
-- Undo/redo within editing session
-- Location capture on entry creation
+- Undo/redo within editing session (history stack maintained in `app/modal.tsx`)
+- Location capture on entry creation with Maplibre map display
   - Manual location updates via menu
   - Elevation data from location services
-  - OpenStreetMap for reverse geocoding (no API key required)
+  - OpenStreetMap reverse geocoding via `expo-location`
 - Tag support
   - Free-form tags
   - Autocomplete from existing tags
   - Default to last used tags for new entries
-- Virtual scrolling
+- Pagination via FlatList `onEndReached`
   - Batch size: 10 entries
-  - Pre-fetch enabled
 
 ### Storage
 
-- User-selected database location via Storage Access Framework
-- Import/export sqlite database file using Storage Access Framework on Android
+- Database created in Expo's default location with user-provided filename
+- DB filename remembered in AsyncStorage for convenience
+- Optional SQLCipher encryption key (entered on setup, never persisted)
 
 ### Search Functionality
 
-- Text search within journal entries
-- Tag-based filtering
+- Text search within journal entries (repository-level `searchEntries`)
+- Tag-based filtering (`getEntriesByTags`)
 - No location-based search in initial version
-- UI optimized for quick access to search functionality
 
 ### Error Handling
 
-- Collapsible status area at screen bottom
-- Status messages auto-hide after 3 seconds
-- Tap to keep status visible
-- Platform specific logging system support
-- Multiple log levels with debug toggle in settings
-- Graceful degradation for missing permissions or services
+- Snackbar at screen bottom for transient error messages
+- Status messages auto-dismiss after 3 seconds (configurable)
+- No dedicated error; error state from ViewModel shown in `JournalList` empty state and via
+  `Snackbar` in the journal screen
 
 ### Location Features
 
@@ -196,15 +230,14 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Manual update option in entry menu
 - Device location permission management with user warnings
 - Graceful degradation on permission denial
-- OpenStreetMap-based geocoding (no API key required)
+- OpenStreetMap-based geocoding via `expo-location.reverseGeocodeAsync()`
 
 ### UI/UX
 
 - System locale-based formatting for dates and times
-- Responsive layout for various screen sizes
-- Focus on usability and simplicity
-- Collapsible status area for notifications
-- Infinite scroll implementation for journal entries
+- React Native Paper FAB for create-entry action
+- Pull-to-refresh on journal list
+- Tab-based navigation (Journal, Settings)
 
 ## Non-Requirements (First Version)
 
@@ -213,19 +246,19 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Templates
 - Statistics
 - Notifications
-- Theme support
+- Automatic theme switching (light/dark toggle only)
 - Mood tracking
 - Tag hierarchies
 - Tag suggestions
 - Location-based search
-- Database optimization
+- Database indices or query optimization
 - Automatic backups
+- Import/export database via Storage Access Framework
 
 ## Build and Deployment
 
-- GitHub Actions for CI/CD
-- Focus on Android platform initially
-- Recent Android API target acceptable
+- Focus on Android platform initially (iOS scaffold present)
+- Expo EAS Build for APK generation
 - No pre-commit hooks initially
 
 ## Dependencies
@@ -233,38 +266,34 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Prefer established open-source packages
 - Liberal licensing required
 - Key packages:
-  - Expo
-  - Kysely
+  - Expo (SDK 53) with Expo Router, expo-sqlite, expo-location
+  - React Native Paper (UI components)
+  - Kysely + kysely-expo (query builder)
+  - Maplibre GL Native (map rendering)
+  - uuid + react-native-get-random-values (ID generation)
 
 ## Security Considerations
 
-- No internal encryption (rely on external apps like DroidFS)
-- User-selected database location via Storage Access Framework
-- No network requests or data sharing
-- Permissions requested only when needed
+- SQLCipher encryption on database (user-provided key via setup screen, never persisted)
+- No network requests or data sharing (fully local)
+- DB filename cached in AsyncStorage for UX; encryption key never stored
+- Permissions requested only when needed (location)
 - Clear user feedback on permission requirements
 
 ## Performance Considerations
 
-- Lazy loading of journal entries
-- Efficient database queries
-- Minimal Redux state
-- Virtualized list for smooth scrolling
-- Autosave with appropriate throttling
-
-## Development Workflow
-
-- Feature branches
-- Pull requests for code review
-- CI validation before merge
-- Testing required for new features
-- Clear commit messages
+- Paginated FlatList with `hasMore`/`loadingMore` state (batch size: 10)
+- Kysely queries join/aggregate tags in a single round-trip per page
+- Autosave with debounce
+- Virtualized list via FlatList for smooth scrolling
 
 ## Future Expansion Areas
 
-- Cross-platform support
+- Cross-platform support (iOS scaffold exists)
 - Media attachments
 - Cloud sync options
 - Advanced search features
-- Performance optimizations
-- Database migration strategies
+- Performance optimizations (indices, query tuning)
+- Database migration versioning
+- Import/export via Storage Access Framework
+- Settings screen (tab route exists but screen file is missing)
