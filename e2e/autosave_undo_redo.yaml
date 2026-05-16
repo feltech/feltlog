@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Autosave and undo/redo features
 
+
 # This flow tests the autosave and undo/redo features in the journal entry modal.
 # Prerequisites: App already set up with a test database. Run create_and_view_entry.yaml first.
 ---

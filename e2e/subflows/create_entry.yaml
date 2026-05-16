@@ -1,6 +1,11 @@
 # Subflow to create a journal entry
 appId: com.feltech.feltlog
 ---
+# Default location
+- setLocation:
+    latitude: 53.787977855061214
+    longitude: -2.244492876694697
+
 - tapOn:
     id: 'create-entry-fab'
 - assertVisible:

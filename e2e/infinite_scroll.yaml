@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Infinite scroll and pagination
 
+
 # This flow tests infinite scroll / pagination by creating many entries
 # and verifying more load as the user scrolls.
 ---

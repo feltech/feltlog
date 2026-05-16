@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Pull to refresh
 
+
 # This flow tests pull-to-refresh functionality.
 ---
 - runFlow:

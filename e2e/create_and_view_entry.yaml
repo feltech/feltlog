@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Create and view journal entry
 
+
 # This flow sets up the app on first run with a random database name and key,
 # creates a journal entry with unique content, and verifies it can be opened.
 ---

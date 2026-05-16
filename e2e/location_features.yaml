@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Location features - capture and verify
 
+
 # This flow tests location capture on new entry creation and location display in entry cards.
 # Prerequisites: None - this test is independent and creates its own entries.
 ---

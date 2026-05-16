@@ -1,6 +1,7 @@
 appId: com.feltech.feltlog
 name: Error states handling
 
+
 # This flow tests error states: empty content error, empty state UI.
 # Prerequisites: None - creates its own database.
 ---
