@@ -10,9 +10,7 @@ import { Platform } from 'react-native';
  *
  * @returns The rendered link component.
  */
-export function ExternalLink(
-  props: Omit<React.ComponentProps<typeof Link>, 'href'> & { href: string },
-) {
+export function ExternalLink(props: Omit & { href: string }) {
   return (
     <Link
       target="_blank"

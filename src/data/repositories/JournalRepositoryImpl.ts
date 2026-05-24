@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { JournalRepository } from '../../domain/repositories/JournalRepository';
 import { JournalEntry, Location, Tag } from '../../domain/entities/JournalEntry';
 import { Kysely } from 'kysely';
-import { Database, JournalEntriesTable, TagsTable } from '../database/schema';
+import { JournalEntriesTable, TagsTable } from '../database/schema';
 
 /**
  * Concrete implementation of the JournalRepository backed by Kysely.
@@ -20,7 +20,7 @@ import { Database, JournalEntriesTable, TagsTable } from '../database/schema';
  * concerns.
  */
 export class JournalRepositoryImpl implements JournalRepository {
-  private db: Kysely<Database>;
+  private db: Kysely;
 
   /**
    * Create a repository using the provided database instance.
@@ -30,7 +30,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @param db The initialized Kysely database instance to use.
    */
-  constructor(db: Kysely<Database>) {
+  constructor(db: Kysely) {
     this.db = db;
   }
 
@@ -41,9 +41,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns The created journal entry.
    */
-  async createEntry(
-    entry: Omit<JournalEntry, 'id' | 'created_at' | 'modified_at'>,
-  ): Promise<JournalEntry> {
+  async createEntry(entry: Omit): Promise {
     const db = this.db;
     const now = new Date();
     const id = uuidv4();
@@ -91,15 +89,12 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns The updated journal entry.
    */
-  async updateEntry(
-    id: string,
-    updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>,
-  ): Promise<JournalEntry> {
+  async updateEntry(id: string, updates: Partial): Promise {
     const db = this.db;
     const now = new Date();
 
     // Update the entry (no explicit transaction to improve Expo compatibility)
-    const updateData: Partial<JournalEntriesTable> = {
+    const updateData: Partial = {
       modified_at: now.toISOString(),
     };
 
@@ -159,7 +154,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A promise that resolves when the entry is deleted.
    */
-  async deleteEntry(id: string): Promise<void> {
+  async deleteEntry(id: string): Promise {
     const db = this.db;
     await db.deleteFrom('journal_entries').where('id', '=', id).execute();
   }
@@ -171,7 +166,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns The journal entry, or null if not found.
    */
-  async getEntry(id: string): Promise<JournalEntry | null> {
+  async getEntry(id: string): Promise {
     const db = this.db;
 
     const entry = await db
@@ -196,7 +191,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A list of journal entries.
    */
-  async getAllEntries(offset: number = 0, limit: number = 10): Promise<JournalEntry[]> {
+  async getAllEntries(offset: number = 0, limit: number = 10): Promise {
     const db = this.db;
 
     const entries = await db
@@ -225,11 +220,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A list of matching journal entries.
    */
-  async searchEntries(
-    query: string,
-    offset: number = 0,
-    limit: number = 10,
-  ): Promise<JournalEntry[]> {
+  async searchEntries(query: string, offset: number = 0, limit: number = 10): Promise {
     const db = this.db;
 
     const entries = await db
@@ -259,11 +250,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A list of matching journal entries.
    */
-  async getEntriesByTags(
-    tagNames: string[],
-    offset: number = 0,
-    limit: number = 10,
-  ): Promise<JournalEntry[]> {
+  async getEntriesByTags(tagNames: string[], offset: number = 0, limit: number = 10): Promise {
     const db = this.db;
 
     const entries = await db
@@ -292,7 +279,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A list of all tags.
    */
-  async getAllTags(): Promise<Tag[]> {
+  async getAllTags(): Promise {
     const db = this.db;
 
     const tags = await db.selectFrom('tags').selectAll().orderBy('name', 'asc').execute();
@@ -307,7 +294,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns The created tag.
    */
-  async createTag(name: string): Promise<Tag> {
+  async createTag(name: string): Promise {
     const db = this.db;
     const now = new Date();
     const id = uuidv4();
@@ -335,7 +322,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns The existing or newly created tag.
    */
-  async getOrCreateTag(name: string): Promise<Tag> {
+  async getOrCreateTag(name: string): Promise {
     const db = this.db;
 
     const existingTag = await db
@@ -358,7 +345,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A promise that resolves when the tag is deleted.
    */
-  async deleteTag(id: string): Promise<void> {
+  async deleteTag(id: string): Promise {
     const db = this.db;
     await db.deleteFrom('tags').where('id', '=', id).execute();
   }
@@ -370,7 +357,7 @@ export class JournalRepositoryImpl implements JournalRepository {
    *
    * @returns A list of tags.
    */
-  async getTagsForEntry(entryId: string): Promise<Tag[]> {
+  async getTagsForEntry(entryId: string): Promise {
     const db = this.db;
 
     const tags = await db

@@ -1,5 +1,3 @@
-import { JournalEntry, Tag } from '../entities/JournalEntry';
-
 /**
  * Interface for journal repository.
  *
@@ -13,9 +11,7 @@ export interface JournalRepository {
    *
    * @returns The created journal entry with generated id and timestamps.
    */
-  createEntry(
-    entry: Omit<JournalEntry, 'id' | 'created_at' | 'modified_at'>,
-  ): Promise<JournalEntry>;
+  createEntry(entry: Omit): Promise;
 
   /**
    * Update an existing journal entry.
@@ -25,10 +21,7 @@ export interface JournalRepository {
    *
    * @returns The updated journal entry.
    */
-  updateEntry(
-    id: string,
-    updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>,
-  ): Promise<JournalEntry>;
+  updateEntry(id: string, updates: Partial): Promise;
 
   /**
    * Delete a journal entry.
@@ -37,7 +30,7 @@ export interface JournalRepository {
    *
    * @returns A promise that resolves when the entry is deleted.
    */
-  deleteEntry(id: string): Promise<void>;
+  deleteEntry(id: string): Promise;
 
   /**
    * Retrieve a single journal entry by its ID.
@@ -46,7 +39,7 @@ export interface JournalRepository {
    *
    * @returns The journal entry if found, otherwise null.
    */
-  getEntry(id: string): Promise<JournalEntry | null>;
+  getEntry(id: string): Promise;
 
   /**
    * Retrieve a paginated list of all journal entries.
@@ -56,7 +49,7 @@ export interface JournalRepository {
    *
    * @returns A list of journal entries.
    */
-  getAllEntries(offset?: number, limit?: number): Promise<JournalEntry[]>;
+  getAllEntries(offset?: number, limit?: number): Promise;
 
   /**
    * Search for journal entries matching a query string.
@@ -67,7 +60,7 @@ export interface JournalRepository {
    *
    * @returns A list of matching journal entries.
    */
-  searchEntries(query: string, offset?: number, limit?: number): Promise<JournalEntry[]>;
+  searchEntries(query: string, offset?: number, limit?: number): Promise;
 
   /**
    * Retrieve journal entries that have all specified tags.
@@ -78,14 +71,14 @@ export interface JournalRepository {
    *
    * @returns A list of matching journal entries.
    */
-  getEntriesByTags(tagNames: string[], offset?: number, limit?: number): Promise<JournalEntry[]>;
+  getEntriesByTags(tagNames: string[], offset?: number, limit?: number): Promise;
 
   /**
    * Retrieve all unique tags used in the system.
    *
    * @returns A list of all tags.
    */
-  getAllTags(): Promise<Tag[]>;
+  getAllTags(): Promise;
 
   /**
    * Create a new tag.
@@ -94,7 +87,7 @@ export interface JournalRepository {
    *
    * @returns The created tag.
    */
-  createTag(name: string): Promise<Tag>;
+  createTag(name: string): Promise;
 
   /**
    * Retrieve an existing tag by name or create it if it doesn't exist.
@@ -103,7 +96,7 @@ export interface JournalRepository {
    *
    * @returns The existing or newly created tag.
    */
-  getOrCreateTag(name: string): Promise<Tag>;
+  getOrCreateTag(name: string): Promise;
 
   /**
    * Delete a tag.
@@ -112,7 +105,7 @@ export interface JournalRepository {
    *
    * @returns A promise that resolves when the tag is deleted.
    */
-  deleteTag(id: string): Promise<void>;
+  deleteTag(id: string): Promise;
 
   /**
    * Retrieve all tags associated with a specific journal entry.
@@ -121,5 +114,5 @@ export interface JournalRepository {
    *
    * @returns A list of tags for the entry.
    */
-  getTagsForEntry(entryId: string): Promise<Tag[]>;
+  getTagsForEntry(entryId: string): Promise;
 }

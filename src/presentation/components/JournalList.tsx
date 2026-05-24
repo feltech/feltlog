@@ -4,15 +4,6 @@ import { ActivityIndicator, Text } from 'react-native-paper';
 import { JournalEntry } from '../../domain/entities/JournalEntry';
 import { JournalEntryCard } from './JournalEntryCard';
 
-interface JournalListProps {
-  entries: JournalEntry[];
-  loading: boolean;
-  hasMore: boolean;
-  onLoadMore: () => void;
-  onRefresh: () => void;
-  onEntryPress?: (entry: JournalEntry) => void;
-}
-
 /**
  * Component for rendering a list of journal entries.
  *
@@ -26,7 +17,7 @@ interface JournalListProps {
  *
  * @returns The rendered list of journal entries.
  */
-export const JournalList: React.FC<JournalListProps> = ({
+export const JournalList: React.FC = ({
   entries,
   loading,
   hasMore,

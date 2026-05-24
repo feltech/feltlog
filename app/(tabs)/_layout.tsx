@@ -17,10 +17,7 @@ import { useClientOnlyValue } from '@/src/presentation/components/useClientOnlyV
  *
  * @returns The rendered icon component.
  */
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
+function TabBarIcon(props: { name: React.ComponentProps['name']; color: string }) {
   return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
 }
 

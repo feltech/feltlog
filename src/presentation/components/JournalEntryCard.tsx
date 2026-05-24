@@ -2,13 +2,6 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Card, Chip, Text } from 'react-native-paper';
 import Markdown from 'react-native-markdown-renderer';
-import { JournalEntry } from '../../domain/entities/JournalEntry';
-
-interface JournalEntryCardProps {
-  entry: JournalEntry;
-  onPress?: () => void;
-}
-
 const markdownStyles = StyleSheet.create({
   heading1: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
   heading2: { fontSize: 20, fontWeight: 'bold', marginBottom: 6 },
@@ -40,7 +33,7 @@ const markdownStyles = StyleSheet.create({
  *
  * @returns The rendered journal entry card.
  */
-export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPress }) => {
+export const JournalEntryCard: React.FC = ({ entry, onPress }) => {
   /**
    * Formats a date object into a localized string.
    *
