@@ -35,9 +35,11 @@ level.
   2. Start the emulator via Maestro:
      `nix develop ./build_env --command maestro start-device --platform \`
      `android --device-model "pixel_6" --device-os android-35`
-  3. Build and install the app (in separate terminal or background):
-     `nix develop ./build_env --command npm run android`
-  4. Run the tests: `nix develop ./build_env --command npm run e2e` or
+  3. Build and install the app in a **separate terminal** (Metro bundler runs indefinitely — it
+     does not exit after the build): `nix develop ./build_env --command npm run android` Wait for
+     "BUILD SUCCESSFUL" and the app to appear on the emulator before proceeding. The Metro process
+     must remain running for the app to function.
+  4. Run the tests in another terminal: `nix develop ./build_env --command npm run e2e` or
      `nix develop ./build_env --command maestro test e2e/`
 
 ## Technology Stack
@@ -71,6 +73,29 @@ Tables:
 Domain `JournalEntry` interface uses `Date` objects, but persistence uses ISO 8601 strings. Tags
 use a many-to-many relationship via the junction table. No explicit indices.
 
+### Database Migrations
+
+- Migrations use Kysely's built-in `Migrator` class with a custom `InMemoryMigrationProvider`
+  (since React Native cannot use Kysely's `FileMigrationProvider` which requires Node.js
+  `fs`/`path`).
+- Migration files live in `src/data/database/migrations/` and export `up(db: Kysely<any>)` and
+  `down(db: Kysely<any>)` functions.
+- Migration naming convention: `YYYYMMDD_sequence_description.ts` (e.g.,
+  `20260523_one_create_initial_tables.ts`). The date prefix ensures alphabetical sort matches
+  chronological order.
+- The migration registry in `src/data/database/migrations/index.ts` must be updated when adding new
+  migrations — import the new module and add it to the `MIGRATIONS` record.
+- Never delete or rename migration files/keys that have already been shipped.
+- Kysely tracks executed migrations in `kysely_migration` and `kysely_migration_lock` internal
+  tables.
+- Initial data population (seeding) should be done within the first migration or a dedicated early
+  migration — not via a separate mechanism.
+- To generate a new migration stub: `npx kysely migrate make <descriptive_name>`. This creates a
+  file in `src/data/database/migrations/` with the correct timestamp prefix. After generating, you
+  must also register it in `index.ts`.
+- The `kysely-ctl` CLI is a dev-time tool only. At runtime, the app uses the
+  `InMemoryMigrationProvider` to serve migrations to Kysely's `Migrator`.
+
 ### Testing
 
 - `jest` with `jest-expo` preset (configured in `package.json`)
@@ -98,21 +123,23 @@ use a many-to-many relationship via the junction table. No explicit indices.
 
 ### Key Files
 
-| File                                              | Purpose                                                                       |
-| ------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `app/_layout.tsx`                                 | Root layout: loads fonts, initializes DB, provides Repository + Paper + Theme |
-| `app/(tabs)/_layout.tsx`                          | Tab navigator (Journal, Settings)                                             |
-| `app/(tabs)/index.tsx`                            | Journal list screen with FAB and Snackbar errors                              |
-| `app/modal.tsx`                                   | Create/edit entry modal with autosave, undo/redo, tags, location              |
-| `src/domain/entities/JournalEntry.ts`             | Domain interfaces: JournalEntry, Location, Tag, JournalEntryTag               |
-| `src/domain/repositories/JournalRepository.ts`    | Repository interface (12 methods)                                             |
-| `src/domain/repositories/RepositoryContext.tsx`   | React context providing JournalRepository via DI                              |
-| `src/data/database/schema.ts`                     | Kysely table type definitions                                                 |
-| `src/data/database/migrations.ts`                 | `up()`/`down()` for schema creation/destruction                               |
-| `src/data/database/database.ts`                   | `openKysely()`, `useDatabase()` React hook                                    |
-| `src/data/repositories/JournalRepositoryImpl.ts`  | Kysely-backed repository implementation                                       |
-| `src/presentation/viewmodels/JournalViewModel.ts` | Core MVVM hook: state + actions                                               |
-| `build_env/flake.nix`                             | Nix dev shell with Android SDK, Maestro, Node                                 |
+| File                                                | Purpose                                                                       |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `app/_layout.tsx`                                   | Root layout: loads fonts, initializes DB, provides Repository + Paper + Theme |
+| `app/(tabs)/_layout.tsx`                            | Tab navigator (Journal, Settings)                                             |
+| `app/(tabs)/index.tsx`                              | Journal list screen with FAB and Snackbar errors                              |
+| `app/modal.tsx`                                     | Create/edit entry modal with autosave, undo/redo, tags, location              |
+| `src/domain/entities/JournalEntry.ts`               | Domain interfaces: JournalEntry, Location, Tag, JournalEntryTag               |
+| `src/domain/repositories/JournalRepository.ts`      | Repository interface (12 methods)                                             |
+| `src/domain/repositories/RepositoryContext.tsx`     | React context providing JournalRepository via DI                              |
+| `src/data/database/schema.ts`                       | Kysely table type definitions                                                 |
+| `src/data/database/migrations/index.ts`             | Migration registry + InMemoryMigrationProvider export                         |
+| `src/data/database/migrations/migrationProvider.ts` | InMemoryMigrationProvider (replaces FileMigrationProvider for RN)             |
+| `src/data/database/migrations/*.ts`                 | Individual migration files (up/down with `Kysely<any>`)                       |
+| `src/data/database/database.ts`                     | `openKysely()`, `useDatabase()` React hook, Migrator setup                    |
+| `src/data/repositories/JournalRepositoryImpl.ts`    | Kysely-backed repository implementation                                       |
+| `src/presentation/viewmodels/JournalViewModel.ts`   | Core MVVM hook: state + actions                                               |
+| `build_env/flake.nix`                               | Nix dev shell with Android SDK, Maestro, Node                                 |
 
 ## Code Quality
 
