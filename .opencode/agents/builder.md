@@ -1,7 +1,7 @@
 ---
 description: Primary implementation agent for code changes
 mode: all
-model: opencode-go/deepseek-v4-pro
+model: opencode-go/mimo-v2.5-pro
 temperature: 0.0
 permission:
   edit: allow
