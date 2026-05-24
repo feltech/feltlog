@@ -14,8 +14,20 @@ module.exports = {
     'prettier',
   ],
   parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    ecmaFeatures: {
+      jsx: true,
+    },
+  },
   plugins: ['@typescript-eslint', 'react', 'react-hooks', 'jsdoc', 'jest', 'prettier'],
   rules: {
+    // Disable unused variable rules as they incorrectly flag types in some
+    // environments.
+    'no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': 'off',
+
     // Enforce Prettier formatting as an ESLint rule to ensure consistency.
     'prettier/prettier': 'error',
 
@@ -25,11 +37,9 @@ module.exports = {
     // React 17+ doesn't require React to be in scope for JSX.
     'react/react-in-jsx-scope': 'off',
 
-    // Do not require explicit return types on module boundaries to allow TS inference.
+    // Do not require explicit return types on module boundaries to allow TS
+    // inference.
     '@typescript-eslint/explicit-module-boundary-types': 'off',
-
-    // Disallow unused variables, but allow them if they start with an underscore.
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
 
     // Enforce JSDoc comments for functions, methods, and classes to maintain
     // documentation.

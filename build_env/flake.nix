@@ -90,6 +90,9 @@
             # e2e testing
             maestro
 
+            # Git hooks
+            pre-commit
+
             # AI coding agent
             opencode
             opencode-dev
