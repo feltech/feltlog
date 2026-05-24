@@ -1,3 +1,4 @@
+import type { Migration } from 'kysely';
 import { InMemoryMigrationProvider } from '@/src/data/database/migrations/migrationProvider';
 
 /** Unit tests for the InMemoryMigrationProvider. */
@@ -7,7 +8,8 @@ describe('InMemoryMigrationProvider', () => {
    * without copies or transformations.
    */
   it('getMigrations() returns the migrations record passed to the constructor', async () => {
-    const migrations: Record = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migrations: Record<string, Migration> = {
       '001_test': {
         up: async () => {},
         down: async () => {},

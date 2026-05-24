@@ -52,7 +52,8 @@ function formatAddress(geocode: ExpoLocation.LocationGeocodedAddress): string | 
  */
 export default function JournalEntryModal() {
   const router = useRouter();
-  const { entryId } = useLocalSearchParams();
+  const { entryId } = useLocalSearchParams<{ entryId?: string }>();
+  const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
   const { state, actions } = useJournalViewModel();
 
   const [content, setContent] = useState('');
@@ -62,14 +63,14 @@ export default function JournalEntryModal() {
   const [error, setError] = useState<string | null>(null);
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const autosaveTimerRef = useRef<ReturnType>();
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingSaveRef = useRef(false);
   // Tracks whether a save API call is currently in-flight to prevent stacking.
   const savingRef = useRef(false);
   // Ref to a stable autosave function that always has access to latest state.
   // Avoids re-running the debounce effect when non-content deps (like actions)
   // change.
-  const autosaveFnRef = useRef<() => Promise>();
+  const autosaveFnRef = useRef<() => Promise<void>>(undefined);
 
   // Undo/redo history stack
   const [history, setHistory] = useState<string[]>(['']);
@@ -82,12 +83,12 @@ export default function JournalEntryModal() {
   const [locDenied, setLocDenied] = useState(false);
   // True while a debounced reverse-geocode is pending or in-flight.
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
-  const geoDebounceRef = useRef<ReturnType>();
+  const geoDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   // Counter used to discard stale geocode results when the user drags again
   // while a previous request is still outstanding.
   const pendingGeocodeRef = useRef(0);
 
-  const existingEntry = entryId ? state.entries.find(e => e.id === entryId) : null;
+  const existingEntry = resolvedEntryId ? state.entries.find(e => e.id === resolvedEntryId) : null;
   const isEditing = !!existingEntry;
 
   useEffect(() => {
@@ -158,7 +159,7 @@ export default function JournalEntryModal() {
   // Stable autosave fn — reassigned every render to close over latest state.
   // Only called from the debounce timeout, never during render.
   autosaveFnRef.current = async () => {
-    if (!isEditing || !entryId || !content.trim()) return;
+    if (!isEditing || !resolvedEntryId || !content.trim()) return;
     if (savingRef.current) {
       pendingSaveRef.current = true;
       return;
@@ -167,7 +168,7 @@ export default function JournalEntryModal() {
     pendingSaveRef.current = false;
     setAutoSaving(true);
     try {
-      await actions.updateEntry(entryId, {
+      await actions.updateEntry(resolvedEntryId, {
         content: content.trim(),
         datetime,
         tags,
@@ -230,28 +231,31 @@ export default function JournalEntryModal() {
    *
    * @returns The address string, or undefined on failure/timeout.
    */
-  const reverseGeocodeWithTimeout = useCallback(async (lat: number, lng: number): Promise => {
-    try {
-      let timeoutId: ReturnType;
-      const geocodePromise = ExpoLocation.reverseGeocodeAsync({
-        latitude: lat,
-        longitude: lng,
-      });
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('timeout')), GEOCODE_TIMEOUT_MS);
-      });
-      const geos = await Promise.race([geocodePromise, timeoutPromise]);
-      // Clear the timeout if the geocode resolved first — prevents the
-      // timer from firing uselessly after the race is over.
-      clearTimeout(timeoutId!);
-      if (geos && geos.length > 0) {
-        return formatAddress(geos[0]);
+  const reverseGeocodeWithTimeout = useCallback(
+    async (lat: number, lng: number): Promise<string | undefined> => {
+      try {
+        let timeoutId: ReturnType<typeof setTimeout>;
+        const geocodePromise = ExpoLocation.reverseGeocodeAsync({
+          latitude: lat,
+          longitude: lng,
+        });
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('timeout')), GEOCODE_TIMEOUT_MS);
+        });
+        const geos = await Promise.race([geocodePromise, timeoutPromise]);
+        // Clear the timeout if the geocode resolved first — prevents the
+        // timer from firing uselessly after the race is over.
+        clearTimeout(timeoutId!);
+        if (geos && geos.length > 0) {
+          return formatAddress(geos[0]);
+        }
+      } catch {
+        // timeout or other error — return undefined
       }
-    } catch {
-      // timeout or other error — return undefined
-    }
-    return undefined;
-  }, []);
+      return undefined;
+    },
+    [],
+  );
 
   /**
    * Called when the map region finishes changing after a user gesture. Updates the
@@ -267,7 +271,9 @@ export default function JournalEntryModal() {
       // Only react to user-driven gestures, not programmatic camera moves.
       if (!props?.isUserInteraction) return;
 
-      const [newLng, newLat] = feature.geometry.coordinates;
+      const geom = feature.geometry;
+      if (geom.type !== 'Point') return;
+      const [newLng, newLat] = (geom as GeoJSON.Point).coordinates;
 
       // Update coordinates immediately so the save uses the right location.
       // Elevation is reset to 0 because there is no elevation API for arbitrary
@@ -323,9 +329,9 @@ export default function JournalEntryModal() {
   const handleSaveAndClose = useCallback(async () => {
     // Flush any pending autosave for edit mode
     clearTimeout(autosaveTimerRef.current);
-    if (isEditing && entryId && pendingSaveRef.current && content.trim()) {
+    if (isEditing && resolvedEntryId && pendingSaveRef.current && content.trim()) {
       try {
-        await actions.updateEntry(entryId, {
+        await actions.updateEntry(resolvedEntryId, {
           content: content.trim(),
           datetime,
           tags,
@@ -345,7 +351,7 @@ export default function JournalEntryModal() {
     }
 
     router.back();
-  }, [isEditing, entryId, content, datetime, tags, mapLocation, actions, router]);
+  }, [isEditing, resolvedEntryId, content, datetime, tags, mapLocation, actions, router]);
 
   /**
    * Adds the current tag input value as a new tag on the entry.

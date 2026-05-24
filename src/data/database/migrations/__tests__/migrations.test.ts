@@ -4,6 +4,10 @@ import { migrationProvider } from '@/src/data/database/migrations';
 import { closeSqlite, openKysely } from '@/src/data/database/database';
 import * as m20260523 from '../20260523_one_create_initial_tables';
 
+/** A generic row type returned by raw SQL queries. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>;
+
 /**
  * Integration tests for the database migration system.
  *
@@ -12,7 +16,8 @@ import * as m20260523 from '../20260523_one_create_initial_tables';
  * idempotency, and the schema contract.
  */
 describe('Migrations', () => {
-  let db: Kysely;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let db: Kysely<any>;
   let sqliteDb: SQLiteDatabase | null;
 
   beforeEach(async () => {
@@ -49,7 +54,7 @@ describe('Migrations', () => {
         CompiledQuery.raw("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"),
       );
 
-      const tableNames: string[] = result.rows.map((r: Record) => String(r.name));
+      const tableNames: string[] = (result.rows as Row[]).map(r => String(r.name));
 
       // Application tables
       expect(tableNames).toContain('journal_entries');
@@ -68,26 +73,27 @@ describe('Migrations', () => {
     it('should create tags table with correct columns', async () => {
       const tableInfo = await db.executeQuery(CompiledQuery.raw('PRAGMA table_info(tags)'));
 
-      const idCol = tableInfo.rows.find((c: Record) => c.name === 'id');
+      const rows = tableInfo.rows as Row[];
+      const idCol = rows.find(c => c.name === 'id');
       expect(idCol).toBeDefined();
-      expect(idCol.type).toBe('TEXT');
-      expect(idCol.pk).toBe(1);
+      expect(idCol!.type).toBe('TEXT');
+      expect(idCol!.pk).toBe(1);
 
-      const nameCol = tableInfo.rows.find((c: Record) => c.name === 'name');
+      const nameCol = rows.find(c => c.name === 'name');
       expect(nameCol).toBeDefined();
-      expect(nameCol.type).toBe('TEXT');
-      expect(nameCol.notnull).toBe(1);
+      expect(nameCol!.type).toBe('TEXT');
+      expect(nameCol!.notnull).toBe(1);
 
-      const createdAtCol = tableInfo.rows.find((c: Record) => c.name === 'created_at');
+      const createdAtCol = rows.find(c => c.name === 'created_at');
       expect(createdAtCol).toBeDefined();
-      expect(createdAtCol.type).toBe('TEXT');
-      expect(createdAtCol.notnull).toBe(1);
+      expect(createdAtCol!.type).toBe('TEXT');
+      expect(createdAtCol!.notnull).toBe(1);
 
       // Verify the UNIQUE constraint on name via its implicit index.
-      const indexList = await db.executeQuery(CompiledQuery.raw('PRAGMA index_list(tags)'));
+      const indexResult = await db.executeQuery(CompiledQuery.raw('PRAGMA index_list(tags)'));
 
-      const uniqueIndex = indexList.rows.find(
-        (i: Record) => i.unique === 1 && String(i.origin || '').includes('u'),
+      const uniqueIndex = (indexResult.rows as Row[]).find(
+        i => i.unique === 1 && String(i.origin || '').includes('u'),
       );
       expect(uniqueIndex).toBeDefined();
     });
@@ -101,6 +107,8 @@ describe('Migrations', () => {
         CompiledQuery.raw('PRAGMA table_info(journal_entries)'),
       );
 
+      const rows = tableInfo.rows as Row[];
+
       /**
        * Finds a column definition by name from PRAGMA table_info results.
        *
@@ -108,60 +116,59 @@ describe('Migrations', () => {
        *
        * @returns The column info row, or undefined if not found.
        */
-      const toCol = (name: string): Record | undefined =>
-        tableInfo.rows.find((c: Record) => c.name === name);
+      const toCol = (name: string): Row | undefined => rows.find(c => c.name === name);
 
       // Required columns
       const idCol = toCol('id');
       expect(idCol).toBeDefined();
-      expect(idCol.type).toBe('TEXT');
-      expect(idCol.pk).toBe(1);
+      expect(idCol!.type).toBe('TEXT');
+      expect(idCol!.pk).toBe(1);
 
       const contentCol = toCol('content');
       expect(contentCol).toBeDefined();
-      expect(contentCol.type).toBe('TEXT');
-      expect(contentCol.notnull).toBe(1);
+      expect(contentCol!.type).toBe('TEXT');
+      expect(contentCol!.notnull).toBe(1);
 
       const datetimeCol = toCol('datetime');
       expect(datetimeCol).toBeDefined();
-      expect(datetimeCol.type).toBe('TEXT');
-      expect(datetimeCol.notnull).toBe(1);
+      expect(datetimeCol!.type).toBe('TEXT');
+      expect(datetimeCol!.notnull).toBe(1);
 
       const createdAtCol = toCol('created_at');
       expect(createdAtCol).toBeDefined();
-      expect(createdAtCol.type).toBe('TEXT');
-      expect(createdAtCol.notnull).toBe(1);
+      expect(createdAtCol!.type).toBe('TEXT');
+      expect(createdAtCol!.notnull).toBe(1);
 
       const modifiedAtCol = toCol('modified_at');
       expect(modifiedAtCol).toBeDefined();
-      expect(modifiedAtCol.type).toBe('TEXT');
-      expect(modifiedAtCol.notnull).toBe(1);
+      expect(modifiedAtCol!.type).toBe('TEXT');
+      expect(modifiedAtCol!.notnull).toBe(1);
 
       // Nullable location columns
       const latCol = toCol('location_latitude');
       expect(latCol).toBeDefined();
-      expect(latCol.type).toBe('REAL');
-      expect(latCol.notnull).toBe(0);
+      expect(latCol!.type).toBe('REAL');
+      expect(latCol!.notnull).toBe(0);
 
       const lonCol = toCol('location_longitude');
       expect(lonCol).toBeDefined();
-      expect(lonCol.type).toBe('REAL');
-      expect(lonCol.notnull).toBe(0);
+      expect(lonCol!.type).toBe('REAL');
+      expect(lonCol!.notnull).toBe(0);
 
       const elevCol = toCol('location_elevation');
       expect(elevCol).toBeDefined();
-      expect(elevCol.type).toBe('REAL');
-      expect(elevCol.notnull).toBe(0);
+      expect(elevCol!.type).toBe('REAL');
+      expect(elevCol!.notnull).toBe(0);
 
       const accCol = toCol('location_accuracy');
       expect(accCol).toBeDefined();
-      expect(accCol.type).toBe('REAL');
-      expect(accCol.notnull).toBe(0);
+      expect(accCol!.type).toBe('REAL');
+      expect(accCol!.notnull).toBe(0);
 
       const addrCol = toCol('location_address');
       expect(addrCol).toBeDefined();
-      expect(addrCol.type).toBe('TEXT');
-      expect(addrCol.notnull).toBe(0);
+      expect(addrCol!.type).toBe('TEXT');
+      expect(addrCol!.notnull).toBe(0);
     });
 
     /**
@@ -173,17 +180,17 @@ describe('Migrations', () => {
         CompiledQuery.raw('PRAGMA table_info(journal_entry_tags)'),
       );
 
-      const cols = tableInfo.rows as Record[];
+      const cols = tableInfo.rows as Row[];
 
       const entryIdCol = cols.find(c => c.name === 'entry_id');
       expect(entryIdCol).toBeDefined();
-      expect(entryIdCol.type).toBe('TEXT');
-      expect(entryIdCol.notnull).toBe(1);
+      expect(entryIdCol!.type).toBe('TEXT');
+      expect(entryIdCol!.notnull).toBe(1);
 
       const tagIdCol = cols.find(c => c.name === 'tag_id');
       expect(tagIdCol).toBeDefined();
-      expect(tagIdCol.type).toBe('TEXT');
-      expect(tagIdCol.notnull).toBe(1);
+      expect(tagIdCol!.type).toBe('TEXT');
+      expect(tagIdCol!.notnull).toBe(1);
 
       // Verify composite primary key: the named PK constraint should
       // produce an index with origin 'pk'.
@@ -191,9 +198,9 @@ describe('Migrations', () => {
         CompiledQuery.raw('PRAGMA index_list(journal_entry_tags)'),
       );
 
-      const pkIndex = indexList.rows.find((i: Record) => String(i.origin || '') === 'pk');
+      const pkIndex = (indexList.rows as Row[]).find(i => String(i.origin || '') === 'pk');
       expect(pkIndex).toBeDefined();
-      expect(pkIndex.unique).toBe(1);
+      expect(pkIndex!.unique).toBe(1);
     });
 
     /**
@@ -205,21 +212,21 @@ describe('Migrations', () => {
         CompiledQuery.raw('PRAGMA foreign_key_list(journal_entry_tags)'),
       );
 
-      const fks = fkList.rows as Record[];
+      const fks = fkList.rows as Row[];
 
       // FK from entry_id → journal_entries.id with cascade delete
       const entryFk = fks.find(fk => fk.from === 'entry_id');
       expect(entryFk).toBeDefined();
-      expect(entryFk.table).toBe('journal_entries');
-      expect(entryFk.to).toBe('id');
-      expect(entryFk.on_delete).toBe('CASCADE');
+      expect(entryFk!.table).toBe('journal_entries');
+      expect(entryFk!.to).toBe('id');
+      expect(entryFk!.on_delete).toBe('CASCADE');
 
       // FK from tag_id → tags.id with cascade delete
       const tagFk = fks.find(fk => fk.from === 'tag_id');
       expect(tagFk).toBeDefined();
-      expect(tagFk.table).toBe('tags');
-      expect(tagFk.to).toBe('id');
-      expect(tagFk.on_delete).toBe('CASCADE');
+      expect(tagFk!.table).toBe('tags');
+      expect(tagFk!.to).toBe('id');
+      expect(tagFk!.on_delete).toBe('CASCADE');
     });
   });
 
@@ -239,7 +246,7 @@ describe('Migrations', () => {
         CompiledQuery.raw("SELECT name FROM sqlite_master WHERE type = 'table'"),
       );
 
-      const tableNames: string[] = result.rows.map((r: Record) => String(r.name));
+      const tableNames: string[] = (result.rows as Row[]).map(r => String(r.name));
 
       expect(tableNames).not.toContain('journal_entries');
       expect(tableNames).not.toContain('journal_entry_tags');
@@ -277,7 +284,7 @@ describe('Migrations', () => {
         CompiledQuery.raw("SELECT name FROM sqlite_master WHERE type = 'table'"),
       );
 
-      const tableNames: string[] = result.rows.map((r: Record) => String(r.name));
+      const tableNames: string[] = (result.rows as Row[]).map(r => String(r.name));
 
       expect(tableNames).toContain('journal_entries');
       expect(tableNames).toContain('journal_entry_tags');
@@ -314,7 +321,7 @@ describe('Migrations', () => {
         CompiledQuery.raw("SELECT name FROM sqlite_master WHERE type = 'table'"),
       );
 
-      const tableNames: string[] = tables.rows.map((r: Record) => String(r.name));
+      const tableNames: string[] = (tables.rows as Row[]).map(r => String(r.name));
 
       expect(tableNames).toContain('journal_entries');
       expect(tableNames).toContain('journal_entry_tags');
@@ -327,7 +334,7 @@ describe('Migrations', () => {
         CompiledQuery.raw('SELECT name FROM kysely_migration'),
       );
 
-      const migrationNames: string[] = trackingResult.rows.map((r: Record) => String(r.name));
+      const migrationNames: string[] = (trackingResult.rows as Row[]).map(r => String(r.name));
 
       expect(migrationNames).toEqual(['20260523_one_create_initial_tables']);
     });
@@ -374,7 +381,7 @@ describe('Migrations', () => {
       const entryResult = await db.executeQuery(
         CompiledQuery.raw("SELECT * FROM journal_entries WHERE id = 'entry-1'"),
       );
-      const entry = entryResult.rows[0] as Record;
+      const entry = entryResult.rows[0] as Row;
 
       expect(entry.id).toBe('entry-1');
       expect(entry.content).toBe('Test content');
@@ -391,7 +398,7 @@ describe('Migrations', () => {
       const tagResult = await db.executeQuery(
         CompiledQuery.raw("SELECT * FROM tags WHERE id = 'tag-1'"),
       );
-      const tag = tagResult.rows[0] as Record;
+      const tag = tagResult.rows[0] as Row;
 
       expect(tag.id).toBe('tag-1');
       expect(tag.name).toBe('test-tag');
@@ -403,7 +410,7 @@ describe('Migrations', () => {
           "SELECT * FROM journal_entry_tags WHERE entry_id = 'entry-1' AND tag_id = 'tag-1'",
         ),
       );
-      const jet = jetResult.rows[0] as Record;
+      const jet = jetResult.rows[0] as Row;
 
       expect(jet.entry_id).toBe('entry-1');
       expect(jet.tag_id).toBe('tag-1');
@@ -430,7 +437,7 @@ describe('Migrations', () => {
       const result = await db.executeQuery(
         CompiledQuery.raw("SELECT * FROM journal_entries WHERE id = 'entry-null-loc'"),
       );
-      const row = result.rows[0] as Record;
+      const row = result.rows[0] as Row;
 
       // Non-null columns should still be present.
       expect(row.id).toBe('entry-null-loc');

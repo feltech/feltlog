@@ -1,4 +1,4 @@
-import type { MigrationProvider } from 'kysely';
+import type { Migration, MigrationProvider } from 'kysely';
 
 /**
  * A MigrationProvider that serves migrations from an in-memory record.
@@ -7,14 +7,14 @@ import type { MigrationProvider } from 'kysely';
  * in React Native / Expo where those modules are unavailable.
  */
 export class InMemoryMigrationProvider implements MigrationProvider {
-  private readonly migrations: Record;
+  private readonly migrations: Record<string, Migration>;
 
   /**
    * Creates a new InMemoryMigrationProvider.
    *
    * @param migrations - A record of migration name to Migration object.
    */
-  constructor(migrations: Record) {
+  constructor(migrations: Record<string, Migration>) {
     this.migrations = migrations;
   }
 
@@ -25,7 +25,7 @@ export class InMemoryMigrationProvider implements MigrationProvider {
    *
    * @returns A record of migration name to Migration object.
    */
-  async getMigrations(): Promise {
+  async getMigrations(): Promise<Record<string, Migration>> {
     return this.migrations;
   }
 }

@@ -4,6 +4,22 @@ import { ActivityIndicator, Text } from 'react-native-paper';
 import { JournalEntry } from '../../domain/entities/JournalEntry';
 import { JournalEntryCard } from './JournalEntryCard';
 
+/** Props for the JournalList component. */
+export interface JournalListProps {
+  /** The list of journal entries to display. */
+  entries: JournalEntry[];
+  /** Whether data is currently loading. */
+  loading: boolean;
+  /** Whether more entries are available for pagination. */
+  hasMore: boolean;
+  /** Callback to load more entries. */
+  onLoadMore: () => void;
+  /** Callback to refresh the entire list. */
+  onRefresh: () => void;
+  /** Optional callback when an entry is pressed. */
+  onEntryPress?: (entry: JournalEntry) => void;
+}
+
 /**
  * Component for rendering a list of journal entries.
  *
@@ -17,7 +33,7 @@ import { JournalEntryCard } from './JournalEntryCard';
  *
  * @returns The rendered list of journal entries.
  */
-export const JournalList: React.FC = ({
+export const JournalList: React.FC<JournalListProps> = ({
   entries,
   loading,
   hasMore,

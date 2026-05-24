@@ -23,10 +23,25 @@ module.exports = {
   },
   plugins: ['@typescript-eslint', 'react', 'react-hooks', 'jsdoc', 'jest', 'prettier'],
   rules: {
-    // Disable unused variable rules as they incorrectly flag types in some
-    // environments.
+    // Enforce no unused variables. Variables and parameters prefixed with
+    // underscore are ignored, but this convention should be used sparingly,
+    // only for genuinely unused parameters (e.g., callback args you don't
+    // need). For ESLint false positives on interface method parameters or
+    // type annotation names, use scoped disable/enable blocks or inline
+    // disable-next-line comments instead of prefixing with underscore.
+    // The base no-unused-vars rule is disabled because
+    // @typescript-eslint/no-unused-vars handles everything including
+    // type-only positions.
     'no-unused-vars': 'off',
-    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        args: 'all',
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      },
+    ],
 
     // Enforce Prettier formatting as an ESLint rule to ensure consistency.
     'prettier/prettier': 'error',

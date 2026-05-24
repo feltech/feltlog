@@ -66,6 +66,53 @@ jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
 }));
 
+/**
+ * Mock @expo/vector-icons to avoid `setState` warnings during tests.
+ *
+ * The real Icon component calls setState during construction (for font loading /
+ * glyph-map initialization), which triggers React act() warnings in the test
+ * environment. Replacing it with a View avoids the issue.
+ */
+jest.mock('@expo/vector-icons', () => {
+  const RN = require('react-native');
+  const React = require('react');
+
+  /**
+   * Mock Icon component rendering as a View that displays its name.
+   *
+   * @param props - The component props.
+   * @param props.name - The icon name.
+   * @param props.size - The icon size (unused in mock).
+   * @param props.color - The icon color (unused in mock).
+   *
+   * @returns The rendered mock view.
+   */
+  const MockIcon = props => {
+    const { name, size, color, ...rest } = props;
+    void size;
+    void color;
+    return React.createElement(RN.View, { ...rest, 'data-icon-name': name }, null);
+  };
+  MockIcon.displayName = 'MockIcon';
+
+  /**
+   * Factory that returns the mock Icon component.
+   *
+   * @returns The mock Icon component.
+   */
+  const createIconSet = () => MockIcon;
+
+  return {
+    __esModule: true,
+    default: MockIcon,
+    createIconSet,
+    createIconSetFromFontAwesome5: createIconSet,
+    createIconSetFromFontAwesome6: createIconSet,
+    createIconSetFromFontello: createIconSet,
+    createIconSetFromIcoMoon: createIconSet,
+  };
+});
+
 jest.mock('react-native-markdown-renderer', () => {
   const RN = require('react-native');
   const React = require('react');
@@ -82,5 +129,31 @@ jest.mock('react-native-markdown-renderer', () => {
   return {
     __esModule: true,
     default: MockMarkdown,
+  };
+});
+
+/**
+ * Mock the MaterialCommunityIcons icon set used by react-native-paper.
+ *
+ * React Native Paper internally requires this module to render its icons. The real
+ * component calls setState during construction (for glyph-map loading), which triggers
+ * React act() warnings in the test environment.
+ */
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
+  const RN = require('react-native');
+  const React = require('react');
+
+  /**
+   * Mock icon component that renders as a View.
+   *
+   * @param props - The component props.
+   *
+   * @returns The rendered mock view.
+   */
+  const MockIcon = props => React.createElement(RN.View, props);
+  MockIcon.displayName = 'MockMaterialCommunityIcon';
+  return {
+    __esModule: true,
+    default: MockIcon,
   };
 });

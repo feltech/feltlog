@@ -3,7 +3,7 @@ import { act, render } from '@testing-library/react-native';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 import { useJournalViewModel } from '../JournalViewModel';
 import type { JournalRepository } from '@/src/domain/repositories/JournalRepository';
-import type { Tag } from '@/src/domain/entities/JournalEntry';
+import type { JournalEntry, Tag } from '@/src/domain/entities/JournalEntry';
 
 /** Mock repository for testing JournalViewModel. */
 class MockRepo implements JournalRepository {
@@ -28,7 +28,7 @@ class MockRepo implements JournalRepository {
    *
    * @returns An empty array for testing.
    */
-  async getAllEntries(): Promise {
+  async getAllEntries(): Promise<JournalEntry[]> {
     this.getAllEntriesCalls++;
     return [];
   }
@@ -38,7 +38,7 @@ class MockRepo implements JournalRepository {
    *
    * @returns An empty array for testing.
    */
-  async searchEntries(): Promise {
+  async searchEntries(): Promise<JournalEntry[]> {
     this.searchEntriesCalls++;
     return [];
   }
@@ -52,7 +52,7 @@ class MockRepo implements JournalRepository {
  *
  * @returns Null.
  */
-function Harness({ onReady }: { onReady: (api: ReturnType) => void }) {
+function Harness({ onReady }: { onReady: (api: ReturnType<typeof useJournalViewModel>) => void }) {
   const api = useJournalViewModel();
   React.useEffect(() => onReady(api), [api, onReady]);
   return null;
@@ -61,7 +61,7 @@ function Harness({ onReady }: { onReady: (api: ReturnType) => void }) {
 describe('JournalViewModel', () => {
   it('calls repository methods at most once per action', async () => {
     const repo = new MockRepo();
-    let vm: ReturnType | null = null;
+    let vm: ReturnType<typeof useJournalViewModel> | null = null;
 
     render(
       <RepositoryProvider repository={repo}>
@@ -93,7 +93,7 @@ describe('JournalViewModel', () => {
 
   it('does not call load more when entries are empty', async () => {
     const repo = new MockRepo();
-    let vm: ReturnType | null = null;
+    let vm: ReturnType<typeof useJournalViewModel> | null = null;
 
     render(
       <RepositoryProvider repository={repo}>

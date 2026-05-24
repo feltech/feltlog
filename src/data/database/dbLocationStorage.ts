@@ -8,7 +8,7 @@ const KEY = 'feltlog.lastDatabaseName';
  *
  * @returns The last used database name or null if not set.
  */
-export async function getLastDatabaseName(): Promise {
+export async function getLastDatabaseName(): Promise<string | null> {
   try {
     const v = await AsyncStorage.getItem(KEY);
     return v ?? null;
@@ -22,11 +22,11 @@ export async function getLastDatabaseName(): Promise {
  *
  * @param name The name of the database to persist.
  */
-export async function setLastDatabaseName(name: string): Promise {
+export async function setLastDatabaseName(name: string): Promise<void> {
   await AsyncStorage.setItem(KEY, name);
 }
 
 /** Clear the last used database name from storage. */
-export async function clearLastDatabaseName(): Promise {
+export async function clearLastDatabaseName(): Promise<void> {
   await AsyncStorage.removeItem(KEY);
 }

@@ -62,7 +62,7 @@ export const useJournalViewModel = () => {
    * @param updates - Partial state object to merge with current state.
    */
   const updateState = useCallback(
-    (updates: Partial) => {
+    (updates: Partial<JournalViewModelState>) => {
       setState(prev => ({ ...prev, ...updates }));
     },
     [setState],
@@ -167,7 +167,12 @@ export const useJournalViewModel = () => {
       datetime: Date = new Date(),
       tags: string[] = [],
       location?: JournalEntry['location'],
-    ): Promise => {
+    ): Promise<JournalEntry | null> => {
+      if (!content.trim()) {
+        setError('Content cannot be empty');
+        return null;
+      }
+
       updateState({ loading: true, error: null });
 
       try {
@@ -202,7 +207,10 @@ export const useJournalViewModel = () => {
    * @returns Promise resolving to the updated entry or null if update failed.
    */
   const updateEntry = useCallback(
-    async (id: string, updates: Partial): Promise => {
+    async (
+      id: string,
+      updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>,
+    ): Promise<JournalEntry | null> => {
       updateState({ loading: true, error: null });
 
       try {
@@ -236,7 +244,7 @@ export const useJournalViewModel = () => {
    * @returns Promise resolving to true if deletion was successful, false otherwise.
    */
   const deleteEntry = useCallback(
-    async (id: string): Promise => {
+    async (id: string): Promise<boolean> => {
       updateState({ loading: true, error: null });
 
       try {
