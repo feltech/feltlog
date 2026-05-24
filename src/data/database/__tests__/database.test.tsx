@@ -1,14 +1,40 @@
-import { render, waitFor } from '@testing-library/react-native';
-import DatabaseTestComponent from '../DatabaseTestComponent';
+import { act, renderHook } from '@testing-library/react-native';
+import { useDatabase } from '../database';
 
-describe('Database Initialization', () => {
-  it('should initialize the database without errors', async () => {
-    const { getByText } = render(<DatabaseTestComponent encryptionKey="test-key" />);
-    await waitFor(() => expect(getByText('Database initialized')).toBeTruthy(), { timeout: 5000 });
+describe('useDatabase', () => {
+  /**
+   * Generates a unique, random database filename for tests to avoid collisions.
+   *
+   * @returns A random database file name string.
+   */
+  const makeDbName = () => `test_${Date.now()}_${Math.random()}.db`;
+
+  it('should initialize the database with an encryption key', async () => {
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.db).not.toBeNull();
   });
 
-  it('should initialize the database without encryption key', async () => {
-    const { getByText } = render(<DatabaseTestComponent />);
-    await waitFor(() => expect(getByText('Database initialized')).toBeTruthy(), { timeout: 5000 });
+  it('should initialize the database without an explicit encryption key', async () => {
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.db).not.toBeNull();
   });
 });

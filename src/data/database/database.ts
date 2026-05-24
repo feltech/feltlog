@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Database } from '@/src/data/database/schema';
-import { up } from '@/src/data/database/migrations';
+import { Migrator } from 'kysely';
+import { migrationProvider } from '@/src/data/database/migrations';
 import { getLastDatabaseName, setLastDatabaseName } from './dbLocationStorage';
 import { CompiledQuery, Kysely } from 'kysely';
 import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite';
@@ -8,12 +9,12 @@ import { ExpoDialect } from 'kysely-expo';
 
 export interface UseDatabaseState {
   ready: boolean;
-  db: Kysely<Database> | null;
+  db: Kysely | null;
   error: unknown | null;
 }
 
 export interface OpenDatabaseResult {
-  db: Kysely<Database>;
+  db: Kysely;
   sqliteDb: SQLiteDatabase;
 }
 
@@ -30,10 +31,7 @@ export interface OpenDatabaseResult {
  * @returns An object containing both the Kysely instance and the underlying SQLite
  *   database.
  */
-export async function openKysely(
-  encryptionKey?: string,
-  databaseName?: string,
-): Promise<OpenDatabaseResult> {
+export async function openKysely(encryptionKey?: string, databaseName?: string): Promise {
   const dbName = databaseName || 'feltlog.db';
   const sqliteDb = await openDatabaseAsync(dbName);
 
@@ -58,7 +56,7 @@ export async function openKysely(
  *
  * @returns A promise that resolves when the database is closed.
  */
-export async function closeSqlite(sqliteDb: SQLiteDatabase): Promise<void> {
+export async function closeSqlite(sqliteDb: SQLiteDatabase): Promise {
   await sqliteDb.closeAsync();
 }
 
@@ -69,7 +67,7 @@ export async function closeSqlite(sqliteDb: SQLiteDatabase): Promise<void> {
  * root (or test) level.
  */
 export interface UseDatabaseApi extends UseDatabaseState {
-  initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
+  initialize: (params: { encryptionKey: string; databaseName: string }) => Promise;
   lastDatabaseName: string | null;
 }
 
@@ -118,7 +116,27 @@ export const useDatabase = (): UseDatabaseApi => {
   }) => {
     try {
       const { db } = await openKysely(encryptionKey, databaseName);
-      await up(db);
+      const migrator = new Migrator({
+        db,
+        provider: migrationProvider,
+      });
+
+      const { error: migrationError, results } = await migrator.migrateToLatest();
+
+      // Log results for debugging
+      results?.forEach(it => {
+        if (it.status === 'Success') {
+          console.log(`Migration "${it.migrationName}" executed successfully`);
+        } else if (it.status === 'Error') {
+          console.error(`Migration "${it.migrationName}" failed`);
+        }
+      });
+
+      if (migrationError) {
+        // Migration infrastructure error (e.g., can't create tracking tables)
+        throw migrationError;
+      }
+
       setState({ ready: true, db, error: null });
       try {
         if (databaseName) await setLastDatabaseName(databaseName);

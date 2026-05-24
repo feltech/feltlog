@@ -1,4 +1,5 @@
-import { up } from '@/src/data/database/migrations';
+import { Migrator } from 'kysely';
+import { migrationProvider } from '@/src/data/database/migrations';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 import { closeSqlite, openKysely } from '@/src/data/database/database';
 
@@ -13,7 +14,14 @@ describe('JournalRepositoryImpl integration (sqlite mock)', () => {
   it('creates and retrieves an entry without location (location remains undefined)', async () => {
     const { db, sqliteDb } = await openKysely(undefined, `jest_${Date.now()}.db`);
     try {
-      await up(db);
+      const migrator = new Migrator({
+        db,
+        provider: migrationProvider,
+      });
+      const { error: migrationError } = await migrator.migrateToLatest();
+      if (migrationError) {
+        throw migrationError;
+      }
       const repo = new JournalRepositoryImpl(db);
 
       const created = await repo.createEntry({

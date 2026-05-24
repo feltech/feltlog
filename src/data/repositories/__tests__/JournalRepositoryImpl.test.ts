@@ -1,6 +1,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
+import { Migrator } from 'kysely';
 import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
-import { up } from '../../database/migrations';
+import { migrationProvider } from '@/src/data/database/migrations';
 import { closeSqlite, openKysely } from '@/src/data/database/database';
 
 describe('JournalRepositoryImpl', () => {
@@ -11,7 +12,14 @@ describe('JournalRepositoryImpl', () => {
   beforeEach(async () => {
     const testDbName = `test_${Date.now()}_${Math.random()}.db`;
     const result = await openKysely(undefined, testDbName);
-    await up(result.db);
+    const migrator = new Migrator({
+      db: result.db,
+      provider: migrationProvider,
+    });
+    const { error: migrationError } = await migrator.migrateToLatest();
+    if (migrationError) {
+      throw migrationError;
+    }
     sqliteDb = result.sqliteDb;
     repository = new JournalRepositoryImpl(result.db);
   });
