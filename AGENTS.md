@@ -206,6 +206,32 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Do NOT "fix" tests by marking them as skipped to get the unit tests to pass — actually fix the
   tests or the code, or, if necessary, remove the tests if they are no longer relevant.
 
+### React `act()` warnings
+
+React `act()` warnings in test output indicate that state updates happened outside of `act()`
+scopes — typically because async effects (e.g. fetching data, timers) resolved after the test's
+render phase. These warnings are a **code smell** that should be addressed, not suppressed.
+
+**Preferred approach — refactor the test first:**
+
+- Wrap async renders in `await act(async () => { render(...) })` or use a helper like
+  `flushEffects()` that processes the microtask queue inside an `act()` scope after the initial
+  render.
+- Use `waitFor()` or `findBy*` queries to wait for async state changes to settle before making
+  assertions.
+- When using `jest.useFakeTimers()`, advance timers inside `act()`:
+  `await act(async () => { jest.advanceTimersByTime(ms); })`.
+
+**If test refactoring alone doesn't eliminate the warnings, refactor the component:**
+
+- Extract complex async logic from the component into a custom hook or a service that can be more
+  easily mocked or tested in isolation.
+- Use dependency injection for async operations so tests can provide synchronous fakes.
+- Consider splitting large effects into smaller, more testable units.
+
+**Do not** silence `act()` warnings by mocking `console.error` or adding broad `act()` wrappers
+that hide real timing issues.
+
 ## Coding guidelines
 
 - Do NOT modify files in `node_modules/`.
