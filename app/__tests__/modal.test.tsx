@@ -77,7 +77,7 @@ const DEFAULT_STATE: {
  *
  * @returns A record of mock functions keyed by action name.
  */
-function stubActions(): Record {
+function stubActions(): Record<string, jest.Mock> {
   return {
     refreshData: jest.fn(),
     loadMoreEntries: jest.fn(),
@@ -106,13 +106,17 @@ function stubActions(): Record {
 }
 
 /**
- * Helper to render the modal with both providers.
+ * Async helper to render the modal with both providers.
+ *
+ * Delegates to the synchronous render() from testing-library (which wraps in act()).
+ * The function is async so callers can await it; this allows async effects triggered by
+ * the component's mount to settle before assertions run.
  *
  * @param entryId - Optional entry ID to pass as a search param (edit mode).
  *
- * @returns The render result from testing-library.
+ * @returns Promise resolving to the render result from testing-library.
  */
-function renderModal(entryId?: string) {
+async function renderModal(entryId?: string): Promise<ReturnType<typeof render>> {
   (useLocalSearchParams as jest.Mock).mockReturnValue(entryId ? { entryId } : {});
   return render(
     <SafeAreaProvider>
@@ -124,6 +128,28 @@ function renderModal(entryId?: string) {
 }
 
 /**
+ * Flushes pending microtasks inside act() so that async state updates from the location
+ * fetch useEffect are captured and don't produce "not wrapped in act()" warnings.
+ *
+ * Each await Promise.resolve() processes one tick of the microtask queue. The location
+ * effect has three await calls (requestPermission, getPosition, reverseGeocode) so
+ * three flushes cover them. Extra flushes provide a safety margin.
+ *
+ * This is called AFTER renderModal(), not during it, to avoid nesting act() calls
+ * around the render itself.
+ */
+async function flushEffects(): Promise<void> {
+  // Use a loop inside a single act() scope to process multiple microtask
+  // ticks. Each await Promise.resolve() allows one microtask to run while
+  // React's act environment remains active, capturing any state updates.
+  await act(async () => {
+    for (let i = 0; i < 6; i++) {
+      await Promise.resolve();
+    }
+  });
+}
+
+/**
  * Helper that waits for the location fetch to settle so the map appears. In create mode
  * the component fetches the device position on mount.
  *
@@ -131,7 +157,7 @@ function renderModal(entryId?: string) {
  *
  * @returns Promise that resolves when the map testID is found.
  */
-async function waitForMap(result: ReturnType): Promise {
+async function waitForMap(result: ReturnType<typeof render>): Promise<void> {
   await waitFor(() => {
     expect(result.queryByTestId('entry-location-map')).toBeTruthy();
   });
@@ -143,7 +169,7 @@ async function waitForMap(result: ReturnType): Promise {
 
 describe('JournalEntryModal', () => {
   let mockBack: jest.Mock;
-  let actions: Record;
+  let actions: Record<string, jest.Mock>;
 
   beforeEach(() => {
     // Reset all mocks between tests so per-test overrides don't leak.
@@ -178,13 +204,14 @@ describe('JournalEntryModal', () => {
 
   describe('rendering', () => {
     it('renders without error in create mode (no entryId)', async () => {
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       // Sanity: the component produces a non-null component tree.
       expect(result.toJSON()).toBeTruthy();
     });
 
     it('shows a map in create mode once the initial location is fetched', async () => {
-      const result = renderModal();
+      const result = await renderModal();
       await waitForMap(result);
       // The map should be interactive: scroll and zoom enabled.
       const map = result.getByTestId('entry-location-map');
@@ -192,14 +219,15 @@ describe('JournalEntryModal', () => {
       expect(map.props.zoomEnabled).toBe(true);
     });
 
-    it('shows "New Entry" title in create mode', () => {
-      const result = renderModal();
+    it('shows "New Entry" title in create mode', async () => {
+      const result = await renderModal();
+      await flushEffects();
       // Paper's Appbar.Content renders the title as a Text child.
       const header = result.getByText('New Entry');
       expect(header).toBeTruthy();
     });
 
-    it('shows "Edit Entry" title in edit mode when entry exists', () => {
+    it('shows "Edit Entry" title in edit mode when entry exists', async () => {
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: {
           ...DEFAULT_STATE,
@@ -217,28 +245,32 @@ describe('JournalEntryModal', () => {
         actions,
       });
 
-      const result = renderModal('entry-1');
+      const result = await renderModal('entry-1');
       expect(result.getByText('Edit Entry')).toBeTruthy();
     });
 
-    it('renders undo and redo buttons', () => {
-      const result = renderModal();
+    it('renders undo and redo buttons', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('undo-button')).toBeTruthy();
       expect(result.getByTestId('redo-button')).toBeTruthy();
     });
 
-    it('renders a back button', () => {
-      const result = renderModal();
+    it('renders a back button', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('back')).toBeTruthy();
     });
 
-    it('renders the content text input', () => {
-      const result = renderModal();
+    it('renders the content text input', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('entry-content-input')).toBeTruthy();
     });
 
-    it('renders the tag input and add-tag icon', () => {
-      const result = renderModal();
+    it('renders the tag input and add-tag icon', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('tag-input')).toBeTruthy();
       expect(result.getByTestId('add-tag-icon')).toBeTruthy();
     });
@@ -250,7 +282,7 @@ describe('JournalEntryModal', () => {
 
   describe('map interactivity', () => {
     it('has scrollEnabled=true and zoomEnabled=true in create mode', async () => {
-      const result = renderModal();
+      const result = await renderModal();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -279,7 +311,7 @@ describe('JournalEntryModal', () => {
         actions,
       });
 
-      const result = renderModal('edit-1');
+      const result = await renderModal('edit-1');
       // The map should appear because the existing entry has a location.
       // Wait for any async effects to settle.
       await waitFor(() => {
@@ -298,7 +330,7 @@ describe('JournalEntryModal', () => {
 
   describe('isUpdatingLocation state and back-button', () => {
     it('back button is NOT disabled initially (before any region change)', async () => {
-      const result = renderModal();
+      const result = await renderModal();
       await waitForMap(result);
 
       const backBtn = result.getByTestId('back');
@@ -307,7 +339,8 @@ describe('JournalEntryModal', () => {
 
     it('back button becomes disabled when a user-driven region change fires', async () => {
       jest.useFakeTimers();
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -347,7 +380,8 @@ describe('JournalEntryModal', () => {
         },
       ]);
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -381,7 +415,8 @@ describe('JournalEntryModal', () => {
 
     it('shows the location-updating hint text when disabled', async () => {
       jest.useFakeTimers();
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -419,7 +454,8 @@ describe('JournalEntryModal', () => {
         },
       ]);
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -459,7 +495,8 @@ describe('JournalEntryModal', () => {
         .mockImplementationOnce(async () => [])
         .mockImplementation(() => new Promise(() => {})); // never resolves
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -516,7 +553,7 @@ describe('JournalEntryModal', () => {
         actions,
       });
 
-      const result = renderModal('edit-1');
+      const result = await renderModal('edit-1');
       await waitFor(() => {
         expect(result.queryByTestId('entry-location-map')).toBeTruthy();
       });
@@ -539,7 +576,8 @@ describe('JournalEntryModal', () => {
 
     it('ignores non-user-interaction region changes', async () => {
       jest.useFakeTimers();
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -580,7 +618,8 @@ describe('JournalEntryModal', () => {
           },
         ]);
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
@@ -637,7 +676,7 @@ describe('JournalEntryModal', () => {
 
   describe('back button', () => {
     it('calls router.back when pressed in create mode (no content)', async () => {
-      const result = renderModal();
+      const result = await renderModal();
       await waitForMap(result);
 
       fireEvent.press(result.getByTestId('back'));
@@ -649,7 +688,7 @@ describe('JournalEntryModal', () => {
     });
 
     it('creates an entry then navigates back when content is present', async () => {
-      const result = renderModal();
+      const result = await renderModal();
       await waitForMap(result);
 
       // Type some content.
@@ -675,7 +714,8 @@ describe('JournalEntryModal', () => {
         .mockImplementationOnce(async () => [])
         .mockImplementation(() => new Promise(() => {}));
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       // Trigger a user-driven region change to set isUpdatingLocation = true.
@@ -725,18 +765,21 @@ describe('JournalEntryModal', () => {
   // -------------------------------------------------------------------------
 
   describe('undo and redo', () => {
-    it('undo button is initially disabled', () => {
-      const result = renderModal();
+    it('undo button is initially disabled', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('undo-button').props.accessibilityState?.disabled).toBe(true);
     });
 
-    it('redo button is initially disabled', () => {
-      const result = renderModal();
+    it('redo button is initially disabled', async () => {
+      const result = await renderModal();
+      await flushEffects();
       expect(result.getByTestId('redo-button').props.accessibilityState?.disabled).toBe(true);
     });
 
-    it('undo becomes enabled after typing, and reverts text', () => {
-      const result = renderModal();
+    it('undo becomes enabled after typing, and reverts text', async () => {
+      const result = await renderModal();
+      await flushEffects();
       const contentInput = result.getByTestId('entry-content-input');
 
       fireEvent.changeText(contentInput, 'first version');
@@ -750,8 +793,9 @@ describe('JournalEntryModal', () => {
       expect(contentInput.props.value).toBe('first version');
     });
 
-    it('redo restores undone text', () => {
-      const result = renderModal();
+    it('redo restores undone text', async () => {
+      const result = await renderModal();
+      await flushEffects();
       const contentInput = result.getByTestId('entry-content-input');
 
       fireEvent.changeText(contentInput, 'first version');
@@ -775,8 +819,9 @@ describe('JournalEntryModal', () => {
   // -------------------------------------------------------------------------
 
   describe('tags', () => {
-    it('adds a tag when the plus icon is pressed', () => {
-      const result = renderModal();
+    it('adds a tag when the plus icon is pressed', async () => {
+      const result = await renderModal();
+      await flushEffects();
       const tagInput = result.getByTestId('tag-input');
 
       fireEvent.changeText(tagInput, 'work');
@@ -788,8 +833,9 @@ describe('JournalEntryModal', () => {
       expect(tagInput.props.value).toBe('');
     });
 
-    it('does not add duplicate tags', () => {
-      const result = renderModal();
+    it('does not add duplicate tags', async () => {
+      const result = await renderModal();
+      await flushEffects();
       const tagInput = result.getByTestId('tag-input');
 
       fireEvent.changeText(tagInput, 'work');
@@ -823,7 +869,8 @@ describe('JournalEntryModal', () => {
         .mockImplementationOnce(async () => [])
         .mockImplementation(() => new Promise(() => {}));
 
-      const result = renderModal();
+      const result = await renderModal();
+      await flushEffects();
       await waitForMap(result);
 
       // Trigger a region change to start a geocode debounce timer.
