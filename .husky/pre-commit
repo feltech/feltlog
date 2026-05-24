@@ -1,0 +1,15 @@
+npx --no-install lint-staged
+npm run typecheck
+# Check for large files (>1MB) added in this commit.
+# Uses process substitution to avoid the subshell issue where
+# `exit 1` inside a piped `while` loop exits only the subshell.
+large_files=""
+while IFS= read -r file; do
+  if [ -f "$file" ] && [ "$(wc -c < "$file")" -gt 1048576 ]; then
+    echo "Error: $file is larger than 1MB (1048576 bytes)"
+    large_files="$large_files $file"
+  fi
+done < <(git diff --cached --diff-filter=ACMR --name-only)
+if [ -n "$large_files" ]; then
+  exit 1
+fi

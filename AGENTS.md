@@ -163,9 +163,16 @@ use a many-to-many relationship via the junction table. No explicit indices.
 
 #### Commands
 
-Run these checks after every substantial change:
+Pre-commit hooks are managed by husky + lint-staged, which run automatically on `git commit`. The
+hooks run ESLint fix, Prettier format, and markdownlint on staged files, followed by a full
+typecheck and a large file (>1MB) check. Husky hooks are installed via the `prepare` script in
+`package.json`, which runs automatically on `npm install`.
 
-- **Linting:** `nix develop ./build_env --command npm run lint`
+Run these checks manually after every substantial change:
+
+- **Linting:** `nix develop ./build_env --command npm run lint` (includes TypeScript type checking
+  via `tsc --noEmit` before ESLint)
+- **Type checking (standalone):** `nix develop ./build_env --command npm run typecheck`
 - **Formatting:** `nix develop ./build_env --command npm run format`
 - **Format check (no write):** `nix develop ./build_env --command npm run format:check`
 - **Markdown Linting:** `nix develop ./build_env --command npm run lint:md`
@@ -286,7 +293,8 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 
 - Focus on Android platform initially (iOS scaffold present)
 - Expo EAS Build for APK generation
-- No pre-commit hooks initially
+- Pre-commit hooks managed by husky + lint-staged (runs ESLint fix, Prettier format, and
+  markdownlint on staged files, plus typecheck and large file check)
 
 ## Dependencies
 
