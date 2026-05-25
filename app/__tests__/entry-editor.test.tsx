@@ -5,7 +5,7 @@ import { PaperProvider } from 'react-native-paper';
 import * as ExpoLocation from 'expo-location';
 
 // The debounce / timeout constants that drive the component under test.
-// Must match the values in app/modal.tsx.
+// Must match the values in app/entry-editor.tsx.
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
 const CONTENT_UNDO_COALESCE_MS = 500;
@@ -47,7 +47,7 @@ jest.mock('react-native-safe-area-context', () => {
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
-import JournalEntryModal from '../modal';
+import JournalEntryModal from '../entry-editor';
 
 // ---------------------------------------------------------------------------
 // Helpers

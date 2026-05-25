@@ -33,18 +33,18 @@ export default function JournalScreen() {
     }, []),
   );
 
-  /** Navigates to the modal to create a new entry. */
+  /** Navigates to the entry editor to create a new entry. */
   const handleCreateEntry = () => {
-    router.push('/modal');
+    router.push('/entry-editor');
   };
 
   /**
-   * Navigates to the modal to edit an existing entry.
+   * Navigates to the entry editor to edit an existing entry.
    *
    * @param entry - The journal entry to edit.
    */
   const handleEntryPress = (entry: JournalEntry) => {
-    router.push(`/modal?entryId=${entry.id}`);
+    router.push(`/entry-editor?entryId=${entry.id}`);
   };
 
   /** Dismisses the current error message. */

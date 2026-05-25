@@ -27,8 +27,12 @@ level.
 
 ### Running tests
 
-- Unit tests are via jest and can be run using `npm test`
-- Coverage-enforced unit tests: `nix develop ./build_env --command npm run test:coverage`
+- Unit tests are via jest. The canonical verification command that builders MUST run after code
+  changes is `npm run test:coverage` — this enforces the ≥90% coverage threshold configured in
+  `package.json`.
+  - Full command: `nix develop ./build_env --command npm run test:coverage`
+- `npm test` runs jest without coverage enforcement; use it only for quick dev iterations, never
+  for final verification.
 - e2e tests are via android emulator and maestro.
 - To run e2e tests:
   1. Restart ADB (if in a bad state):
@@ -117,7 +121,8 @@ use a many-to-many relationship via the junction table. No explicit indices.
   migrations, AsyncStorage helper for DB name persistence
 - **Presentation layer** (`src/presentation/`): ViewModel hook (`useJournalViewModel`), UI
   components (`JournalList`, `JournalEntryCard`, `SetupDatabaseScreen`), theming
-- **App layer** (`app/`): Expo Router screens (root `_layout`, tabs, modal), file-based routing
+- **App layer** (`app/`): Expo Router screens (root `_layout`, tabs, entry-editor), file-based
+  routing
 
 ### Key Directories
 
@@ -260,7 +265,7 @@ that hide real timing issues.
 
 - Markdown support for content (basic formatting via `react-native-markdown-renderer`)
 - Autosave during editing
-- Undo/redo within editing session (history stack maintained in `app/modal.tsx`)
+- Undo/redo within editing session (history stack maintained in `app/entry-editor.tsx`)
 - Location capture on entry creation with Maplibre map display
   - Manual location updates via menu
   - Elevation data from location services

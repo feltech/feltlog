@@ -47,7 +47,7 @@ export default function TabLayout() {
           title: 'Journal',
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
           headerRight: () => (
-            <Link href="/modal" asChild>
+            <Link href="/entry-editor" asChild>
               <Pressable>
                 {({ pressed }) => (
                   <FontAwesome

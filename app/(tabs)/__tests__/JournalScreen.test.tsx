@@ -121,14 +121,14 @@ describe('JournalScreen', () => {
     expect(tree.toJSON()).toBeTruthy();
   });
 
-  /** Tests that pressing the FAB navigates to the modal. */
-  it('navigates to the modal when FAB is pressed', () => {
+  /** Tests that pressing the FAB navigates to the entry editor. */
+  it('navigates to the entry editor when FAB is pressed', () => {
     setupMocks();
 
     const { getByTestId } = renderScreen();
     fireEvent.press(getByTestId('create-entry-fab'));
 
-    expect(mockPush).toHaveBeenCalledWith('/modal');
+    expect(mockPush).toHaveBeenCalledWith('/entry-editor');
   });
 
   /** Tests that the Snackbar shows an error message when state.error is set. */
@@ -176,8 +176,8 @@ describe('JournalScreen', () => {
     expect(setError).toHaveBeenCalledWith(null);
   });
 
-  /** Tests that pressing a journal entry navigates to the edit modal. */
-  it('navigates to edit modal when a journal entry is pressed', () => {
+  /** Tests that pressing a journal entry navigates to the entry editor. */
+  it('navigates to entry editor when a journal entry is pressed', () => {
     setupMocks({
       state: {
         entries: [
@@ -195,6 +195,6 @@ describe('JournalScreen', () => {
 
     const { getByText } = renderScreen();
     fireEvent.press(getByText('Test entry'));
-    expect(mockPush).toHaveBeenCalledWith('/modal?entryId=entry-1');
+    expect(mockPush).toHaveBeenCalledWith('/entry-editor?entryId=entry-1');
   });
 });

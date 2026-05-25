@@ -13,7 +13,7 @@ test_output/
 /coverage/lcov-report/app/+not-found.tsx.html
 /coverage/lcov-report/app/_layout.tsx.html
 /coverage/lcov-report/app/index.html
-/coverage/lcov-report/app/modal.tsx.html
+/coverage/lcov-report/app/entry-editor.tsx.html
 /coverage/lcov-report/src/data/database/migrations/20260523_one_create_initial_tables.ts.html
 /coverage/lcov-report/src/data/database/migrations/index.html
 /coverage/lcov-report/src/data/database/migrations/index.ts.html
