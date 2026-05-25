@@ -47,8 +47,8 @@ level.
 
 ### Frontend
 
-- React Native with TypeScript (strict mode), Expo SDK 53
-- Expo Router v5 (file-based routing with `app/` directory, typed routes enabled)
+- React Native with TypeScript (strict mode), Expo SDK (see package.json for version)
+- Expo Router (file-based routing with `app/` directory, typed routes enabled)
 - React Native Paper (Material Design 3 UI components)
 - MVVM architecture pattern
 - Hermes JS engine (Android), React Native New Architecture enabled
@@ -91,9 +91,6 @@ use a many-to-many relationship via the junction table. No explicit indices.
   tables.
 - Initial data population (seeding) should be done within the first migration or a dedicated early
   migration — not via a separate mechanism.
-- To generate a new migration stub: `npx kysely migrate make <descriptive_name>`. This creates a
-  file in `src/data/database/migrations/` with the correct timestamp prefix. After generating, you
-  must also register it in `index.ts`.
 - The `kysely-ctl` CLI is a dev-time tool only. At runtime, the app uses the
   `InMemoryMigrationProvider` to serve migrations to Kysely's `Migrator`.
 
@@ -122,25 +119,17 @@ use a many-to-many relationship via the junction table. No explicit indices.
   components (`JournalList`, `JournalEntryCard`, `SetupDatabaseScreen`), theming
 - **App layer** (`app/`): Expo Router screens (root `_layout`, tabs, modal), file-based routing
 
-### Key Files
+### Key Directories
 
-| File                                                | Purpose                                                                       |
-| --------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `app/_layout.tsx`                                   | Root layout: loads fonts, initializes DB, provides Repository + Paper + Theme |
-| `app/(tabs)/_layout.tsx`                            | Tab navigator (Journal, Settings)                                             |
-| `app/(tabs)/index.tsx`                              | Journal list screen with FAB and Snackbar errors                              |
-| `app/modal.tsx`                                     | Create/edit entry modal with autosave, undo/redo, tags, location              |
-| `src/domain/entities/JournalEntry.ts`               | Domain interfaces: JournalEntry, Location, Tag, JournalEntryTag               |
-| `src/domain/repositories/JournalRepository.ts`      | Repository interface (12 methods)                                             |
-| `src/domain/repositories/RepositoryContext.tsx`     | React context providing JournalRepository via DI                              |
-| `src/data/database/schema.ts`                       | Kysely table type definitions                                                 |
-| `src/data/database/migrations/index.ts`             | Migration registry + InMemoryMigrationProvider export                         |
-| `src/data/database/migrations/migrationProvider.ts` | InMemoryMigrationProvider (replaces FileMigrationProvider for RN)             |
-| `src/data/database/migrations/*.ts`                 | Individual migration files (up/down with `Kysely<any>`)                       |
-| `src/data/database/database.ts`                     | `openKysely()`, `useDatabase()` React hook, Migrator setup                    |
-| `src/data/repositories/JournalRepositoryImpl.ts`    | Kysely-backed repository implementation                                       |
-| `src/presentation/viewmodels/JournalViewModel.ts`   | Core MVVM hook: state + actions                                               |
-| `build_env/flake.nix`                               | Nix dev shell with Android SDK, Maestro, Node                                 |
+| Directory                | Purpose                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `app/`                   | Expo Router screens and layouts (file-based routing)      |
+| `src/domain/`            | Entities, repository interfaces, DI context               |
+| `src/data/database/`     | Schema, migrations, Kysely connection, migration provider |
+| `src/data/repositories/` | Repository implementations (Kysely-backed)                |
+| `src/presentation/`      | ViewModels, UI components, theming                        |
+| `build_env/`             | Nix flake for reproducible dev environment                |
+| `e2e/`                   | Maestro e2e test flows                                    |
 
 ## Code Quality
 
@@ -201,6 +190,9 @@ for code and 88-character limit for JSDoc comments automatically.
 - Integration tests in `e2e/` directory using Maestro
 - `e2e/subflows/` contains reusable Maestro flow snippets
 - Minimum 90% code coverage enforced via Jest `coverageThreshold` in `package.json`
+- Coverage ≥ 90% is a floor, not a ceiling — the coverage report may reveal obvious untested paths
+  (uncovered branches, missing error cases) even when thresholds pass. Pursue these quick wins
+  proactively rather than stopping at the threshold.
 - Run `nix develop ./build_env --command npm run test:coverage` to generate a coverage report
 - Coverage applies to statements, branches, functions, and lines — all must be ≥ 90%
 - Files excluded from coverage are listed in `coveragePathIgnorePatterns` in the Jest config (these
@@ -251,7 +243,9 @@ that hide real timing issues.
   to better understand the reason for the error.
 - Use ES modules in all application source code (`src/`, `app/`).
 - Do not make git commits, the user will do that.
-- Add plenty of code comments, especially around conditionals.
+- Add inline comments explaining **why** code is added — the rationale, the context, the constraint
+  that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
+  Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
 - All non-trivial functions must have docstrings.
 - All classes and interfaces must have docstrings.
 - Avoid the use of singletons, prefer dependency injection or contexts.
@@ -323,25 +317,11 @@ that hide real timing issues.
 - Location-based search
 - Database indices or query optimization
 - Automatic backups
-- Import/export database via Storage Access Framework
 
 ## Build and Deployment
 
 - Focus on Android platform initially (iOS scaffold present)
 - Expo EAS Build for APK generation
-- Pre-commit hooks managed by husky + lint-staged (runs ESLint fix, Prettier format, and
-  markdownlint on staged files, plus typecheck and large file check)
-
-## Dependencies
-
-- Prefer established open-source packages
-- Liberal licensing required
-- Key packages:
-  - Expo (SDK 53) with Expo Router, expo-sqlite, expo-location
-  - React Native Paper (UI components)
-  - Kysely + kysely-expo (query builder)
-  - Maplibre GL Native (map rendering)
-  - uuid + react-native-get-random-values (ID generation)
 
 ## Security Considerations
 

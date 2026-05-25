@@ -32,7 +32,9 @@
       "git status": "allow",
       "git branch *": "allow",
       "npm run *": "allow",
-      "nix develop ./build_env --command npm run *": "allow"
+      "nix develop ./build_env --command npm run *": "allow",
+      "nix develop ./build_env --command npm test": "allow",
+      "nix develop ./build_env --command npx jest": "allow"
     },
     "describe_image": "allow"
   },

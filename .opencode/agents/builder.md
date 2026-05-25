@@ -66,8 +66,9 @@ Do NOT request reviewer input for:
 
 ## Documentation and further context
 
-Consult the explorer agent when more documentation is needed. The explorer agent can browse the web
-efficiently to find online documentation, as well as browse the codebase.
+Before implementing unfamiliar libraries, APIs, or SDKs, delegate to the explorer agent to retrieve
+online documentation. Explorer should be the first stop when you do not already know the API or
+library well. The explorer agent can also browse the codebase for context.
 
 ---
 
