@@ -242,7 +242,7 @@ that hide real timing issues.
 - Read the stack trace of error messages and check the code in the last couple of mentioned files
   to better understand the reason for the error.
 - Use ES modules in all application source code (`src/`, `app/`).
-- Do not make git commits, the user will do that.
+- You may make git commits, but must propose the commit structure for review first.
 - Add inline comments explaining **why** code is added — the rationale, the context, the constraint
   that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
   Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
