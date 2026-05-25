@@ -8,6 +8,7 @@ import * as ExpoLocation from 'expo-location';
 // Must match the values in app/modal.tsx.
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
+const CONTENT_UNDO_COALESCE_MS = 500;
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted by Jest before any imports below.
@@ -847,11 +848,17 @@ describe('JournalEntryModal', () => {
     });
 
     it('undo becomes enabled after typing, and reverts text', async () => {
+      jest.useFakeTimers();
       const result = await renderModal();
       await flushEffects();
       const contentInput = result.getByTestId('entry-content-input');
 
       fireEvent.changeText(contentInput, 'first version');
+      // Advance past the coalesce window so the next keystroke starts a new
+      // undo entry.
+      await act(async () => {
+        jest.advanceTimersByTime(CONTENT_UNDO_COALESCE_MS + 50);
+      });
       fireEvent.changeText(contentInput, 'second version');
 
       // Undo should go back to 'first version'.
@@ -860,14 +867,22 @@ describe('JournalEntryModal', () => {
 
       fireEvent.press(undoBtn);
       expect(contentInput.props.value).toBe('first version');
+
+      jest.useRealTimers();
     });
 
     it('redo restores undone text', async () => {
+      jest.useFakeTimers();
       const result = await renderModal();
       await flushEffects();
       const contentInput = result.getByTestId('entry-content-input');
 
       fireEvent.changeText(contentInput, 'first version');
+      // Advance past the coalesce window so the next keystroke starts a new
+      // undo entry.
+      await act(async () => {
+        jest.advanceTimersByTime(CONTENT_UNDO_COALESCE_MS + 50);
+      });
       fireEvent.changeText(contentInput, 'second version');
 
       // Undo.
@@ -880,6 +895,83 @@ describe('JournalEntryModal', () => {
       fireEvent.press(redoBtn);
 
       expect(contentInput.props.value).toBe('second version');
+
+      jest.useRealTimers();
+    });
+
+    it('undo during an active burst resets coalescing so the next keystroke creates a fresh undo entry', async () => {
+      jest.useFakeTimers();
+      const result = await renderModal();
+      await flushEffects();
+      const contentInput = result.getByTestId('entry-content-input');
+
+      // Start a coalescing burst.
+      fireEvent.changeText(contentInput, 'burst text');
+
+      // Press undo while the coalesce timer is still running.
+      const undoBtn = result.getByTestId('undo-button');
+      fireEvent.press(undoBtn);
+      expect(contentInput.props.value).toBe('');
+
+      // Type again immediately — because undo reset the coalescing flag,
+      // this keystroke should push a new undo snapshot.
+      fireEvent.changeText(contentInput, 'after undo');
+
+      // Undo should revert to the empty state, not skip because the old
+      // burst timer was still running.
+      fireEvent.press(undoBtn);
+      expect(contentInput.props.value).toBe('');
+
+      jest.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keystroke coalescing
+  // -------------------------------------------------------------------------
+
+  describe('keystroke coalescing', () => {
+    it('fast consecutive typing creates one undo entry', async () => {
+      jest.useFakeTimers();
+      const result = await renderModal();
+      await flushEffects();
+      const contentInput = result.getByTestId('entry-content-input');
+
+      // Type multiple characters fast (within the coalesce window).
+      fireEvent.changeText(contentInput, 'a');
+      fireEvent.changeText(contentInput, 'ab');
+      fireEvent.changeText(contentInput, 'abc');
+
+      // Undo should revert to the pre-burst state (empty), not an intermediate
+      // state like 'ab'.
+      const undoBtn = result.getByTestId('undo-button');
+      expect(undoBtn.props.accessibilityState?.disabled).toBe(false);
+      fireEvent.press(undoBtn);
+      expect(contentInput.props.value).toBe('');
+
+      jest.useRealTimers();
+    });
+
+    it('pause between bursts creates separate undo entries', async () => {
+      jest.useFakeTimers();
+      const result = await renderModal();
+      await flushEffects();
+      const contentInput = result.getByTestId('entry-content-input');
+
+      fireEvent.changeText(contentInput, 'first');
+      // Advance past the coalesce window so the next keystroke starts a new
+      // undo entry.
+      await act(async () => {
+        jest.advanceTimersByTime(CONTENT_UNDO_COALESCE_MS + 50);
+      });
+      fireEvent.changeText(contentInput, 'second');
+
+      // Undo should revert to 'first', not the pre-first state (empty).
+      const undoBtn = result.getByTestId('undo-button');
+      fireEvent.press(undoBtn);
+      expect(contentInput.props.value).toBe('first');
+
+      jest.useRealTimers();
     });
   });
 
@@ -1346,13 +1438,19 @@ describe('JournalEntryModal', () => {
 
   describe('history truncation', () => {
     it('truncates history when MAX_HISTORY_LENGTH is exceeded', async () => {
+      jest.useFakeTimers();
       const result = await renderModal();
       await flushEffects();
       const contentInput = result.getByTestId('entry-content-input');
 
       // Type more than MAX_HISTORY_LENGTH (50) entries to trigger truncation.
+      // Advance the coalesce timer between each version so each counts as a
+      // separate undo entry.
       for (let i = 0; i < 55; i++) {
         fireEvent.changeText(contentInput, `version ${i}`);
+        await act(async () => {
+          jest.advanceTimersByTime(CONTENT_UNDO_COALESCE_MS + 50);
+        });
       }
 
       // Undo should still work after truncation.
@@ -1362,6 +1460,8 @@ describe('JournalEntryModal', () => {
 
       // The content should be the previous version.
       expect(contentInput.props.value).toBe('version 53');
+
+      jest.useRealTimers();
     });
   });
 
@@ -1704,6 +1804,37 @@ describe('JournalEntryModal', () => {
       // it doesn't cause issues either.
       await act(async () => {
         jest.advanceTimersByTime(GEOCODE_TIMEOUT_MS + 100);
+      });
+
+      // No "state update on unmounted component" warnings should appear.
+      const stateUpdateWarnings = consoleSpy.mock.calls.filter(
+        call => typeof call[0] === 'string' && call[0].includes('unmounted'),
+      );
+      expect(stateUpdateWarnings).toHaveLength(0);
+
+      consoleSpy.mockRestore();
+      jest.useRealTimers();
+    });
+
+    it('does not throw when unmounted while a content coalesce timer is active', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      jest.useFakeTimers();
+      const result = await renderModal();
+      await flushEffects();
+      const contentInput = result.getByTestId('entry-content-input');
+
+      // Start a coalescing burst — this starts the contentUndoTimerRef.
+      fireEvent.changeText(contentInput, 'typing during burst');
+
+      // Unmount while the coalesce timer is still running.
+      result.unmount();
+
+      // Advance past the coalesce delay. The cleanup effect clears
+      // contentUndoTimerRef.current on unmount, so Jest's fake timers
+      // won't invoke the stale callback.
+      await act(async () => {
+        jest.advanceTimersByTime(CONTENT_UNDO_COALESCE_MS + 100);
       });
 
       // No "state update on unmounted component" warnings should appear.

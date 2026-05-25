@@ -23,6 +23,7 @@ const AUTOSAVE_DELAY_MS = 500;
 const MAX_HISTORY_LENGTH = 50;
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
+const CONTENT_UNDO_COALESCE_MS = 500;
 // OpenFreeMap — free OpenStreetMap-based vector tiles, no API key required.
 // See: https://openfreemap.org
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
@@ -127,6 +128,12 @@ export default function JournalEntryModal() {
   // Render signals derived from stack state.
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+
+  // Timer-based keystroke coalescing for undo/redo: fast consecutive content
+  // changes are collapsed into a single undo entry so the user can undo an
+  // entire burst of typing in one step.
+  const contentUndoTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const isContentUndoCoalescingRef = useRef(false);
 
   /**
    * Snapshots the undo-able entry fields onto the undo stack and clears redo. Enforces
@@ -299,6 +306,7 @@ export default function JournalEntryModal() {
     return () => {
       clearTimeout(autosaveTimerRef.current);
       clearTimeout(geoDebounceRef.current);
+      clearTimeout(contentUndoTimerRef.current);
     };
   }, []);
 
@@ -496,10 +504,31 @@ export default function JournalEntryModal() {
     [state, setState, pushUndoState],
   );
 
-  // Update content and maintain undo/redo history
+  /**
+   * Updates entry content with timer-based keystroke coalescing for undo/redo.
+   *
+   * Fast consecutive content changes (within CONTENT_UNDO_COALESCE_MS) are collapsed
+   * into a single undo entry so the user can undo an entire burst of typing in one
+   * step. Each keystroke restarts the coalesce window.
+   *
+   * @param newContent - The updated content string.
+   */
   const updateContent = useCallback(
     (newContent: string) => {
-      pushUndoState(state);
+      // If we are not currently in a coalescing window, push an undo snapshot
+      // before the first keystroke of this burst. Subsequent keystrokes within
+      // CONTENT_UNDO_COALESCE_MS are coalesced into this single undo entry so
+      // the user can undo an entire burst of typing in one step.
+      if (!isContentUndoCoalescingRef.current) {
+        pushUndoState(state);
+        isContentUndoCoalescingRef.current = true;
+      }
+      // Reset the coalesce window timer: each keystroke restarts the window.
+      clearTimeout(contentUndoTimerRef.current);
+      contentUndoTimerRef.current = setTimeout(() => {
+        isContentUndoCoalescingRef.current = false;
+      }, CONTENT_UNDO_COALESCE_MS);
+
       setState(draft => {
         draft.content = newContent;
       });
@@ -525,6 +554,9 @@ export default function JournalEntryModal() {
     });
     setCanUndo(undoStack.length > 0);
     setCanRedo(true);
+    // Reset coalescing state so the next keystroke starts a fresh undo entry.
+    isContentUndoCoalescingRef.current = false;
+    clearTimeout(contentUndoTimerRef.current);
   }, [state, setState]);
 
   const handleRedo = useCallback(() => {
@@ -545,6 +577,9 @@ export default function JournalEntryModal() {
     });
     setCanRedo(redoStack.length > 0);
     setCanUndo(true);
+    // Reset coalescing state so the next keystroke starts a fresh undo entry.
+    isContentUndoCoalescingRef.current = false;
+    clearTimeout(contentUndoTimerRef.current);
   }, [state, setState]);
 
   return (
