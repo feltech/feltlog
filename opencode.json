@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "lsp": true,
   "permission": {
     "bash": {
       "*": "ask",
@@ -21,9 +22,12 @@
       "printf *": "allow",
       "dirname *": "allow",
       "basename *": "allow",
+      "ps aux": "allow",
       "sed '*": "allow",
       "sed -n '*": "allow",
       "rg *": "allow",
+      "tee *": "allow",
+      "mkdir *": "allow",
       "git add *": "allow",
       "git reset HEAD": "allow",
       "git diff *": "allow",
@@ -33,21 +37,32 @@
       "git branch *": "allow",
       "npm run *": "allow",
       "nix develop ./build_env --command npm run *": "allow",
-      "nix develop ./build_env --command npm test": "allow",
-      "nix develop ./build_env --command npx jest": "allow"
+      "nix develop ./build_env --command npm test *": "allow",
+      "nix develop ./build_env --command npx jest *": "allow",
+      "nix develop ./build_env --command maestro *": "allow"
     },
     "describe_image": "allow"
+  },
+  "tools": {
+    "maestro*": false
   },
   "agent": {
     "explore": {
       "disable": true
     }
   },
+  "mcp": {
+    "maestro": {
+      "type": "local",
+      "command": ["nix", "develop", "./build_env", "--command", "maestro", "mcp"],
+      "enabled": true
+    }
+  },
   "plugin": [
     [
       ".opencode/lib/image-vision.ts",
       {
-        "vision_model": "opencode-go/mimo-v2.5-pro"
+        "vision_model": "opencode-go/mimo-v2.5"
       }
     ]
   ]
