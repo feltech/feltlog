@@ -243,6 +243,9 @@ that hide real timing issues.
   to better understand the reason for the error.
 - Use ES modules in all application source code (`src/`, `app/`).
 - You may make git commits, but must propose the commit structure for review first.
+- When writing commit body messages, split long lines into multiple lines rather than shortening
+  the content. Commitlint enforces a 100-character body line limit. Use additional `-m` flags with
+  `git commit` to create separate body paragraphs, and keep each paragraph under 100 columns.
 - Add inline comments explaining **why** code is added — the rationale, the context, the constraint
   that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
   Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
