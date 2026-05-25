@@ -109,7 +109,7 @@ Before editing:
 
 After editing:
 
-- run unit tests: `nix develop ./build_env --command npm test`
+- run unit tests with coverage: `nix develop ./build_env --command npm run test:coverage`
 - run lint + format checks:
   `nix develop ./build_env --command bash -c "npm run format && npm run lint"`
 - ensure changes are self-contained
@@ -123,7 +123,7 @@ After editing:
 ## Unit tests
 
 - Write jest tests alongside implementation code in `__tests__/` directories
-- Run `nix develop ./build_env --command npm test` to verify
+- Run `nix develop ./build_env --command npm run test:coverage` to verify (≥90% coverage required)
 - Add tests for new functions, components, and edge cases
 
 ## E2E tests

@@ -88,8 +88,8 @@ You only reason at the level of:
 
 ## 3. Enforce verification discipline
 
-Builder MUST run tests after implementation. Do not accept completion without test and lint
-validation.
+Builder MUST run tests with coverage after implementation (`npm run test:coverage`). Do not accept
+completion without passing test, coverage, format, and lint validation.
 
 If a plan does not include testing, you must add it.
 
@@ -188,6 +188,7 @@ Do NOT perform code review or debugging.
 A task is complete only when:
 
 - builder changes are applied and unit tests pass
+- coverage meets the ≥90% threshold (statements, branches, functions, lines)
 - formatting and linting pass
 - no unresolved failures remain
 - execution aligns with original plan
