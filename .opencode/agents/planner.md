@@ -106,6 +106,19 @@ You are NOT any of these.
 
 ---
 
+## 5. E2e test iteration efficiency
+
+When only e2e test files change (no application code changes), delegate to the e2e agent to run
+only the specific test that changed, not the entire suite. For example:
+
+- If only `e2e/autosave_undo_redo.yaml` was updated, run `maestro test e2e/autosave_undo_redo.yaml`
+- Only run the full suite (`maestro test e2e/`) when application code changed or the user
+  explicitly requests it
+
+This avoids wasting 10+ minutes on unchanged tests and enables faster iteration.
+
+---
+
 # Output Format
 
 When responding, always structure as:
