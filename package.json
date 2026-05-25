@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "test": "jest",
     "test-watch": "jest --watchAll",
+    "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit && eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
@@ -42,6 +43,38 @@
     },
     "setupFiles": [
       "./jest.setup.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.{ts,tsx}",
+      "app/**/*.{ts,tsx}",
+      "!src/**/*.web.{ts,tsx}",
+      "!app/**/*.web.{ts,tsx}",
+      "!**/node_modules/**",
+      "!**/__tests__/**",
+      "!**/*.d.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 90,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      }
+    },
+    "coverageReporters": [
+      "text",
+      "text-summary",
+      "lcov"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "src/domain/entities/JournalEntry.ts",
+      "src/domain/repositories/JournalRepository.ts",
+      "src/data/database/schema.ts",
+      "src/presentation/components/useColorScheme.ts",
+      "src/presentation/components/useColorScheme.web.ts",
+      "src/presentation/components/useClientOnlyValue.web.ts",
+      "app/\\+html.tsx"
     ]
   },
   "dependencies": {

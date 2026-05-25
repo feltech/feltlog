@@ -28,6 +28,7 @@ level.
 ### Running tests
 
 - Unit tests are via jest and can be run using `npm test`
+- Coverage-enforced unit tests: `nix develop ./build_env --command npm run test:coverage`
 - e2e tests are via android emulator and maestro.
 - To run e2e tests:
   1. Restart ADB (if in a bad state):
@@ -181,6 +182,11 @@ Run these checks manually after every substantial change:
 
 Use `npm run lint:fix` to automatically fix some linting issues.
 
+**Before making code edits**, run `nix develop ./build_env --command npm run format` to ensure all
+files are formatted according to the project's Prettier configuration. This prevents agents from
+wasting iterations on formatting-only lint failures — Prettier enforces the 99-character line limit
+for code and 88-character limit for JSDoc comments automatically.
+
 ### Comment formatting
 
 - 88 character line limit for comments
@@ -194,7 +200,11 @@ Use `npm run lint:fix` to automatically fix some linting issues.
 - Unit tests alongside source files in `__tests__/` directories
 - Integration tests in `e2e/` directory using Maestro
 - `e2e/subflows/` contains reusable Maestro flow snippets
-- No specific coverage threshold
+- Minimum 90% code coverage enforced via Jest `coverageThreshold` in `package.json`
+- Run `nix develop ./build_env --command npm run test:coverage` to generate a coverage report
+- Coverage applies to statements, branches, functions, and lines — all must be ≥ 90%
+- Files excluded from coverage are listed in `coveragePathIgnorePatterns` in the Jest config (these
+  are type-only, platform-specific, or framework boilerplate files)
 - Tests must run on both:
   - Node.js environment (unit tests)
   - Android Emulator (integration tests)
