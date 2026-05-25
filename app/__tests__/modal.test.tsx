@@ -52,6 +52,14 @@ import JournalEntryModal from '../modal';
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Number of microtask ticks to flush inside act() so that async state updates from the
+ * location-fetch useEffect are captured and don't produce "not wrapped in act()"
+ * warnings. The location effect has three await calls (requestPermission, getPosition,
+ * reverseGeocode) so three flushes cover them. Extra flushes provide a safety margin.
+ */
+const MICROTASK_FLUSH_COUNT = 6;
+
 /** Default (empty) view-model state used for most create-mode tests. */
 const DEFAULT_STATE: {
   entries: JournalEntry[];
@@ -108,9 +116,9 @@ function stubActions(): Record<string, jest.Mock> {
 /**
  * Async helper to render the modal with both providers.
  *
- * Delegates to the synchronous render() from testing-library (which wraps in act()).
- * The function is async so callers can await it; this allows async effects triggered by
- * the component's mount to settle before assertions run.
+ * Renders synchronously, then flushes pending microtasks inside act() so async state
+ * updates from the location-fetch useEffect are captured and don't produce "not wrapped
+ * in act()" warnings.
  *
  * @param entryId - Optional entry ID to pass as a search param (edit mode).
  *
@@ -118,13 +126,22 @@ function stubActions(): Record<string, jest.Mock> {
  */
 async function renderModal(entryId?: string): Promise<ReturnType<typeof render>> {
   (useLocalSearchParams as jest.Mock).mockReturnValue(entryId ? { entryId } : {});
-  return render(
+  const result = render(
     <SafeAreaProvider>
       <PaperProvider>
         <JournalEntryModal />
       </PaperProvider>
     </SafeAreaProvider>,
   );
+  // Flush microtasks inside act() so async state updates from the
+  // location-fetch useEffect are captured and don't produce "not wrapped
+  // in act()" warnings.
+  await act(async () => {
+    for (let i = 0; i < MICROTASK_FLUSH_COUNT; i++) {
+      await Promise.resolve();
+    }
+  });
+  return result;
 }
 
 /**
@@ -143,7 +160,7 @@ async function flushEffects(): Promise<void> {
   // ticks. Each await Promise.resolve() allows one microtask to run while
   // React's act environment remains active, capturing any state updates.
   await act(async () => {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < MICROTASK_FLUSH_COUNT; i++) {
       await Promise.resolve();
     }
   });
