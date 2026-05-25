@@ -1085,6 +1085,67 @@ describe('JournalEntryModal', () => {
 
       jest.useRealTimers();
     });
+
+    it('does not overwrite user content with trimmed DB value after autosave', async () => {
+      // Setup: existing entry with known content.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: undefined,
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Verify initial content loaded from existing entry.
+      const contentInput = result.getByTestId('entry-content-input');
+      expect(contentInput.props.value).toBe('original content');
+
+      // Simulate autosave round-trip: ViewModel now returns trimmed content.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'CHANGED content',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: undefined,
+            },
+          ],
+        },
+        actions,
+      });
+
+      // Re-render to trigger useEffect with new existingEntry.
+      await act(async () => {
+        result.rerender(
+          <SafeAreaProvider>
+            <PaperProvider>
+              <JournalEntryModal />
+            </PaperProvider>
+          </SafeAreaProvider>,
+        );
+      });
+
+      // Content must NOT be overwritten by the gate.
+      expect(result.getByTestId('entry-content-input').props.value).toBe('original content');
+    });
   });
 
   // -------------------------------------------------------------------------

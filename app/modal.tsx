@@ -113,6 +113,15 @@ export default function JournalEntryModal() {
   // Avoids re-running the debounce effect when non-content deps (like actions)
   // change.
   const autosaveFnRef = useRef<() => Promise<void>>(undefined);
+  // Prevents the sync effect from overwriting the user's current editing
+  // content with a trimmed DB value after autosave completes. Content is
+  // initialized from the existing entry once on mount only.
+  //
+  // NOTE: If entryId were ever to change while the modal stays mounted
+  // (e.g., deep-link navigation swapping entries in-place), this ref would
+  // need to be reset so the new entry's content loads. In the current Expo
+  // Router model the modal is always pushed/popped, so this is not a concern.
+  const contentInitializedRef = useRef(false);
 
   // Location refs
   const geoDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -163,7 +172,14 @@ export default function JournalEntryModal() {
   useEffect(() => {
     if (existingEntry) {
       setState(draft => {
-        draft.content = existingEntry.content;
+        // Only initialize content from the existing entry once. Subsequent
+        // updates to existingEntry.content (e.g., from our own autosave
+        // saving trimmed content) must not overwrite the user's current
+        // editing state — that would cause the cursor to visibly jump.
+        if (!contentInitializedRef.current) {
+          draft.content = existingEntry.content;
+          contentInitializedRef.current = true;
+        }
         draft.datetime = existingEntry.datetime;
         draft.tags = existingEntry.tags;
       });
