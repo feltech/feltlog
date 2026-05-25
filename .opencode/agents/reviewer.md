@@ -1,7 +1,7 @@
 ---
 description: Code review and implementation sanity-check agent
 mode: all
-model: opencode-go/qwen3.6-plus
+model: opencode-go/glm-5.1
 temperature: 0.2
 permission:
   edit: deny

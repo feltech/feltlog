@@ -22,6 +22,7 @@
       "dirname *": "allow",
       "basename *": "allow",
       "sed '*": "allow",
+      "sed -n '*": "allow",
       "rg *": "allow",
       "git add *": "allow",
       "git reset HEAD": "allow",
@@ -30,9 +31,15 @@
       "git show *": "allow",
       "git status": "allow",
       "git branch *": "allow",
-      "npm run *": "allow"
+      "npm run *": "allow",
+      "nix develop ./build_env --command npm run *": "allow"
     },
     "describe_image": "allow"
+  },
+  "agent": {
+    "explore": {
+      "disable": true
+    }
   },
   "plugin": [
     [

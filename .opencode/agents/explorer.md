@@ -67,4 +67,3 @@ Never modify files.
 If required:
 
 - builder → for implementation
-- recovery → for failure analysis
