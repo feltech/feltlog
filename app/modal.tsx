@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapView, Camera } from '@maplibre/maplibre-react-native';
 import * as ExpoLocation from 'expo-location';
+import { useImmer } from 'use-immer';
 
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
@@ -25,6 +26,40 @@ const GEOCODE_TIMEOUT_MS = 3000;
 // OpenFreeMap — free OpenStreetMap-based vector tiles, no API key required.
 // See: https://openfreemap.org
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+
+/** Consolidated state for the journal entry modal. */
+interface ModalState {
+  /** Entry content text. */
+  content: string;
+  /** Entry datetime. */
+  datetime: Date;
+  /** Entry tags. */
+  tags: string[];
+  /** Current value of the tag input field (ephemeral UI state). */
+  tagInput: string;
+  /** Transient error message for the Snackbar. */
+  error: string | null;
+  /** Whether an autosave is currently in-flight. */
+  autoSaving: boolean;
+  /** Timestamp of the last successful autosave. */
+  lastSaved: Date | null;
+  /** Current map location (create mode only). */
+  currentLocation: JournalEntry['location'] | undefined;
+  /** Whether location permission was denied. */
+  locDenied: boolean;
+  /** Whether a reverse-geocode is in progress. */
+  isUpdatingLocation: boolean;
+}
+
+/** A snapshot of just the undo-able entry fields. */
+interface UndoableSnapshot {
+  /** Entry content at the time of the snapshot. */
+  content: string;
+  /** Entry datetime at the time of the snapshot. */
+  datetime: Date;
+  /** Entry tags at the time of the snapshot. */
+  tags: string[];
+}
 
 /**
  * Formats a geocoded address object into a human-readable string.
@@ -54,15 +89,21 @@ export default function JournalEntryModal() {
   const router = useRouter();
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
-  const { state, actions } = useJournalViewModel();
+  const { state: vmState, actions } = useJournalViewModel();
 
-  const [content, setContent] = useState('');
-  const [datetime, setDatetime] = useState(new Date());
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [state, setState] = useImmer<ModalState>({
+    content: '',
+    datetime: new Date(),
+    tags: [],
+    tagInput: '',
+    error: null,
+    autoSaving: false,
+    lastSaved: null,
+    currentLocation: undefined,
+    locDenied: false,
+    isUpdatingLocation: false,
+  });
+
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingSaveRef = useRef(false);
   // Tracks whether a save API call is currently in-flight to prevent stacking.
@@ -72,32 +113,55 @@ export default function JournalEntryModal() {
   // change.
   const autosaveFnRef = useRef<() => Promise<void>>(undefined);
 
-  // Undo/redo history stack
-  const [history, setHistory] = useState<string[]>(['']);
-  const [historyIndex, setHistoryIndex] = useState(0);
-
-  // Location state for map rendering when creating a new entry.
-  const [currentLocation, setCurrentLocation] = useState<JournalEntry['location'] | undefined>(
-    undefined,
-  );
-  const [locDenied, setLocDenied] = useState(false);
-  // True while a debounced reverse-geocode is pending or in-flight.
-  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  // Location refs
   const geoDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   // Counter used to discard stale geocode results when the user drags again
   // while a previous request is still outstanding.
   const pendingGeocodeRef = useRef(0);
 
-  const existingEntry = resolvedEntryId ? state.entries.find(e => e.id === resolvedEntryId) : null;
+  // Undo/redo stacks stored in refs to enable snapshotting of undo-able
+  // entry fields only. Moving them out of ModalState allows setState to
+  // restore only content/datetime/tags without clobbering transient UI state.
+  const undoStackRef = useRef<UndoableSnapshot[]>([]);
+  const redoStackRef = useRef<UndoableSnapshot[]>([]);
+  // Render signals derived from stack state.
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  /**
+   * Snapshots the undo-able entry fields onto the undo stack and clears redo. Enforces
+   * MAX_HISTORY_LENGTH.
+   *
+   * @param currentState - The current ModalState to snapshot fields from.
+   */
+  const pushUndoState = useCallback((currentState: ModalState) => {
+    undoStackRef.current.push({
+      content: currentState.content,
+      datetime: currentState.datetime,
+      tags: currentState.tags,
+    });
+    if (undoStackRef.current.length > MAX_HISTORY_LENGTH) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  const existingEntry = resolvedEntryId
+    ? vmState.entries.find(e => e.id === resolvedEntryId)
+    : null;
   const isEditing = !!existingEntry;
 
   useEffect(() => {
     if (existingEntry) {
-      setContent(existingEntry.content);
-      setDatetime(existingEntry.datetime);
-      setTags(existingEntry.tags);
+      setState(draft => {
+        draft.content = existingEntry.content;
+        draft.datetime = existingEntry.datetime;
+        draft.tags = existingEntry.tags;
+      });
     }
-  }, [existingEntry]);
+  }, [existingEntry, setState]);
 
   // On create (not editing), request permission and fetch current location
   useEffect(() => {
@@ -106,10 +170,16 @@ export default function JournalEntryModal() {
     const fetchLocation = async () => {
       if (isEditing) return; // Only for new entries
       try {
-        setLocDenied(false);
+        setState(draft => {
+          draft.locDenied = false;
+        });
         const perm = await ExpoLocation.requestForegroundPermissionsAsync();
         if (perm.status !== 'granted') {
-          if (!cancelled) setLocDenied(true);
+          if (!cancelled) {
+            setState(draft => {
+              draft.locDenied = true;
+            });
+          }
           return;
         }
         const pos = await ExpoLocation.getCurrentPositionAsync({
@@ -120,7 +190,9 @@ export default function JournalEntryModal() {
         // isn't tempted to leave before the address resolves.
         let address: string | undefined = undefined;
         try {
-          setIsUpdatingLocation(true);
+          setState(draft => {
+            draft.isUpdatingLocation = true;
+          });
           const geos = await ExpoLocation.reverseGeocodeAsync({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
@@ -131,7 +203,9 @@ export default function JournalEntryModal() {
         } catch {
           // ignore reverse geocode errors
         } finally {
-          setIsUpdatingLocation(false);
+          setState(draft => {
+            draft.isUpdatingLocation = false;
+          });
         }
         const elevation = typeof pos.coords.altitude === 'number' ? pos.coords.altitude : 0;
         const loc: JournalEntry['location'] = {
@@ -141,9 +215,17 @@ export default function JournalEntryModal() {
           accuracy: pos.coords.accuracy ?? undefined,
           address,
         };
-        if (!cancelled) setCurrentLocation(loc);
+        if (!cancelled) {
+          setState(draft => {
+            draft.currentLocation = loc;
+          });
+        }
       } catch {
-        if (!cancelled) setLocDenied(true);
+        if (!cancelled) {
+          setState(draft => {
+            draft.locDenied = true;
+          });
+        }
       } finally {
         if (!cancelled) {
           // fetchLocation finished
@@ -154,30 +236,36 @@ export default function JournalEntryModal() {
     return () => {
       cancelled = true;
     };
-  }, [isEditing]);
+  }, [isEditing, setState]);
 
   // Stable autosave fn — reassigned every render to close over latest state.
   // Only called from the debounce timeout, never during render.
   autosaveFnRef.current = async () => {
-    if (!isEditing || !resolvedEntryId || !content.trim()) return;
+    if (!isEditing || !resolvedEntryId || !state.content.trim()) return;
     if (savingRef.current) {
       pendingSaveRef.current = true;
       return;
     }
     savingRef.current = true;
     pendingSaveRef.current = false;
-    setAutoSaving(true);
+    setState(draft => {
+      draft.autoSaving = true;
+    });
     try {
       await actions.updateEntry(resolvedEntryId, {
-        content: content.trim(),
-        datetime,
-        tags,
+        content: state.content.trim(),
+        datetime: state.datetime,
+        tags: state.tags,
       });
-      setLastSaved(new Date());
+      setState(draft => {
+        draft.lastSaved = new Date();
+      });
     } catch {
       // silently fail autosave
     } finally {
-      setAutoSaving(false);
+      setState(draft => {
+        draft.autoSaving = false;
+      });
       savingRef.current = false;
       // If content changed while saving, debounce another save so
       // the "Saved" indicator is briefly visible between saves.
@@ -193,7 +281,7 @@ export default function JournalEntryModal() {
 
   // Autosave: debounced save after content changes (edit mode only).
   useEffect(() => {
-    if (!isEditing || !content.trim()) return;
+    if (!isEditing || !state.content.trim()) return;
     pendingSaveRef.current = true;
     clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
@@ -204,7 +292,7 @@ export default function JournalEntryModal() {
     // always reads latest values, and only content changes should trigger a
     // save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, content]);
+  }, [isEditing, state.content]);
 
   // Cleanup timers on unmount.
   useEffect(() => {
@@ -215,8 +303,8 @@ export default function JournalEntryModal() {
   }, []);
 
   const mapLocation = useMemo(() => {
-    return existingEntry?.location ?? currentLocation;
-  }, [existingEntry?.location, currentLocation]);
+    return existingEntry?.location ?? state.currentLocation;
+  }, [existingEntry?.location, state.currentLocation]);
 
   const mapCenter: [number, number] | undefined = useMemo(() => {
     if (!mapLocation) return undefined;
@@ -278,14 +366,23 @@ export default function JournalEntryModal() {
       // Update coordinates immediately so the save uses the right location.
       // Elevation is reset to 0 because there is no elevation API for arbitrary
       // coordinates — only the initial GPS fetch provides real altitude data.
-      setCurrentLocation(prev =>
-        prev ? { latitude: newLat, longitude: newLng, elevation: 0 } : undefined,
-      );
+      setState(draft => {
+        if (draft.currentLocation) {
+          draft.currentLocation = {
+            ...draft.currentLocation,
+            latitude: newLat,
+            longitude: newLng,
+            elevation: 0,
+          };
+        }
+      });
 
       pendingGeocodeRef.current += 1;
       const geocodeId = pendingGeocodeRef.current;
 
-      setIsUpdatingLocation(true);
+      setState(draft => {
+        draft.isUpdatingLocation = true;
+      });
       clearTimeout(geoDebounceRef.current);
 
       geoDebounceRef.current = setTimeout(async () => {
@@ -296,26 +393,31 @@ export default function JournalEntryModal() {
             // If currentLocation is undefined (e.g. permission was denied and the
             // map never loaded), we drop the update — the map wouldn't be visible
             // anyway, so there's nothing to geocode.
-            setCurrentLocation(prev =>
-              prev ? { ...prev, latitude: newLat, longitude: newLng, address } : undefined,
-            );
+            setState(draft => {
+              if (draft.currentLocation) {
+                draft.currentLocation = {
+                  ...draft.currentLocation,
+                  latitude: newLat,
+                  longitude: newLng,
+                  address,
+                };
+              }
+            });
           }
         } finally {
           // Always clear the updating flag for this geocode generation,
           // even if the component unmounted or an error occurred.
           if (geocodeId === pendingGeocodeRef.current) {
-            setIsUpdatingLocation(false);
+            setState(draft => {
+              draft.isUpdatingLocation = false;
+            });
           }
         }
       }, GEOCODE_DEBOUNCE_MS);
     },
-    [isEditing, reverseGeocodeWithTimeout],
+    [isEditing, reverseGeocodeWithTimeout, setState],
   );
 
-  /**
-   * Persists the entry and navigates back. For edit mode, flushes any pending autosave.
-   * For create mode, creates the entry if there is content.
-   */
   /**
    * Persists the entry and navigates back. For edit mode, flushes any pending autosave.
    * For create mode, creates the entry if there is content.
@@ -329,12 +431,12 @@ export default function JournalEntryModal() {
   const handleSaveAndClose = useCallback(async () => {
     // Flush any pending autosave for edit mode
     clearTimeout(autosaveTimerRef.current);
-    if (isEditing && resolvedEntryId && pendingSaveRef.current && content.trim()) {
+    if (isEditing && resolvedEntryId && pendingSaveRef.current && state.content.trim()) {
       try {
         await actions.updateEntry(resolvedEntryId, {
-          content: content.trim(),
-          datetime,
-          tags,
+          content: state.content.trim(),
+          datetime: state.datetime,
+          tags: state.tags,
         });
       } catch {
         // silently fail; navigate back anyway
@@ -342,16 +444,25 @@ export default function JournalEntryModal() {
     }
 
     // For create mode, save if there is content
-    if (!isEditing && content.trim()) {
+    if (!isEditing && state.content.trim()) {
       try {
-        await actions.createEntry(content.trim(), datetime, tags, mapLocation);
+        await actions.createEntry(state.content.trim(), state.datetime, state.tags, mapLocation);
       } catch {
         // silently fail; still navigate back
       }
     }
 
     router.back();
-  }, [isEditing, resolvedEntryId, content, datetime, tags, mapLocation, actions, router]);
+  }, [
+    isEditing,
+    resolvedEntryId,
+    state.content,
+    state.datetime,
+    state.tags,
+    mapLocation,
+    actions,
+    router,
+  ]);
 
   /**
    * Adds the current tag input value as a new tag on the entry.
@@ -359,60 +470,82 @@ export default function JournalEntryModal() {
    * Trims whitespace from the input. Duplicate tags are silently ignored. After adding,
    * the tag input is cleared so the user can type another tag.
    */
-  const handleAddTag = () => {
-    const trimmedTag = tagInput.trim();
-    if (trimmedTag && !tags.includes(trimmedTag)) {
-      setTags([...tags, trimmedTag]);
-      setTagInput('');
+  const handleAddTag = useCallback(() => {
+    const trimmedTag = state.tagInput.trim();
+    if (trimmedTag && !state.tags.includes(trimmedTag)) {
+      pushUndoState(state);
+      setState(draft => {
+        draft.tags.push(trimmedTag);
+        draft.tagInput = '';
+      });
     }
-  };
+  }, [state, setState, pushUndoState]);
 
   /**
    * Removes a tag from the entry.
    *
    * @param tagToRemove - The name of the tag to remove.
    */
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
-  };
+  const handleRemoveTag = useCallback(
+    (tagToRemove: string) => {
+      pushUndoState(state);
+      setState(draft => {
+        draft.tags = draft.tags.filter(tag => tag !== tagToRemove);
+      });
+    },
+    [state, setState, pushUndoState],
+  );
 
   // Update content and maintain undo/redo history
   const updateContent = useCallback(
     (newContent: string) => {
-      setContent(newContent);
-      setHistory(prev => {
-        const newHistory = prev.slice(0, historyIndex + 1);
-        newHistory.push(newContent);
-        if (newHistory.length > MAX_HISTORY_LENGTH) {
-          newHistory.shift();
-          return newHistory;
-        }
-        return newHistory;
+      pushUndoState(state);
+      setState(draft => {
+        draft.content = newContent;
       });
-      setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY_LENGTH - 1));
     },
-    [historyIndex],
+    [state, setState, pushUndoState],
   );
 
-  // Undo action
   const handleUndo = useCallback(() => {
-    if (historyIndex > 0) {
-      setHistoryIndex(prev => prev - 1);
-      setContent(history[historyIndex - 1]);
-    }
-  }, [historyIndex, history]);
+    const undoStack = undoStackRef.current;
+    if (undoStack.length === 0) return;
+    // Push current undo-able state to redo stack so redo can reverse this undo.
+    redoStackRef.current.push({
+      content: state.content,
+      datetime: state.datetime,
+      tags: state.tags,
+    });
+    const snapshot = undoStack.pop()!;
+    // Restore only the undo-able fields — transient UI state is untouched.
+    setState(draft => {
+      draft.content = snapshot.content;
+      draft.datetime = snapshot.datetime;
+      draft.tags = snapshot.tags;
+    });
+    setCanUndo(undoStack.length > 0);
+    setCanRedo(true);
+  }, [state, setState]);
 
-  // Redo action
   const handleRedo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      setHistoryIndex(prev => prev + 1);
-      setContent(history[historyIndex + 1]);
-    }
-  }, [historyIndex, history]);
-
-  // Check if undo/redo available
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < history.length - 1;
+    const redoStack = redoStackRef.current;
+    if (redoStack.length === 0) return;
+    // Push current undo-able state to undo stack so undo can reverse this redo.
+    undoStackRef.current.push({
+      content: state.content,
+      datetime: state.datetime,
+      tags: state.tags,
+    });
+    const snapshot = redoStack.pop()!;
+    // Restore only the undo-able fields.
+    setState(draft => {
+      draft.content = snapshot.content;
+      draft.datetime = snapshot.datetime;
+      draft.tags = snapshot.tags;
+    });
+    setCanRedo(redoStack.length > 0);
+    setCanUndo(true);
+  }, [state, setState]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -435,12 +568,12 @@ export default function JournalEntryModal() {
           testID="back"
           accessibilityLabel="Go back"
           onPress={handleSaveAndClose}
-          disabled={isUpdatingLocation}
+          disabled={state.isUpdatingLocation}
         />
         <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
       </Appbar.Header>
 
-      {isUpdatingLocation && (
+      {state.isUpdatingLocation && (
         <Text variant="bodySmall" style={styles.locationUpdatingHint}>
           Looking up address, please wait…
         </Text>
@@ -451,7 +584,7 @@ export default function JournalEntryModal() {
           testID="entry-content-input"
           accessibilityLabel="Journal entry content"
           label="What's on your mind?"
-          value={content}
+          value={state.content}
           onChangeText={updateContent}
           multiline
           numberOfLines={10}
@@ -468,8 +601,12 @@ export default function JournalEntryModal() {
           <TextInput
             testID="tag-input"
             label="Add tags"
-            value={tagInput}
-            onChangeText={setTagInput}
+            value={state.tagInput}
+            onChangeText={text =>
+              setState(draft => {
+                draft.tagInput = text;
+              })
+            }
             onSubmitEditing={handleAddTag}
             mode="outlined"
             style={styles.tagInput}
@@ -478,7 +615,7 @@ export default function JournalEntryModal() {
                 icon="plus"
                 testID="add-tag-icon"
                 onPress={handleAddTag}
-                disabled={!tagInput.trim()}
+                disabled={!state.tagInput.trim()}
               />
             }
           />
@@ -488,7 +625,7 @@ export default function JournalEntryModal() {
             showsHorizontalScrollIndicator={false}
             style={styles.tagsContainer}
           >
-            {tags.map((tag, index) => (
+            {state.tags.map((tag, index) => (
               <Chip
                 key={index}
                 onClose={() => handleRemoveTag(tag)}
@@ -502,8 +639,8 @@ export default function JournalEntryModal() {
         </Surface>
 
         <Text variant="bodySmall" style={styles.dateText}>
-          {datetime.toLocaleDateString()}{' '}
-          {datetime.toLocaleTimeString([], {
+          {state.datetime.toLocaleDateString()}{' '}
+          {state.datetime.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}
@@ -519,13 +656,13 @@ export default function JournalEntryModal() {
             </Text>
           )}
 
-          {!isEditing && locDenied && (
+          {!isEditing && state.locDenied && (
             <Text variant="bodySmall" style={styles.locationHint}>
               Location permission not granted. You can still save the entry without a location.
             </Text>
           )}
 
-          {!mapCenter && !locDenied && (
+          {!mapCenter && !state.locDenied && (
             <View style={styles.mapLoading}>
               <ActivityIndicator animating={true} />
               <Text variant="bodySmall" style={styles.locationHint}>
@@ -566,7 +703,7 @@ export default function JournalEntryModal() {
             </View>
           )}
 
-          {isUpdatingLocation && (
+          {state.isUpdatingLocation && (
             <View style={styles.locationUpdating}>
               <ActivityIndicator animating={true} size={16} />
               <Text variant="bodySmall" style={styles.locationUpdatingText}>
@@ -577,32 +714,39 @@ export default function JournalEntryModal() {
         </Surface>
       </ScrollView>
 
-      {autoSaving && (
+      {state.autoSaving && (
         <Text variant="bodySmall" style={styles.autoSaveText}>
           Auto-saving...
         </Text>
       )}
-      {isEditing && lastSaved && (
+      {isEditing && state.lastSaved && (
         <Text
           variant="bodySmall"
           testID="saved-indicator"
           accessibilityLabel="Saved"
           style={styles.autoSaveText}
         >
-          Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          Saved {state.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       )}
 
       <Snackbar
-        visible={!!error}
-        onDismiss={() => setError(null)}
+        visible={!!state.error}
+        onDismiss={() =>
+          setState(draft => {
+            draft.error = null;
+          })
+        }
         duration={3000}
         action={{
           label: 'Dismiss',
-          onPress: () => setError(null),
+          onPress: () =>
+            setState(draft => {
+              draft.error = null;
+            }),
         }}
       >
-        {error}
+        {state.error}
       </Snackbar>
 
       <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />

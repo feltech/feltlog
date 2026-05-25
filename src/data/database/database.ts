@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useImmer } from 'use-immer';
 import { Database } from '@/src/data/database/schema';
 import { up } from '@/src/data/database/migrations';
 import { getLastDatabaseName, setLastDatabaseName } from './dbLocationStorage';
@@ -82,7 +83,7 @@ export interface UseDatabaseApi extends UseDatabaseState {
  * @returns The database state and initialize function.
  */
 export const useDatabase = (): UseDatabaseApi => {
-  const [state, setState] = useState<UseDatabaseState>({ ready: false, db: null, error: null });
+  const [state, setState] = useImmer<UseDatabaseState>({ ready: false, db: null, error: null });
 
   const [lastDatabaseName, setLastDatabaseNameState] = useState<string | null>(null);
 
@@ -109,7 +110,6 @@ export const useDatabase = (): UseDatabaseApi => {
    * @param params.encryptionKey - The encryption key to use.
    * @param params.databaseName - The name of the database file.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const initialize = async ({
     encryptionKey,
     databaseName,

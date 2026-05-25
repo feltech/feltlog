@@ -36,7 +36,7 @@
     ],
     "testTimeout": 10000,
     "transformIgnorePatterns": [
-      "node_modules/(?!kysely-expo|((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|uuid)"
+      "node_modules/(?!kysely-expo|use-immer|immer|((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|uuid)"
     ],
     "moduleNameMapper": {
       "^@react-native-async-storage/async-storage$": "@react-native-async-storage/async-storage/jest/async-storage-mock"
@@ -93,6 +93,7 @@
     "expo-status-bar": "~2.2.3",
     "expo-system-ui": "~5.0.11",
     "expo-web-browser": "~14.2.0",
+    "immer": "^11.1.8",
     "kysely": "^0.28.7",
     "kysely-expo": "^4.0.0",
     "react": "^19.0.0",
@@ -106,6 +107,7 @@
     "react-native-screens": "~4.11.1",
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "~0.20.0",
+    "use-immer": "^0.11.0",
     "uuid": "^10.0.0"
   },
   "lint-staged": {

@@ -497,6 +497,46 @@ describe('JournalEntryModal', () => {
       jest.useRealTimers();
     });
 
+    it('handles empty geocode address fields gracefully', async () => {
+      jest.useFakeTimers();
+
+      // Return an address with all empty fields so formatAddress falls through
+      // to undefined.
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: '',
+          street: '',
+          city: '',
+          region: '',
+          postalCode: '',
+          country: '',
+        },
+      ]);
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const map = result.getByTestId('entry-location-map');
+      await act(async () => {
+        map.props.onRegionDidChange({
+          type: 'Feature',
+          properties: { isUserInteraction: true },
+          geometry: { type: 'Point', coordinates: [-122.478, 37.819] },
+        });
+      });
+
+      // Advance past the debounce so the geocode request fires.
+      await act(async () => {
+        jest.advanceTimersByTime(GEOCODE_DEBOUNCE_MS + 50);
+      });
+
+      // The component should still be in a healthy state.
+      expect(result.toJSON()).toBeTruthy();
+
+      jest.useRealTimers();
+    });
+
     it('recovers gracefully when the geocode times out', async () => {
       jest.useFakeTimers();
 

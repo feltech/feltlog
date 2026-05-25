@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useImmer } from 'use-immer';
 import { JournalEntry, Tag } from '../../domain/entities/JournalEntry';
 import { JournalRepository } from '../../domain/repositories/JournalRepository';
 import { useRepository } from '@/src/domain/repositories/RepositoryContext';
@@ -43,7 +44,7 @@ export interface JournalViewModelState {
  *   journal entries.
  */
 export const useJournalViewModel = () => {
-  const [state, setState] = useState<JournalViewModelState>({
+  const [state, setState] = useImmer<JournalViewModelState>({
     entries: [],
     tags: [],
     loading: false,
@@ -57,27 +58,17 @@ export const useJournalViewModel = () => {
   const batchSize = 10;
 
   /**
-   * Updates the view model state with the provided partial state.
-   *
-   * @param updates - Partial state object to merge with current state.
-   */
-  const updateState = useCallback(
-    (updates: Partial<JournalViewModelState>) => {
-      setState(prev => ({ ...prev, ...updates }));
-    },
-    [setState],
-  );
-
-  /**
    * Sets the error state in the view model.
    *
    * @param error - Error message string or null to clear errors.
    */
   const setError = useCallback(
     (error: string | null) => {
-      updateState({ error });
+      setState(draft => {
+        draft.error = error;
+      });
     },
-    [updateState],
+    [setState],
   );
 
   /**
@@ -91,10 +82,14 @@ export const useJournalViewModel = () => {
    */
   const loadEntries = useCallback(
     async (offset: number = 0, append: boolean = false) => {
-      updateState({ error: null });
+      setState(draft => {
+        draft.error = null;
+      });
 
       try {
         let entries: JournalEntry[];
+        // Read filter values from the closure (not the draft) because the async
+        // fetch happens after the draft callback has already completed.
         const query = state.searchQuery;
         const tags = state.selectedTags;
 
@@ -106,23 +101,15 @@ export const useJournalViewModel = () => {
           entries = await repository.getAllEntries(offset, batchSize);
         }
 
-        updateState({
-          entries: append ? [...state.entries, ...entries] : entries,
-          hasMore: entries.length === batchSize,
+        setState(draft => {
+          draft.entries = append ? [...draft.entries, ...entries] : entries;
+          draft.hasMore = entries.length === batchSize;
         });
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to load entries');
       }
     },
-    [
-      state.searchQuery,
-      state.selectedTags,
-      state.entries,
-      updateState,
-      setError,
-      batchSize,
-      repository,
-    ],
+    [state.searchQuery, state.selectedTags, setState, setError, batchSize, repository],
   );
 
   /**
@@ -145,11 +132,13 @@ export const useJournalViewModel = () => {
   const loadTags = useCallback(async () => {
     try {
       const tags = await repository.getAllTags();
-      updateState({ tags });
+      setState(draft => {
+        draft.tags = tags;
+      });
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load tags');
     }
-  }, [updateState, setError, repository]);
+  }, [setState, setError, repository]);
 
   /**
    * Creates a new journal entry with the provided content and metadata.
@@ -173,7 +162,10 @@ export const useJournalViewModel = () => {
         return null;
       }
 
-      updateState({ loading: true, error: null });
+      setState(draft => {
+        draft.loading = true;
+        draft.error = null;
+      });
 
       try {
         const entry: JournalEntry | null = await repository.createEntry({
@@ -187,15 +179,19 @@ export const useJournalViewModel = () => {
         await loadEntries();
         await loadTags(); // Refresh tags in case new ones were created
 
-        updateState({ loading: false });
+        setState(draft => {
+          draft.loading = false;
+        });
         return entry;
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to create entry');
-        updateState({ loading: false });
+        setState(draft => {
+          draft.loading = false;
+        });
         return null;
       }
     },
-    [updateState, setError, loadEntries, loadTags, repository],
+    [setState, setError, loadEntries, loadTags, repository],
   );
 
   /**
@@ -211,15 +207,19 @@ export const useJournalViewModel = () => {
       id: string,
       updates: Partial<Omit<JournalEntry, 'id' | 'created_at'>>,
     ): Promise<JournalEntry | null> => {
-      updateState({ loading: true, error: null });
+      setState(draft => {
+        draft.loading = true;
+        draft.error = null;
+      });
 
       try {
         const entry = await repository.updateEntry(id, updates);
 
         // Update the entry in the local state
-        updateState({
-          entries: state.entries.map(e => (e.id === id ? entry : e)),
-          loading: false,
+        setState(draft => {
+          const index = draft.entries.findIndex(e => e.id === id);
+          if (index !== -1) draft.entries[index] = entry;
+          draft.loading = false;
         });
 
         if (updates.tags) {
@@ -229,11 +229,13 @@ export const useJournalViewModel = () => {
         return entry;
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to update entry');
-        updateState({ loading: false });
+        setState(draft => {
+          draft.loading = false;
+        });
         return null;
       }
     },
-    [state.entries, updateState, setError, loadTags, repository],
+    [setState, setError, loadTags, repository],
   );
 
   /**
@@ -245,25 +247,30 @@ export const useJournalViewModel = () => {
    */
   const deleteEntry = useCallback(
     async (id: string): Promise<boolean> => {
-      updateState({ loading: true, error: null });
+      setState(draft => {
+        draft.loading = true;
+        draft.error = null;
+      });
 
       try {
         await repository.deleteEntry(id);
 
         // Remove the entry from local state
-        updateState({
-          entries: state.entries.filter(e => e.id !== id),
-          loading: false,
+        setState(draft => {
+          draft.entries = draft.entries.filter(e => e.id !== id);
+          draft.loading = false;
         });
 
         return true;
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to delete entry');
-        updateState({ loading: false });
+        setState(draft => {
+          draft.loading = false;
+        });
         return false;
       }
     },
-    [state.entries, updateState, setError, repository],
+    [setState, setError, repository],
   );
 
   /**
@@ -275,9 +282,11 @@ export const useJournalViewModel = () => {
    */
   const search = useCallback(
     async (query: string) => {
-      updateState({ searchQuery: query });
+      setState(draft => {
+        draft.searchQuery = query;
+      });
     },
-    [updateState],
+    [setState],
   );
 
   /**
@@ -289,9 +298,11 @@ export const useJournalViewModel = () => {
    */
   const filterByTags = useCallback(
     async (tagNames: string[]) => {
-      updateState({ selectedTags: tagNames });
+      setState(draft => {
+        draft.selectedTags = tagNames;
+      });
     },
-    [updateState],
+    [setState],
   );
 
   /**
@@ -300,8 +311,11 @@ export const useJournalViewModel = () => {
    * @returns Promise that resolves when unfiltered entries are loaded.
    */
   const clearFilters = useCallback(async () => {
-    updateState({ searchQuery: '', selectedTags: [] });
-  }, [updateState]);
+    setState(draft => {
+      draft.searchQuery = '';
+      draft.selectedTags = [];
+    });
+  }, [setState]);
 
   /**
    * Refreshes all journal data (entries and tags) from the repository. Sets loading
@@ -310,13 +324,18 @@ export const useJournalViewModel = () => {
    * @returns Promise that resolves when data refresh is complete.
    */
   const refreshData = useCallback(async () => {
-    updateState({ loading: true, error: null });
+    setState(draft => {
+      draft.loading = true;
+      draft.error = null;
+    });
     try {
       await Promise.all([loadEntries(0, false), loadTags()]);
     } finally {
-      updateState({ loading: false });
+      setState(draft => {
+        draft.loading = false;
+      });
     }
-  }, [loadEntries, loadTags, updateState]);
+  }, [loadEntries, loadTags, setState]);
 
   // Keep a stable ref to the latest loadEntries implementation to avoid
   // infinite loops caused by function identity changes.
