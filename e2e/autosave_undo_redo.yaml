@@ -48,9 +48,12 @@ name: Autosave and undo/redo features
 # Brief wait for autosave debounce to fire
 - waitForAnimationToEnd
 
-# ===== TEST UNDO/REDO =====
+# ===== TEST UNDO/REDO WITH KEYSTROKE COALESCING =====
 
-# Create a new entry for undo/redo testing
+# --- Part A: Undo proof (separate bursts) ---
+# Each chunk gets its own undo entry because the 500ms delay expires between them.
+# The assertion proves undo removed 'World'.
+
 - tapOn:
     id: 'back'
 - assertVisible: 'Create entry'
@@ -60,33 +63,149 @@ name: Autosave and undo/redo features
 - assertVisible:
     id: 'entry-content-input'
 
-# Type initial content
 - tapOn:
     id: 'entry-content-input'
-- inputText: 'Line 1'
+- inputText: 'Hello'
 
-# Add more content
-- inputText: ', Line 2'
+# Wait 500ms for the coalescing timer to expire
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-element-for-delay'
+    timeout: 500
+    optional: true
 
-# Add more content
-- inputText: ', Line 3'
+- inputText: ' World'
+- takeScreenshot: screenshot-a-typed
 
-# Undo (go back to Line 1, Line 2)
+# Undo reverts the ' World' burst, leaving 'Hello'
 - tapOn:
     id: 'undo-button'
 - waitForAnimationToEnd
 
-# Undo again (go back to just Line 1)
+# Type ' again' — if undo worked, content becomes 'Hello again'.
+# If undo failed, content would be 'Hello World again', which does NOT
+# contain 'Hello again' as a contiguous substring.
+- inputText: ' again'
+# Wait so this typing gets its own undo entry
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-element-for-delay'
+    timeout: 500
+    optional: true
+
+# PROOF: only matches if undo removed ' World'
+- assertVisible: 'Hello again'
+- takeScreenshot: screenshot-a-proof
+
+# Clean up: undo back to empty then close
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
 - tapOn:
     id: 'undo-button'
 - waitForAnimationToEnd
 
-# Redo (go forward to Line 1, Line 2)
+# --- Part B: Redo proof ---
+# The assertion proves redo restored 'Bar' between 'Foo' and 'Baz'.
+
+- tapOn:
+    id: 'back'
+- assertVisible: 'Create entry'
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: 'Foo'
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-element-for-delay'
+    timeout: 500
+    optional: true
+
+- inputText: 'Bar'
+- takeScreenshot: screenshot-b-typed
+
+# Undo 'Bar' → 'Foo'
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
+
+# Redo → 'FooBar'
 - tapOn:
     id: 'redo-button'
 - waitForAnimationToEnd
 
-# Save to verify final state (back saves)
+# Type 'Baz' → 'FooBarBaz' (if redo worked) or 'FooBaz' (if redo failed)
+- inputText: 'Baz'
+
+# PROOF: if redo worked, content is 'FooBarBaz' and 'FooBaz' does NOT
+# appear contiguously. If redo failed, content is 'FooBaz' and 'FooBaz'
+# IS visible.
+- assertNotVisible: 'FooBaz'
+- assertVisible: 'FooBarBaz'
+- takeScreenshot: screenshot-b-proof
+
+# --- Part C: Redo stack cleared by new typing ---
+# After undo, typing new content must clear the redo stack so redo is
+# impossible. Tapping redo should be a no-op. Undo for the new typing
+# must still work.
+
+- tapOn:
+    id: 'back'
+- assertVisible: 'Create entry'
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: 'X'
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-element-for-delay'
+    timeout: 500
+    optional: true
+
+- inputText: 'Y'
+- takeScreenshot: screenshot-c-typed
+
+# Undo 'Y' → 'X' (redo stack now has 'XY')
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
+
+# Type 'Z' — this clears the redo stack
+- inputText: 'Z'
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-element-for-delay'
+    timeout: 500
+    optional: true
+
+# Tap redo — must be a no-op because the redo stack was cleared
+- tapOn:
+    id: 'redo-button'
+- waitForAnimationToEnd
+
+# PROOF: content is unchanged ('XZ'), old state 'XY' is gone
+- assertVisible: 'XZ'
+- assertNotVisible: 'XY'
+- takeScreenshot: screenshot-c-redo-noop
+
+# Undo must still work for the new typing ('Z')
+- tapOn:
+    id: 'undo-button'
+- waitForAnimationToEnd
+- assertVisible: 'X'
+- takeScreenshot: screenshot-c-undo-works
+
+# Save and close
 - tapOn:
     id: 'back'
 - assertVisible:
