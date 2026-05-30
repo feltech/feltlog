@@ -21,7 +21,7 @@ describe('SetupDatabaseScreen', () => {
   it('renders the setup form with all elements', () => {
     const { getByText, getByTestId } = render(<SetupDatabaseScreen {...defaultProps} />);
 
-    expect(getByText('Set up database')).toBeTruthy();
+    expect(getByText('Choose database')).toBeTruthy();
     expect(getByTestId('db-name-input')).toBeTruthy();
     expect(getByTestId('db-key-input')).toBeTruthy();
     expect(getByTestId('db-open-btn')).toBeTruthy();

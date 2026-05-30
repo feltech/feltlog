@@ -70,6 +70,19 @@ describe('JournalRepositoryImpl', () => {
       expect(entry.location?.address).toBe('New York, NY');
     });
 
+    /** Tests that createEntry throws when getEntry returns null after insertion. */
+    it('should throw when created entry cannot be retrieved', async () => {
+      jest.spyOn(repository, 'getEntry').mockResolvedValueOnce(null);
+
+      await expect(
+        repository.createEntry({
+          content: 'Test entry',
+          datetime: new Date(),
+          tags: [],
+        }),
+      ).rejects.toThrow('Failed to create entry');
+    });
+
     it('should retrieve an entry by id', async () => {
       const entryData = {
         content: 'Test entry content',

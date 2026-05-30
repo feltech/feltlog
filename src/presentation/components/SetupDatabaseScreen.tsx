@@ -51,7 +51,7 @@ export default function SetupDatabaseScreen({
   return (
     <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
       <Text variant="headlineMedium" style={{ marginBottom: 16 }}>
-        Set up database
+        Choose database
       </Text>
 
       <TextInput
