@@ -1,0 +1,171 @@
+appId: com.feltech.feltlog
+name: Backup settings
+
+
+# Tests the full backup flow: SAF picker selection, manual backup, and
+# verification of the configured backup location and last backup timestamp.
+---
+- runFlow: subflows/setup_database.yaml
+
+# Create an entry so the database has content to back up
+- evalScript: ${output.entryText = "Backup test " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.entryText}
+
+# Navigate back to journal list and verify
+- assertVisible: 'Create entry'
+
+# Navigate to Settings tab (second tab at bottom)
+- waitForAnimationToEnd
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: settings-initial
+
+# Verify backup section shows no location yet
+- assertVisible: 'Backup'
+- assertVisible: 'No backup location configured'
+
+# Buttons should be visible
+- assertVisible:
+    id: 'choose-backup-location-btn'
+- assertVisible:
+    id: 'backup-now-btn'
+
+# Verify Database section renders
+- assertVisible: 'Database'
+- assertVisible: 'Encryption: Enabled'
+
+# ===== SAF PICKER: CHOOSE BACKUP LOCATION =====
+
+# Open SAF picker
+- tapOn:
+    id: 'choose-backup-location-btn'
+- waitForAnimationToEnd
+- takeScreenshot: saf-picker
+
+# The SAF picker may open directly in a folder (e.g., Documents) OR
+# show the root directory. Handle both cases with conditional navigation.
+
+# If a breadcrumb with device name is visible, we're inside a folder.
+# Navigate back to root to see the full folder list.
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+      - takeScreenshot: saf-root
+
+# Select a folder for backup. "Pictures" may be below the fold in the root
+# directory listing, so scroll to it before attempting the conditional tap.
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+      - takeScreenshot: saf-folder-selected
+
+# Confirm folder selection
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+
+# Grant permission (system dialog)
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: settings-after-location-chosen
+
+# ===== VERIFY BACKUP LOCATION CONFIGURED =====
+- assertVisible: 'Location: (Pictures|Documents)'
+
+# ===== MANUAL BACKUP =====
+
+# Guard against minute-boundary races: if we're at >= 55 seconds, wait a
+# few seconds so the backup's timestamp minute matches what we compute next.
+- evalScript: ${output.backupSecond = new Date().getUTCSeconds()}
+- runFlow:
+    when:
+      true: ${output.backupSecond >= 55}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'wait-element-for-minute-crossing'
+          timeout: 6000
+          optional: true
+
+# Compute the expected backup filename prefix at minute-level precision.
+# The script sets output.backupFileRegex to a pattern like
+# "feltlog-2026-05-29T17-52-.*" which matches any seconds value.
+- runScript: scripts/compute-backup-prefix.js
+
+- tapOn:
+    id: 'backup-now-btn'
+- waitForAnimationToEnd
+
+# Wait for backup to complete. SAF operations (base64 encode + file I/O)
+# can take several seconds.
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- assertVisible: 'Backup saved'
+- takeScreenshot: settings-after-backup
+
+# Verify last backup timestamp appears (text includes the formatted date)
+- assertVisible: 'Last backup:.*'
+
+# Verify About section
+- assertVisible: 'About'
+- assertVisible: 'App name: FeltLog'
+
+# ===== VERIFY BACKUP FILE EXISTS ON DISK =====
+# Switch to the Android Files app to confirm the backup file was
+# actually written to the Pictures directory (not just the app UI).
+- launchApp:
+    appId: com.google.android.documentsui
+- waitForAnimationToEnd
+- takeScreenshot: files-app-launched
+
+# Open the navigation drawer (hamburger menu) to access storage roots.
+# The hamburger icon has content-desc "Show roots" but no resource-id.
+# Maestro's text matcher also matches content-desc on Android.
+- tapOn: 'Show roots'
+- waitForAnimationToEnd
+
+# Select device internal storage from the drawer
+- tapOn: 'sdk_gphone64_x86_64'
+- waitForAnimationToEnd
+- takeScreenshot: files-device-root
+
+# Scroll down to find the Pictures folder (it's below the fold on
+# API 35 pixel_6 since folders are listed alphabetically in a grid).
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Pictures'
+- waitForAnimationToEnd
+- takeScreenshot: files-pictures-folder
+
+# Assert the specific backup file created by this test run is visible.
+# The regex was computed before pressing "Backup Now" and includes the
+# current minute, so it won't match stale backups from previous runs.
+# Example: feltlog-2026-05-29T17-52-.*
+#
+# The Files app sorts files alphabetically (oldest first), so with 5+
+# backup files the newest one may be below the fold. Scroll to ensure
+# it's visible before asserting.
+# Use 30s timeout (not 10s) since there can be many backup files from
+# previous test runs and the scroll needs to traverse all of them.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- assertVisible: ${output.backupFileRegex}
+- takeScreenshot: backup-file-verified

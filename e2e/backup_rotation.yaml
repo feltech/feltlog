@@ -1,0 +1,199 @@
+appId: com.feltech.feltlog
+name: Backup rotation
+
+
+# Regression test for backup rotation: when more backups exist than maxBackups
+# (default 5), the oldest should be deleted, not the newest.
+#
+# The test waits for the minute to change before creating the 6th backup so it has
+# a distinct filename from the first 5, making it unambiguous which file should
+# survive rotation. Maestro's evalScript/runScript execute on the host (GraalJS on
+# JVM) while the app's buildBackupFileName() runs on the device (Hermes/React
+# Native). To avoid clock skew, the e2e:sync-time script in package.json syncs
+# the device clock to the host clock before every e2e run.
+---
+- runFlow: subflows/setup_database.yaml
+
+# Create an entry so the database has content to back up
+- evalScript: ${output.entryText = "Rotation test " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.entryText}
+
+# Navigate back to journal list and verify
+- assertVisible: 'Create entry'
+
+# Navigate to Settings tab (second tab at bottom)
+- waitForAnimationToEnd
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: rotation-settings-initial
+
+# Verify backup section is visible
+- assertVisible: 'Backup'
+- assertVisible: 'No backup location configured'
+
+# ===== SAF PICKER: CHOOSE BACKUP LOCATION =====
+
+# Open SAF picker
+- tapOn:
+    id: 'choose-backup-location-btn'
+- waitForAnimationToEnd
+- takeScreenshot: rotation-saf-picker
+
+# If a breadcrumb with device name is visible, we're inside a folder.
+# Navigate back to root to see the full folder list.
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+      - takeScreenshot: rotation-saf-root
+
+# Select Pictures folder for backup. "Pictures" may be below the fold in
+# the root directory listing, so scroll to it first.
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+      - takeScreenshot: rotation-saf-folder-selected
+
+# Confirm folder selection
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+
+# Grant permission (system dialog)
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: rotation-settings-after-location-chosen
+
+# ===== PERFORM 5 BACKUPS =====
+
+# Backup 1
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- takeScreenshot: rotation-backup-1
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# Backup 2
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- takeScreenshot: rotation-backup-2
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# Backup 3
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- takeScreenshot: rotation-backup-3
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# Backup 4
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- takeScreenshot: rotation-backup-4
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# Backup 5
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- takeScreenshot: rotation-backup-5
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# ===== WAIT FOR MINUTE TO CHANGE =====
+# Ensure the 6th backup lands in a different minute so it has a distinct
+# filename from the first 5. This makes it unambiguous which file should
+# survive rotation.
+- evalScript: ${output.waitMinute = new Date().getUTCMinutes()}
+- repeat:
+    while:
+      true: ${new Date().getUTCMinutes() === output.waitMinute}
+    commands:
+      - evalScript: ${output.tick = Date.now()}
+
+# ===== COMPUTE THE 6TH BACKUP'S FILENAME REGEX =====
+# Compute the regex BEFORE the 6th backup so it captures the minute the
+# backup will be created in. With clock sync active, the regex will match.
+- runScript: scripts/compute-backup-prefix.js
+
+# ===== PERFORM 6TH BACKUP (new minute, triggers rotation) =====
+- tapOn:
+    id: 'backup-now-btn'
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- assertVisible: 'Backup saved'
+- takeScreenshot: rotation-backup-6
+- extendedWaitUntil:
+    notVisible: 'Backup saved'
+    timeout: 6000
+
+# ===== VERIFY 6TH BACKUP FILE EXISTS ON DISK =====
+# Switch to the Android Files app to confirm the newest backup file survived
+# rotation (the oldest should have been deleted instead).
+- launchApp:
+    appId: com.google.android.documentsui
+- waitForAnimationToEnd
+- takeScreenshot: rotation-files-app-launched
+
+# Open the navigation drawer (hamburger menu) to access storage roots.
+- tapOn: 'Show roots'
+- waitForAnimationToEnd
+
+# Select device internal storage from the drawer
+- tapOn: 'sdk_gphone64_x86_64'
+- waitForAnimationToEnd
+- takeScreenshot: rotation-files-device-root
+
+# Scroll down to find the Pictures folder
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Pictures'
+- waitForAnimationToEnd
+- takeScreenshot: rotation-files-pictures-folder
+
+# Assert the 6th backup file (from the new minute) is visible.
+# If rotation incorrectly deleted the newest file, this will fail.
+# Use 30s timeout (not 10s) since there can be many backup files from
+# previous test runs and the scroll needs to traverse all of them.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- assertVisible: ${output.backupFileRegex}
+- takeScreenshot: rotation-backup-6-verified

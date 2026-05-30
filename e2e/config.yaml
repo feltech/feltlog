@@ -10,3 +10,6 @@ executionOrder:
     - 'Location features - capture and verify'
     - 'Pull to refresh'
     - 'Infinite scroll and pagination'
+    - 'Backup settings'
+    - 'Backup rotation'
+    - 'Database autosave on suspend'

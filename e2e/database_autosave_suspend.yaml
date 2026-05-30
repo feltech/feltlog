@@ -1,0 +1,174 @@
+appId: com.feltech.feltlog
+name: Database autosave on suspend
+
+
+# Verifies that the app creates a lifecycle backup when it is suspended
+# (backgrounded). The app's AppState listener should trigger a backup
+# when the app transitions to the background state.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== CONFIGURE BACKUP LOCATION =====
+
+# Navigate to Settings tab (second tab at bottom)
+- waitForAnimationToEnd
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: autosave-settings-initial
+
+# Verify backup section shows no location yet
+- assertVisible: 'Backup'
+- assertVisible: 'No backup location configured'
+
+# ===== SAF PICKER: CHOOSE BACKUP LOCATION =====
+
+# Open SAF picker
+- tapOn:
+    id: 'choose-backup-location-btn'
+- waitForAnimationToEnd
+- takeScreenshot: autosave-saf-picker
+
+# If a breadcrumb with device name is visible, we're inside a folder.
+# Navigate back to root to see the full folder list.
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+      - takeScreenshot: autosave-saf-root
+
+# Select Pictures folder for backup. "Pictures" may be below the fold in
+# the root directory listing, so scroll to it first.
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+      - takeScreenshot: autosave-saf-folder-selected
+
+# Confirm folder selection
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+
+# Grant permission (system dialog)
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: autosave-settings-after-location-chosen
+
+# ===== CREATE AN ENTRY =====
+
+# Switch back to Journal tab (first tab at bottom)
+- tapOn:
+    point: '25%,96%'
+- waitForAnimationToEnd
+
+# Create an entry so the database has content to back up
+- evalScript: ${output.entryText = "Autosave suspend test " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.entryText}
+
+# Verify we're back on the journal list
+- assertVisible: 'Create entry'
+
+# ===== MINUTE BOUNDARY AND FILENAME COMPUTATION =====
+
+# Guard against minute-boundary races: if we're at >= 55 seconds, wait a
+# few seconds so the backup's timestamp minute matches what we compute next.
+- evalScript: ${output.autosaveSecond = new Date().getUTCSeconds()}
+- runFlow:
+    when:
+      true: ${output.autosaveSecond >= 55}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'wait-element-for-minute-crossing'
+          timeout: 6000
+          optional: true
+
+# Wait until the current minute has changed. This ensures the backup
+# filename computed below will match the minute the lifecycle backup runs in.
+- evalScript: ${output.waitMinute = new Date().getUTCMinutes()}
+- repeat:
+    while:
+      true: ${new Date().getUTCMinutes() === output.waitMinute}
+    commands:
+      - evalScript: ${output.tick = Date.now()}
+
+# Compute the expected backup filename prefix at minute-level precision.
+# The script sets output.backupFileRegex to a pattern like
+# "feltlog-test_1748612345678.db-2026-05-29T17-52-.*" which matches any
+# seconds value within the current minute.
+- runScript: scripts/compute-backup-prefix.js
+
+# Wait an additional 5 seconds into the new minute so both host and device
+# clocks are solidly past the minute boundary. The lifecycle backup fires
+# asynchronously on AppState change, and even with clock sync there can be
+# a small offset between Maestro's host-side timestamp and the device's
+# timestamp. This ensures the backup file's minute matches our regex.
+- extendedWaitUntil:
+    visible:
+      id: 'wait-element-for-solid-minute'
+    timeout: 5000
+    optional: true
+
+# ===== SUSPEND THE APP (trigger lifecycle backup) =====
+
+# Background the app by launching the Files app. This triggers the app's
+# AppState listener to create a lifecycle backup.
+- launchApp:
+    appId: com.google.android.documentsui
+- waitForAnimationToEnd
+
+# Wait for the lifecycle backup to complete. SAF operations (base64 encode +
+# file I/O) can take several seconds, and the app needs time to finish writing
+# the backup after being backgrounded. The backup is triggered asynchronously
+# by the AppState "background" event, so we give it 20 seconds to complete.
+- extendedWaitUntil:
+    visible:
+      id: 'wait-for-lifecycle-backup'
+    timeout: 20000
+    optional: true
+
+# ===== VERIFY BACKUP FILE EXISTS IN FILES APP =====
+
+# Open the navigation drawer (hamburger menu) to access storage roots.
+# The hamburger icon has content-desc "Show roots" but no resource-id.
+# Maestro's text matcher also matches content-desc on Android.
+- tapOn: 'Show roots'
+- waitForAnimationToEnd
+
+# Select device internal storage from the drawer
+- tapOn: 'sdk_gphone64_x86_64'
+- waitForAnimationToEnd
+- takeScreenshot: autosave-files-device-root
+
+# Scroll down to find the Pictures folder (it's below the fold on
+# API 35 pixel_6 since folders are listed alphabetically in a grid).
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Pictures'
+- waitForAnimationToEnd
+- takeScreenshot: autosave-files-pictures-folder
+
+# Assert the lifecycle backup file is visible.
+# The regex was computed after the minute change, so it matches the minute
+# the backup was created in.
+# Use 30s timeout since there can be many backup files from previous runs
+# and the scroll needs to traverse all of them.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- assertVisible: ${output.backupFileRegex}
+- takeScreenshot: autosave-backup-file-verified
