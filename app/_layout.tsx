@@ -3,13 +3,17 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import 'react-native-reanimated';
-import { PaperProvider } from 'react-native-paper';
+import { PaperProvider, Snackbar } from 'react-native-paper';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
+import { DatabaseInfoProvider } from '@/src/domain/repositories/DatabaseContext';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 import { useDatabase } from '@/src/data/database/database';
 import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScreen';
+import { performLifecycleBackup, getLatestMigrationKey } from '@/src/data/database/backup';
+import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 
 import { useColorScheme } from '@/src/presentation/components/useColorScheme';
 import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
@@ -63,8 +67,64 @@ export default function RootLayout() {
  * @returns The rendered navigation tree or the setup database screen.
  */
 function RootLayoutNav() {
-  const { ready, db, initialize, lastDatabaseName, error } = useDatabase();
+  const { ready, db, initialize, lastDatabaseName, error, databaseName, databasePath } =
+    useDatabase();
   const colorScheme = useColorScheme();
+  const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
+
+  // Lifecycle-triggered backup: attempt on background, confirm/retry on resume.
+  useEffect(() => {
+    if (!ready || !db || !databaseName || !databasePath) return;
+
+    /**
+     * Attempts a lifecycle backup if a backup directory has been configured.
+     *
+     * @returns 'saved' if a new backup was created, 'failed' on error, or 'skipped' if
+     *   no backup directory is set.
+     */
+    async function tryLifecycleBackup(): Promise<'saved' | 'failed' | 'skipped'> {
+      const dirUri = await getBackupDirectoryUri();
+      if (!dirUri) return 'skipped';
+
+      const version = getLatestMigrationKey();
+      // databasePath and databaseName are narrowed by the early return above; the
+      // non-null assertions are safe because the effect skips when either is null.
+      return performLifecycleBackup(databasePath!, dirUri, version, databaseName!);
+    }
+
+    /**
+     * Checks if a background backup was attempted and performs a lifecycle backup if
+     * the database is stale.
+     */
+    const checkResume = async () => {
+      const result = await tryLifecycleBackup();
+      if (result === 'saved') {
+        setShowBackupSnackbar(true);
+      }
+    };
+
+    /**
+     * Handles app state changes to trigger background backups.
+     *
+     * @param nextState - The next application state.
+     */
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      if (nextState !== 'background') return;
+
+      // Best-effort — may be killed mid-operation.
+      await tryLifecycleBackup();
+    };
+
+    // Run resume check on mount.
+    checkResume();
+
+    // Subscribe to app state changes.
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [ready, db, databaseName, databasePath]);
 
   if (!ready || !db) {
     return (
@@ -82,14 +142,23 @@ function RootLayoutNav() {
 
   return (
     <PaperProvider>
-      <RepositoryProvider repository={repository}>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="entry-editor" options={{ presentation: 'modal' }} />
-          </Stack>
-        </ThemeProvider>
-      </RepositoryProvider>
+      <DatabaseInfoProvider value={{ databaseName, databasePath }}>
+        <RepositoryProvider repository={repository}>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="entry-editor" options={{ presentation: 'modal' }} />
+            </Stack>
+            <Snackbar
+              visible={showBackupSnackbar}
+              onDismiss={() => setShowBackupSnackbar(false)}
+              duration={3000}
+            >
+              Backup saved
+            </Snackbar>
+          </ThemeProvider>
+        </RepositoryProvider>
+      </DatabaseInfoProvider>
     </PaperProvider>
   );
 }

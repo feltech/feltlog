@@ -3,6 +3,8 @@ import { useImmer } from 'use-immer';
 import { Database } from '@/src/data/database/schema';
 import { up } from '@/src/data/database/migrations';
 import { getLastDatabaseName, setLastDatabaseName } from './dbLocationStorage';
+import { getPendingMigrationCount, backupDatabase, getLatestMigrationKey } from './backup';
+import { getBackupDirectoryUri } from './dbBackupStorage';
 import { CompiledQuery, Kysely } from 'kysely';
 import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite';
 import { ExpoDialect } from 'kysely-expo';
@@ -11,6 +13,9 @@ export interface UseDatabaseState {
   ready: boolean;
   db: Kysely<Database> | null;
   error: unknown | null;
+  databaseName: string | null;
+  sqliteDb: SQLiteDatabase | null;
+  databasePath: string | null;
 }
 
 export interface OpenDatabaseResult {
@@ -83,7 +88,14 @@ export interface UseDatabaseApi extends UseDatabaseState {
  * @returns The database state and initialize function.
  */
 export const useDatabase = (): UseDatabaseApi => {
-  const [state, setState] = useImmer<UseDatabaseState>({ ready: false, db: null, error: null });
+  const [state, setState] = useImmer<UseDatabaseState>({
+    ready: false,
+    db: null,
+    error: null,
+    databaseName: null,
+    sqliteDb: null,
+    databasePath: null,
+  });
 
   const [lastDatabaseName, setLastDatabaseNameState] = useState<string | null>(null);
 
@@ -117,10 +129,52 @@ export const useDatabase = (): UseDatabaseApi => {
     encryptionKey: string;
     databaseName: string;
   }) => {
+    // Close any previously opened database to prevent resource leaks.
+    if (state.sqliteDb) {
+      try {
+        await state.sqliteDb.closeAsync();
+      } catch {
+        // ignore close errors
+      }
+    }
+
     try {
-      const { db } = await openKysely(encryptionKey, databaseName);
+      const { db, sqliteDb } = await openKysely(encryptionKey, databaseName);
+
+      // Check for pending migrations before running them.
+      try {
+        const pendingCount = await getPendingMigrationCount(db);
+        if (pendingCount > 0) {
+          const backupDirUri = await getBackupDirectoryUri();
+          if (backupDirUri) {
+            // Best-effort: don't block migration on backup failure.
+            try {
+              await backupDatabase(
+                sqliteDb.databasePath,
+                backupDirUri,
+                getLatestMigrationKey(),
+                databaseName,
+              );
+            } catch (backupError) {
+              // Silently continue — backup is best-effort.
+              console.warn('Pre-migration backup failed:', backupError);
+            }
+          }
+        }
+      } catch (migrationCheckError) {
+        // If checking pending migrations fails, proceed anyway.
+        console.warn('Could not check pending migrations:', migrationCheckError);
+      }
+
       await up(db);
-      setState({ ready: true, db, error: null });
+      setState({
+        ready: true,
+        db,
+        error: null,
+        databaseName: databaseName || 'feltlog.db',
+        sqliteDb,
+        databasePath: sqliteDb.databasePath,
+      });
       try {
         if (databaseName) await setLastDatabaseName(databaseName);
         setLastDatabaseNameState(databaseName);
@@ -128,9 +182,22 @@ export const useDatabase = (): UseDatabaseApi => {
         // ignore storage errors
       }
     } catch (error) {
-      setState({ ready: false, db: null, error });
+      setState({
+        ready: false,
+        db: null,
+        error,
+        databaseName: null,
+        sqliteDb: null,
+        databasePath: null,
+      });
     }
   };
 
-  return { ...state, initialize, lastDatabaseName };
+  return {
+    ...state,
+    initialize,
+    lastDatabaseName,
+    databaseName: state.databaseName ?? null,
+    sqliteDb: state.sqliteDb ?? null,
+  };
 };

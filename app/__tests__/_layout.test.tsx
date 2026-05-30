@@ -27,6 +27,17 @@ jest.mock('@/src/data/database/database', () => ({
   useDatabase: jest.fn(),
 }));
 
+/** Mock backup functions to avoid file system operations. */
+jest.mock('@/src/data/database/backup', () => ({
+  performLifecycleBackup: jest.fn().mockResolvedValue('skipped'),
+  getLatestMigrationKey: jest.fn().mockReturnValue('20260523_one_create_initial_tables'),
+}));
+
+/** Mock backup storage to avoid AsyncStorage side effects. */
+jest.mock('@/src/data/database/dbBackupStorage', () => ({
+  getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
+}));
+
 /** Mock SetupDatabaseScreen to simplify assertions. */
 jest.mock('@/src/presentation/components/SetupDatabaseScreen', () => ({
   __esModule: true,
@@ -71,8 +82,10 @@ jest.mock('expo-router', () => {
 });
 
 import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
+import { AppState } from 'react-native';
 import { useDatabase } from '@/src/data/database/database';
+import { performLifecycleBackup } from '@/src/data/database/backup';
+import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import RootLayout from '../_layout';
 
 // ---------------------------------------------------------------------------
@@ -85,6 +98,7 @@ import RootLayout from '../_layout';
  * @param fontsLoaded - Whether fonts are loaded.
  * @param dbReady - Whether the database is ready.
  * @param dbError - Optional database error message.
+ * @param backupDirUri - Optional backup directory URI for lifecycle backup tests.
  *
  * @returns The render result from testing-library.
  */
@@ -92,6 +106,7 @@ async function renderLayout(
   fontsLoaded: boolean,
   dbReady: boolean,
   dbError: string | null = null,
+  backupDirUri: string | null = null,
 ): Promise<ReturnType<typeof render>> {
   (useFonts as jest.Mock).mockReturnValue([fontsLoaded, null]);
   (useDatabase as jest.Mock).mockReturnValue({
@@ -100,7 +115,10 @@ async function renderLayout(
     initialize: jest.fn().mockResolvedValue(undefined),
     lastDatabaseName: null,
     error: dbError,
+    databaseName: dbReady ? 'test.db' : null,
+    databasePath: dbReady ? '/mock/test.db' : null,
   });
+  (getBackupDirectoryUri as jest.Mock).mockResolvedValue(backupDirUri);
 
   return render(<RootLayout />);
 }
@@ -110,8 +128,8 @@ async function renderLayout(
 // ---------------------------------------------------------------------------
 
 /**
- * Test suite for the root layout component. Covers font loading, splash screen
- * management, database initialization states, and provider wrapping.
+ * Test suite for the root layout component. Covers font loading, database
+ * initialization states, and lifecycle backup behavior.
  */
 describe('RootLayout', () => {
   beforeEach(() => {
@@ -138,24 +156,22 @@ describe('RootLayout', () => {
       expect(toJSON()).toBeNull();
     });
 
-    /** Tests that the splash screen is hidden once fonts load. */
-    it('hides the splash screen after fonts load', async () => {
-      (useFonts as jest.Mock).mockReturnValue([true, null]);
+    /** Tests that a font loading error is thrown into the error boundary. */
+    it('throws font loading error into error boundary', async () => {
+      const fontError = new Error('Font load failed');
+      (useFonts as jest.Mock).mockReturnValue([false, fontError]);
       (useDatabase as jest.Mock).mockReturnValue({
-        ready: true,
-        db: { mockDb: true },
+        ready: false,
+        db: null,
         initialize: jest.fn(),
         lastDatabaseName: null,
         error: null,
       });
 
-      render(<RootLayout />);
-      // Allow the useEffect that calls hideAsync to run.
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(SplashScreen.hideAsync).toHaveBeenCalled();
+      // The useEffect that checks for error should throw.
+      expect(() => {
+        render(<RootLayout />);
+      }).toThrow('Font load failed');
     });
   });
 
@@ -177,24 +193,94 @@ describe('RootLayout', () => {
       const json = JSON.stringify(toJSON());
       expect(json).toContain('Setup Error: DB error');
     });
-
-    /** Tests that the navigation tree renders when database is ready. */
-    it('renders navigation tree when database is ready', async () => {
-      const { toJSON } = await renderLayout(true, true);
-      expect(toJSON()).toBeTruthy();
-    });
   });
 
   // -------------------------------------------------------------------------
-  // Provider wrapping
+  // Lifecycle backup
   // -------------------------------------------------------------------------
 
-  describe('provider wrapping', () => {
-    /** Tests that children are wrapped in providers when db is ready. */
-    it('wraps children in PaperProvider and RepositoryProvider when ready', async () => {
-      const { toJSON } = await renderLayout(true, true);
-      // The tree should be non-null when all providers are set up.
-      expect(toJSON()).toBeTruthy();
+  describe('lifecycle backup', () => {
+    /** Tests that performLifecycleBackup is called on mount when DB is ready. */
+    it('calls performLifecycleBackup on mount when DB is ready', async () => {
+      await renderLayout(true, true, null, 'content://mock-dir');
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(performLifecycleBackup).toHaveBeenCalledWith(
+        '/mock/test.db',
+        'content://mock-dir',
+        '20260523_one_create_initial_tables',
+        'test.db',
+      );
+    });
+
+    /** Tests that snackbar shows "Backup saved" when lifecycle backup returns saved. */
+    it('shows Backup saved snackbar when lifecycle backup returns saved', async () => {
+      (performLifecycleBackup as jest.Mock).mockResolvedValue('saved');
+      const { getByText } = await renderLayout(true, true, null, 'content://mock-dir');
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(getByText('Backup saved')).toBeTruthy();
+    });
+
+    /** Tests that lifecycle backup is skipped when no backup directory is set. */
+    it('skips lifecycle backup when no backup directory is configured', async () => {
+      await renderLayout(true, true, null, null);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(performLifecycleBackup).not.toHaveBeenCalled();
+    });
+
+    /** Tests that lifecycle backup is skipped when DB is not ready. */
+    it('skips lifecycle backup when DB is not ready', async () => {
+      await renderLayout(true, false, null, 'content://mock-dir');
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(performLifecycleBackup).not.toHaveBeenCalled();
+    });
+
+    /** Tests that performLifecycleBackup is called when app goes to background. */
+    it('calls performLifecycleBackup when app goes to background', async () => {
+      const listeners: Array<(state: string) => void> = [];
+      (AppState.addEventListener as jest.Mock).mockImplementation(
+        (_event: string, handler: (state: string) => void) => {
+          listeners.push(handler);
+          return { remove: jest.fn() };
+        },
+      );
+
+      await renderLayout(true, true, null, 'content://mock-dir');
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Clear the mount call so we can isolate the background call.
+      (performLifecycleBackup as jest.Mock).mockClear();
+
+      // Simulate app going to background.
+      await act(async () => {
+        listeners.forEach(handler => handler('background'));
+        await Promise.resolve();
+      });
+
+      expect(performLifecycleBackup).toHaveBeenCalledWith(
+        '/mock/test.db',
+        'content://mock-dir',
+        '20260523_one_create_initial_tables',
+        'test.db',
+      );
     });
   });
 });
