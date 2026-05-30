@@ -36,9 +36,6 @@ name: Autosave and undo/redo features
       id: 'saved-indicator'
     timeout: 10000
 
-# Take screenshot to verify autosave state
-- takeScreenshot: screenshot-autosave-after-open
-
 # Type some additional content to trigger autosave (verify via console logs
 # that the autosave mechanism fires; skip fragile visual "Saved" check)
 - tapOn:
@@ -75,7 +72,6 @@ name: Autosave and undo/redo features
     optional: true
 
 - inputText: ' World'
-- takeScreenshot: screenshot-a-typed
 
 # Undo reverts the ' World' burst, leaving 'Hello'
 - tapOn:
@@ -95,7 +91,6 @@ name: Autosave and undo/redo features
 
 # PROOF: only matches if undo removed ' World'
 - assertVisible: 'Hello again'
-- takeScreenshot: screenshot-a-proof
 
 # Clean up: undo back to empty then close
 - tapOn:
@@ -127,7 +122,6 @@ name: Autosave and undo/redo features
     optional: true
 
 - inputText: 'Bar'
-- takeScreenshot: screenshot-b-typed
 
 # Undo 'Bar' → 'Foo'
 - tapOn:
@@ -147,7 +141,6 @@ name: Autosave and undo/redo features
 # IS visible.
 - assertNotVisible: 'FooBaz'
 - assertVisible: 'FooBarBaz'
-- takeScreenshot: screenshot-b-proof
 
 # --- Part C: Redo stack cleared by new typing ---
 # After undo, typing new content must clear the redo stack so redo is
@@ -173,7 +166,6 @@ name: Autosave and undo/redo features
     optional: true
 
 - inputText: 'Y'
-- takeScreenshot: screenshot-c-typed
 
 # Undo 'Y' → 'X' (redo stack now has 'XY')
 - tapOn:
@@ -196,14 +188,12 @@ name: Autosave and undo/redo features
 # PROOF: content is unchanged ('XZ'), old state 'XY' is gone
 - assertVisible: 'XZ'
 - assertNotVisible: 'XY'
-- takeScreenshot: screenshot-c-redo-noop
 
 # Undo must still work for the new typing ('Z')
 - tapOn:
     id: 'undo-button'
 - waitForAnimationToEnd
 - assertVisible: 'X'
-- takeScreenshot: screenshot-c-undo-works
 
 # Save and close
 - tapOn:

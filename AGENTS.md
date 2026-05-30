@@ -20,8 +20,7 @@ level.
 
 - Nix Flake for reproducible development environment in `build_env/` directory
 - Minimal system dependencies, focused on Android development needs
-- All shell commands must be prefixed with: `nix develop ./build_env --command` in order to execute
-  in the correct environment.
+- The shell is auto-activated via Direnv, so commands run directly without any prefix.
 - Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `python3`, `create-avd`
   helper
 
@@ -30,22 +29,19 @@ level.
 - Unit tests are via jest. The canonical verification command that builders MUST run after code
   changes is `npm run test:coverage` — this enforces the ≥90% coverage threshold configured in
   `package.json`.
-  - Full command: `nix develop ./build_env --command npm run test:coverage`
+  - Full command: `npm run test:coverage`
 - `npm test` runs jest without coverage enforcement; use it only for quick dev iterations, never
   for final verification.
 - e2e tests are via android emulator and maestro.
 - To run e2e tests:
-  1. Restart ADB (if in a bad state):
-     `nix develop ./build_env --command adb kill-server && nix develop ./build_env --command adb start-server`
-  2. Start the emulator via Maestro:
-     `nix develop ./build_env --command maestro start-device --platform \`
+  1. Restart ADB (if in a bad state): `adb kill-server && adb start-server`
+  2. Start the emulator via Maestro: `maestro start-device --platform \`
      `android --device-model "pixel_6" --device-os android-35`
   3. Build and install the app in a **separate terminal** (Metro bundler runs indefinitely — it
-     does not exit after the build): `nix develop ./build_env --command npm run android` Wait for
-     "BUILD SUCCESSFUL" and the app to appear on the emulator before proceeding. The Metro process
-     must remain running for the app to function.
-  4. Run the tests in another terminal: `nix develop ./build_env --command npm run e2e` or
-     `nix develop ./build_env --command maestro test e2e/`
+     does not exit after the build): `npm run android` Wait for "BUILD SUCCESSFUL" and the app to
+     appear on the emulator before proceeding. The Metro process must remain running for the app to
+     function.
+  4. Run the tests in another terminal: `npm run e2e` or `maestro test e2e/`
 
 ## Technology Stack
 
@@ -165,21 +161,19 @@ typecheck and a large file (>1MB) check. Husky hooks are installed via the `prep
 
 Run these checks manually after every substantial change:
 
-- **Linting:** `nix develop ./build_env --command npm run lint` (includes TypeScript type checking
-  via `tsc --noEmit` before ESLint)
-- **Type checking (standalone):** `nix develop ./build_env --command npm run typecheck`
-- **Formatting:** `nix develop ./build_env --command npm run format`
-- **Format check (no write):** `nix develop ./build_env --command npm run format:check`
-- **Markdown Linting:** `nix develop ./build_env --command npm run lint:md`
-- **Combined Check:**
-  `nix develop ./build_env --command bash -c "npm run format && npm run lint && npm run lint:md"`
+- **Linting:** `npm run lint` (includes TypeScript type checking via `tsc --noEmit` before ESLint)
+- **Type checking (standalone):** `npm run typecheck`
+- **Formatting:** `npm run format`
+- **Format check (no write):** `npm run format:check`
+- **Markdown Linting:** `npm run lint:md`
+- **Combined Check:** `npm run format && npm run lint && npm run lint:md`
 
 Use `npm run lint:fix` to automatically fix some linting issues.
 
-**Before making code edits**, run `nix develop ./build_env --command npm run format` to ensure all
-files are formatted according to the project's Prettier configuration. This prevents agents from
-wasting iterations on formatting-only lint failures — Prettier enforces the 99-character line limit
-for code and 88-character limit for JSDoc comments automatically.
+**Before making code edits**, run `npm run format` to ensure all files are formatted according to
+the project's Prettier configuration. This prevents agents from wasting iterations on
+formatting-only lint failures — Prettier enforces the 99-character line limit for code and
+88-character limit for JSDoc comments automatically.
 
 ### Comment formatting
 
@@ -198,7 +192,7 @@ for code and 88-character limit for JSDoc comments automatically.
 - Coverage ≥ 90% is a floor, not a ceiling — the coverage report may reveal obvious untested paths
   (uncovered branches, missing error cases) even when thresholds pass. Pursue these quick wins
   proactively rather than stopping at the threshold.
-- Run `nix develop ./build_env --command npm run test:coverage` to generate a coverage report
+- Run `npm run test:coverage` to generate a coverage report
 - Coverage applies to statements, branches, functions, and lines — all must be ≥ 90%
 - Files excluded from coverage are listed in `coveragePathIgnorePatterns` in the Jest config (these
   are type-only, platform-specific, or framework boilerplate files)

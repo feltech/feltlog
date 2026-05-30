@@ -59,16 +59,40 @@ export const ImageVisionPlugin: Plugin = async (input: Parameters[0], options?: 
           const mimeType = MIME[ext || ''] || 'image/png';
           const base64 = Buffer.from(await Bun.file(fp).arrayBuffer()).toString('base64');
 
+          const rawTimeout = options?.vision_timeout_ms;
+          const timeoutMs =
+            typeof rawTimeout === 'number' && rawTimeout > 0 ? rawTimeout : 120_000;
+
           const session = await client.session.create({
             body: { title: `Vision: ${args.filePath}` },
           });
           if (session.error) {
-            throw new Error(
-              `Session create failed: ${JSON.stringify(session.error).slice(0, 300)}`,
-            );
+            const errStr = JSON.stringify(session.error).slice(0, 300);
+            await client.app.log({
+              service: 'image-vision',
+              level: 'error',
+              message: 'Session creation failed',
+              extra: { filePath: args.filePath, error: errStr },
+            });
+            throw new Error(`Session create failed: ${errStr}`);
           }
+
+          await client.app.log({
+            service: 'image-vision',
+            level: 'info',
+            message: 'Starting vision request',
+            extra: { filePath: args.filePath, model: visionModel, mimeType },
+          });
+
+          let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              reject(new Error(`Vision model timed out after ${timeoutMs / 1000}s`));
+            }, timeoutMs);
+          });
+
           try {
-            const result = await client.session.prompt({
+            const promptPromise = client.session.prompt({
               path: { id: session.data.id },
               body: {
                 model: { providerID, modelID },
@@ -89,6 +113,12 @@ export const ImageVisionPlugin: Plugin = async (input: Parameters[0], options?: 
                 ],
               },
             });
+            // Swallow eventual rejection if the timeout wins the race,
+            // preventing an unhandled rejection crash.
+            promptPromise.catch(() => {});
+            const result = await Promise.race([promptPromise, timeoutPromise]);
+            clearTimeout(timeoutHandle);
+
             if (result.error) {
               // Strip base64 data from the error to keep it readable.
               // Match a JSON string value containing a data: URI with at
@@ -99,14 +129,33 @@ export const ImageVisionPlugin: Plugin = async (input: Parameters[0], options?: 
               );
               throw new Error(`Vision model error: ${errStr.slice(0, 500)}`);
             }
+
+            await client.app.log({
+              service: 'image-vision',
+              level: 'info',
+              message: 'Vision request completed',
+              extra: { filePath: args.filePath },
+            });
+
             return (
               result.data.parts
                 ?.filter((p: { type: string }) => p.type === 'text')
                 .map((p: { text: string }) => p.text)
                 .join('\n') || 'No description returned'
             );
+          } catch (error) {
+            clearTimeout(timeoutHandle);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            await client.app.log({
+              service: 'image-vision',
+              level: 'error',
+              message: 'Vision request failed',
+              extra: { filePath: args.filePath, error: errorMessage },
+            });
+            await client.session.abort({ path: { id: session.data.id } }).catch(() => {});
+            throw error;
           } finally {
-            await client.session.delete({ path: { id: session.data.id } });
+            await client.session.delete({ path: { id: session.data.id } }).catch(() => {});
           }
         },
       }),
