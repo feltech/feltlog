@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "build:release": "cd android && ./gradlew assembleRelease",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest",
@@ -16,7 +17,20 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:md": "markdownlint '**/*.md'",
-    "e2e": "maestro test e2e",
+    "e2e:sync-time": "adb wait-for-device && adb shell su root date -u @$(date +%s)",
+    "e2e": "npm run e2e:sync-time && maestro test --test-output-dir ./test_output e2e",
+    "e2e:flow": "npm run e2e:sync-time && maestro test --test-output-dir ./test_output",
+    "e2e:kill-maestro-mcp": "pkill -f 'maestro.cli.AppKt mcp'",
+    "e2e:kill-metro": "pkill -f 'node.*metro'; pkill -f 'expo start'",
+    "e2e:adb-check": "adb shell echo ok",
+    "e2e:adb-restart": "adb kill-server && adb start-server",
+    "e2e:adb-uptime": "adb shell uptime",
+    "e2e:adb-pidof": "adb shell pidof com.feltech.feltlog",
+    "e2e:start-device": "maestro start-device --platform android --device-model pixel_6 --device-os android-35",
+    "e2e:wait-device": "for i in $(seq 1 12); do maestro list-devices 2>/dev/null | grep -q connected && exit 0; echo \"Attempt $i/12: waiting 10s...\"; sleep 10; done; echo 'Device not connected after 120s' >&2; exit 1",
+    "e2e:wait-build-success": "grep -q 'BUILD SUCCESSFUL' android.log || timeout 300 tail -F android.log | grep -m1 'BUILD SUCCESSFUL'",
+    "e2e:wait-bundled": "grep -q 'Bundled' android.log || timeout 120 tail -F android.log | grep -m1 'Bundled'",
+    "e2e:wait-opening": "grep -q 'Opening exp+feltlog' android.log || timeout 60 tail -F android.log | grep -m1 'Opening exp+feltlog'",
     "prepare": "husky"
   },
   "jest": {
@@ -74,7 +88,8 @@
       "src/presentation/components/useColorScheme.ts",
       "src/presentation/components/useColorScheme.web.ts",
       "src/presentation/components/useClientOnlyValue.web.ts",
-      "app/\\+html.tsx"
+      "app/\\+html.tsx",
+      "src/test-utils/"
     ]
   },
   "dependencies": {
@@ -84,6 +99,7 @@
     "@react-navigation/native": "^7.0.14",
     "better-sqlite3": "^12.9.0",
     "expo": "~53.0.27",
+    "expo-file-system": "~18.1.11",
     "expo-font": "~13.3.2",
     "expo-linking": "7.1.7",
     "expo-location": "~18.1.6",
