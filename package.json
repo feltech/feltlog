@@ -27,7 +27,6 @@
     "e2e:adb-uptime": "adb shell uptime",
     "e2e:adb-pidof": "adb shell pidof com.feltech.feltlog",
     "e2e:start-device": "maestro start-device --platform android --device-model pixel_6 --device-os android-35",
-    "e2e:wait-device": "for i in $(seq 1 12); do maestro list-devices 2>/dev/null | grep -q connected && exit 0; echo \"Attempt $i/12: waiting 10s...\"; sleep 10; done; echo 'Device not connected after 120s' >&2; exit 1",
     "e2e:wait-build-success": "grep -q 'BUILD SUCCESSFUL' android.log || timeout 300 tail -F android.log | grep -m1 'BUILD SUCCESSFUL'",
     "e2e:wait-bundled": "grep -q 'Bundled' android.log || timeout 120 tail -F android.log | grep -m1 'Bundled'",
     "e2e:wait-opening": "grep -q 'Opening exp+feltlog' android.log || timeout 60 tail -F android.log | grep -m1 'Opening exp+feltlog'",

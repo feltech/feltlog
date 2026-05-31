@@ -24,6 +24,7 @@
       "which *": "allow",
       "printf *": "allow",
       "dirname *": "allow",
+      "realpath *": "allow",
       "basename *": "allow",
       "ps aux": "allow",
       "sed '*": "allow",
@@ -31,6 +32,7 @@
       "cut *": "allow",
       "rg *": "allow",
       "strings *": "allow",
+      "file *": "allow",
       "jq *": "allow",
       "tee *": "allow",
       "mkdir *": "allow",
@@ -54,8 +56,10 @@
       "node -c *": "allow",
       "node --version": "allow",
       "npm run *": "allow",
+      "npm ls *": "allow",
       "npm test *": "allow",
       "npx jest *": "allow",
+      "npx tsc *": "allow",
       "npx markdownlint *": "allow",
       "bash -c \"npm run format && npm run lint\"": "allow",
       "bash -c \"npm run format && npm run lint && npm run lint:md\"": "allow",
@@ -74,9 +78,6 @@
     },
     "describe_image": "allow"
   },
-  "tools": {
-    "maestro*": false
-  },
   "agent": {
     "explore": {
       "disable": true
@@ -85,7 +86,7 @@
   "mcp": {
     "maestro": {
       "type": "local",
-      "command": ["nix", "develop", "./build_env", "--command", "maestro", "mcp"],
+      "command": ["maestro", "mcp"],
       "enabled": true
     }
   },

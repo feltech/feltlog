@@ -48,3 +48,5 @@ test_output/
 /coverage/lcov-report/sort-arrow-sprite.png
 /coverage/lcov-report/sorter.js
 /coverage/lcov.info
+/.coverage-temp
+/coverage
