@@ -16,9 +16,7 @@ name: Edit entry flow
     env:
       content: ${output.originalContent}
 
-- assertVisible:
-    # Navigation icon (system back or cross-fade)
-    id: 'cross-fade-icon-current'
+# Journal list should be showing with the entry card visible
 
 # ===== TEST EDIT EXISTING ENTRY =====
 
@@ -62,6 +60,8 @@ name: Edit entry flow
 # Verify edited content is there
 - assertVisible: ${output.editedContent}
 
-# Go back
+# Go back (tap header to dismiss keyboard first)
+- tapOn:
+    id: 'appbar-header'
 - pressKey: BACK
 - assertVisible: 'Create entry'

@@ -15,26 +15,12 @@ const CONTENT_UNDO_COALESCE_MS = 500;
 // ---------------------------------------------------------------------------
 
 /**
- * Mock expo-router — Stack.Screen renders its title as text for testing, search params
- * configurable.
+ * Mock expo-router — useLocalSearchParams returns configurable params. Stack is no
+ * longer imported by the component (header is now inline).
  */
 jest.mock('expo-router', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require('react');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Text } = require('react-native');
   return {
     useLocalSearchParams: jest.fn(() => ({})),
-    Stack: {
-      Screen: (props: Record<string, unknown>) => {
-        // Render the title prop as visible text so tests can assert on it.
-        const title = (props.options as Record<string, unknown>)?.title;
-        if (title) {
-          return React.createElement(Text, { testID: 'stack-screen-title' }, title);
-        }
-        return null;
-      },
-    },
   };
 });
 

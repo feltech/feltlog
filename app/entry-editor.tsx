@@ -10,7 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native-paper';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapView, Camera } from '@maplibre/maplibre-react-native';
@@ -637,9 +637,10 @@ export default function JournalEntryModal() {
   }, [state, setState]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-      <Stack.Screen options={{ title: isEditing ? 'Edit Entry' : 'New Entry' }} />
-      <Appbar.Header>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+      <Appbar.Header statusBarHeight={0} testID="appbar-header">
+        <Appbar.BackAction onPress={() => navigation.goBack()} />
+        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
         <Appbar.Action
           icon="undo"
           testID="undo-button"

@@ -147,7 +147,10 @@ function RootLayoutNav() {
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="entry-editor" options={{ presentation: 'modal' }} />
+              <Stack.Screen
+                name="entry-editor"
+                options={{ presentation: 'modal', headerShown: false }}
+              />
             </Stack>
             <Snackbar
               visible={showBackupSnackbar}

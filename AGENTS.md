@@ -253,6 +253,42 @@ that hide real timing issues.
 - Avoid the use of singletons, prefer dependency injection or contexts.
 - Keep transactions minimal in Expo SQLite (avoid complex multi-table transactions).
 
+## E2E Testability Constraints
+
+### Maestro + React Native Native Stack Navigator Headers on Android
+
+React Native Paper components (`Appbar.Action`, `Appbar.BackAction`, etc.) rendered inside
+`headerLeft`, `headerRight`, or `headerTitle` callbacks of React Navigation's **native** Stack
+Navigator are **not testable with Maestro** on Android. The native Stack wraps these components in
+opaque `android.view.ViewGroup` containers that strip `testID`, `accessibilityLabel`, text, and
+`clickable` from the accessibility tree.
+
+**Confirmed non-functional selectors:**
+
+| Selector              | Component                           | Result    |
+| --------------------- | ----------------------------------- | --------- |
+| `id: 'undo-button'`   | `Appbar.Action` in `headerRight`    | Not found |
+| `id: 'redo-button'`   | `Appbar.Action` in `headerRight`    | Not found |
+| `text: 'Navigate up'` | `Appbar.BackAction` in `headerLeft` | Not found |
+| `text: 'New Entry'`   | `Stack.Screen` title                | Not found |
+
+**Required pattern:** Always use `headerShown: false` on the `Stack.Screen` and render a custom
+`Appbar.Header` directly in the screen content with explicit `testID` props:
+
+```tsx
+<Stack.Screen options={{ headerShown: false }} />
+<Appbar.Header statusBarHeight={0} testID="appbar-header">
+  <Appbar.BackAction onPress={() => navigation.goBack()} testID="back-button" />
+  <Appbar.Content title="New Entry" />
+  <Appbar.Action icon="undo" testID="undo-button" onPress={handleUndo} />
+  <Appbar.Action icon="redo" testID="redo-button" onPress={handleRedo} />
+</Appbar.Header>
+```
+
+**Note:** `Appbar.Header` adds its own `statusBarHeight` padding by default. When wrapped in
+`SafeAreaView` with the `top` edge, this creates double padding. Set `statusBarHeight={0}` to
+prevent the gap.
+
 ## Core Features
 
 ### Journal Entry Management
