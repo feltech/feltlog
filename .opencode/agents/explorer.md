@@ -5,6 +5,7 @@ model: ollama-cloud/deepseek-v4-flash
 temperature: 0.1
 permission:
   edit: deny
+  maestro*: deny
 ---
 
 You are a repository exploration and retrieval agent.

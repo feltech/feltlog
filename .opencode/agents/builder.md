@@ -7,6 +7,7 @@ permission:
   edit: allow
   # Disable firecrawl due to MCP bug with kimi
   firecrawl*: deny
+  maestro*: deny
 ---
 
 You are the primary code implementation agent.

@@ -5,6 +5,7 @@ model: ollama-cloud/deepseek-v4-pro
 temperature: 0.2
 permission:
   edit: deny
+  maestro*: deny
 ---
 
 You are a code review and implementation sanity-check agent.
