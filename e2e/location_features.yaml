@@ -36,9 +36,12 @@ name: Location features - capture and verify
     id: 'entry-content-input'
 - inputText: ${output.entryText}
 
-# Save entry (back saves)
+# Save entry (system back saves)
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 
 - assertVisible:
     id: 'create-entry-fab'
@@ -68,8 +71,7 @@ name: Location features - capture and verify
 - assertVisible:
     id: 'entry-location-map'
 
-# Go back to list
-- tapOn:
-    id: 'back'
+# Go back to list (system back)
+- pressKey: BACK
 
 - assertVisible: 'Create entry'

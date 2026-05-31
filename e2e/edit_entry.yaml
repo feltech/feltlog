@@ -17,7 +17,7 @@ name: Edit entry flow
       content: ${output.originalContent}
 
 - assertVisible:
-    # Back button arrow
+    # Navigation icon (system back or cross-fade)
     id: 'cross-fade-icon-current'
 
 # ===== TEST EDIT EXISTING ENTRY =====
@@ -28,9 +28,6 @@ name: Edit entry flow
 - tapOn: 'Journal entry card'
 - assertVisible:
     id: 'entry-content-input'
-
-# Verify we're in edit mode
-- assertVisible: 'Edit Entry'
 
 # Verify original content is loaded
 - assertVisible: ${output.originalContent}
@@ -44,9 +41,12 @@ name: Edit entry flow
 - evalScript: ${output.editedContent = "Edited content " + Date.now().toString()}
 - inputText: ${output.editedContent}
 
-# Close and save (back button saves)
+# Close and save (system back saves)
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -63,6 +63,5 @@ name: Edit entry flow
 - assertVisible: ${output.editedContent}
 
 # Go back
-- tapOn:
-    id: 'back'
+- pressKey: BACK
 - assertVisible: 'Create entry'

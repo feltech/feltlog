@@ -13,8 +13,11 @@ appId: com.feltech.feltlog
 - tapOn:
     id: 'entry-content-input'
 - inputText: ${content || "Default entry content"}
-# Back button saves and closes
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+# System back button saves and closes
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'

@@ -16,9 +16,8 @@ name: Error states handling
 - assertVisible:
     id: 'entry-content-input'
 
-# Verify save is handled by back button - back without content just navigates back
-- tapOn:
-    id: 'back'
+# Verify save is handled by system back - back without content just navigates back
+- pressKey: BACK
 - assertVisible: 'Create entry'
 
 # Re-open edit to verify we landed back
@@ -34,8 +33,11 @@ name: Error states handling
     id: 'entry-content-input'
 - inputText: ${output.validContent}
 # Back button saves and closes
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'
 

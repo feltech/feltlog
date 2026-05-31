@@ -58,9 +58,12 @@ name: Tag management in entry
 - pressKey: Enter
 - waitForAnimationToEnd
 
-# Close and save entry (back button saves)
+# Close and save entry (system back saves)
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -71,9 +74,6 @@ name: Tag management in entry
 - tapOn: 'Journal entry card'
 - assertVisible:
     id: 'entry-content-input'
-
-# Verify we're in edit mode
-- assertVisible: 'Edit Entry'
 
 # Remove one tag - look for close icon on chip
 - runFlow:
@@ -93,8 +93,11 @@ name: Tag management in entry
 - pressKey: Enter
 - waitForAnimationToEnd
 
-# Close and save changes (back button saves)
+# Close and save changes (system back saves)
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'

@@ -27,9 +27,6 @@ name: Autosave and undo/redo features
 - assertVisible:
     id: 'entry-content-input'
 
-# Verify we're in edit mode (should show "Edit Entry" in header)
-- assertVisible: 'Edit Entry'
-
 # Wait for initial autosave to complete (triggered by content loading in edit mode)
 - extendedWaitUntil:
     visible:
@@ -51,8 +48,11 @@ name: Autosave and undo/redo features
 # Each chunk gets its own undo entry because the 500ms delay expires between them.
 # The assertion proves undo removed 'World'.
 
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -104,7 +104,8 @@ name: Autosave and undo/redo features
 # The assertion proves redo restored 'Bar' between 'Foo' and 'Baz'.
 
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -148,7 +149,8 @@ name: Autosave and undo/redo features
 # must still work.
 
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -197,6 +199,7 @@ name: Autosave and undo/redo features
 
 # Save and close
 - tapOn:
-    id: 'back'
+    id: 'appbar-header'
+- pressKey: BACK
 - assertVisible:
     id: 'create-entry-fab'

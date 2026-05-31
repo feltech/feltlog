@@ -14,13 +14,48 @@ const CONTENT_UNDO_COALESCE_MS = 500;
 // Mocks — hoisted by Jest before any imports below.
 // ---------------------------------------------------------------------------
 
-/** Fully control router behaviour. */
-jest.mock('expo-router', () => ({
-  useLocalSearchParams: jest.fn(() => ({})),
-  useRouter: jest.fn(() => ({ back: jest.fn() })),
-}));
+/**
+ * Mock expo-router — Stack.Screen renders its title as text for testing, search params
+ * configurable.
+ */
+jest.mock('expo-router', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require('react-native');
+  return {
+    useLocalSearchParams: jest.fn(() => ({})),
+    Stack: {
+      Screen: (props: Record<string, unknown>) => {
+        // Render the title prop as visible text so tests can assert on it.
+        const title = (props.options as Record<string, unknown>)?.title;
+        if (title) {
+          return React.createElement(Text, { testID: 'stack-screen-title' }, title);
+        }
+        return null;
+      },
+    },
+  };
+});
 
-/** Replace the real ViewModel so we don't need a database. */
+/** Mock @react-navigation/native — capture beforeRemove listeners for testing. */
+let beforeRemoveHandler:
+  | ((e: { preventDefault: () => void; data: { action: unknown } }) => void)
+  | null = null;
+const mockDispatch = jest.fn();
+const mockNavigation = {
+  dispatch: mockDispatch,
+  addListener: jest.fn((event: string, handler: (e: never) => void) => {
+    if (event === 'beforeRemove') {
+      beforeRemoveHandler = handler as typeof beforeRemoveHandler;
+    }
+    return jest.fn(); // unsubscribe
+  }),
+};
+
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: jest.fn(() => mockNavigation),
+}));
 jest.mock('@/src/presentation/viewmodels/JournalViewModel', () => ({
   useJournalViewModel: jest.fn(),
 }));
@@ -45,7 +80,7 @@ jest.mock('react-native-safe-area-context', () => {
 });
 
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 import JournalEntryModal from '../entry-editor';
 
@@ -186,12 +221,14 @@ async function waitForMap(result: ReturnType<typeof render>): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe('JournalEntryModal', () => {
-  let mockBack: jest.Mock;
   let actions: Record<string, jest.Mock>;
 
   beforeEach(() => {
     // Reset all mocks between tests so per-test overrides don't leak.
     jest.clearAllMocks();
+
+    // Reset the beforeRemove handler captured by the navigation mock.
+    beforeRemoveHandler = null;
 
     // Explicitly reset expo-location mocks to default implementations.
     // clearAllMocks does not reset mock implementations, so any test that
@@ -212,8 +249,6 @@ describe('JournalEntryModal', () => {
     });
     (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockImplementation(async () => []);
 
-    mockBack = jest.fn();
-    (useRouter as jest.Mock).mockReturnValue({ back: mockBack });
     (useLocalSearchParams as jest.Mock).mockReturnValue({}); // create mode by default
 
     actions = stubActions();
@@ -252,7 +287,8 @@ describe('JournalEntryModal', () => {
     it('shows "New Entry" title in create mode', async () => {
       const result = await renderModal();
       await flushEffects();
-      // Paper's Appbar.Content renders the title as a Text child.
+      // Stack.Screen renders the title as text (via mock) so tests can
+      // assert the correct title is displayed.
       const header = result.getByText('New Entry');
       expect(header).toBeTruthy();
     });
@@ -284,12 +320,6 @@ describe('JournalEntryModal', () => {
       await flushEffects();
       expect(result.getByTestId('undo-button')).toBeTruthy();
       expect(result.getByTestId('redo-button')).toBeTruthy();
-    });
-
-    it('renders a back button', async () => {
-      const result = await renderModal();
-      await flushEffects();
-      expect(result.getByTestId('back')).toBeTruthy();
     });
 
     it('renders the content text input', async () => {
@@ -355,19 +385,19 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // isUpdatingLocation and back-button disabled state
+  // isUpdatingLocation state
   // -------------------------------------------------------------------------
 
-  describe('isUpdatingLocation state and back-button', () => {
-    it('back button is NOT disabled initially (before any region change)', async () => {
+  describe('isUpdatingLocation state', () => {
+    it('no location hint initially (before any region change)', async () => {
       const result = await renderModal();
       await waitForMap(result);
 
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+      // No updating hint should be present initially.
+      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
     });
 
-    it('back button becomes disabled when a user-driven region change fires', async () => {
+    it('shows the location-updating hint when a user-driven region change fires', async () => {
       jest.useFakeTimers();
       const result = await renderModal();
       await flushEffects();
@@ -385,17 +415,13 @@ describe('JournalEntryModal', () => {
       });
 
       // After the region change handler runs, isUpdatingLocation should be
-      // true (the debounce hasn't fired yet), so the back button is disabled.
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(true);
-
-      // The hint text should also be present.
+      // true (the debounce hasn't fired yet), so the hint is visible.
       expect(result.queryByText('Looking up address, please wait…')).toBeTruthy();
 
       jest.useRealTimers();
     });
 
-    it('back button re-enables after geocode completes', async () => {
+    it('hides the hint after geocode completes', async () => {
       jest.useFakeTimers();
 
       // Override the reverseGeocodeAsync mock to return an address quickly.
@@ -433,17 +459,13 @@ describe('JournalEntryModal', () => {
       // Wait for the state to settle: isUpdatingLocation should flip back to
       // false after the geocode resolves.
       await waitFor(() => {
-        const backBtn = result.getByTestId('back');
-        expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+        expect(result.queryByText('Looking up address, please wait…')).toBeNull();
       });
-
-      // The hint text should be gone.
-      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
     });
 
-    it('shows the location-updating hint text when disabled', async () => {
+    it('shows the location-updating hint text when geocode is in progress', async () => {
       jest.useFakeTimers();
       const result = await renderModal();
       await flushEffects();
@@ -508,9 +530,8 @@ describe('JournalEntryModal', () => {
         expect(result.queryByText('Updating location…')).toBeNull();
       });
 
-      // The back button should be re-enabled.
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+      // The updating hint should also be gone.
+      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -587,12 +608,8 @@ describe('JournalEntryModal', () => {
       // After the timeout, the Promise.race rejects, catch clause runs,
       // and the finally block sets isUpdatingLocation back to false.
       await waitFor(() => {
-        const backBtn = result.getByTestId('back');
-        expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+        expect(result.queryByText('Looking up address, please wait…')).toBeNull();
       });
-
-      // The hint text should also be gone.
-      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -639,9 +656,8 @@ describe('JournalEntryModal', () => {
         });
       });
 
-      // Back button should still be enabled (isUpdatingLocation stayed false).
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+      // isUpdatingLocation should remain false because the handler bailed early.
+      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
     });
 
     it('ignores non-user-interaction region changes', async () => {
@@ -662,8 +678,7 @@ describe('JournalEntryModal', () => {
       });
 
       // isUpdatingLocation should remain false because the handler bailed early.
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -724,8 +739,7 @@ describe('JournalEntryModal', () => {
 
       // After the second geocode resolves, isUpdatingLocation goes to false.
       await waitFor(() => {
-        const backBtn = result.getByTestId('back');
-        expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+        expect(result.queryByText('Looking up address, please wait…')).toBeNull();
       });
 
       // The first (stale) geocode never resolves, but even if it did, its
@@ -741,19 +755,31 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Back button behaviour
+  // beforeRemove listener (intercepts back navigation to save)
   // -------------------------------------------------------------------------
 
-  describe('back button', () => {
-    it('calls router.back when pressed in create mode (no content)', async () => {
-      const result = await renderModal();
-      await waitForMap(result);
+  describe('beforeRemove listener', () => {
+    it('flushes save and dispatches navigation on back in create mode (no content)', async () => {
+      await renderModal();
+      await waitForMap;
 
-      fireEvent.press(result.getByTestId('back'));
+      // Simulate the beforeRemove event fired by back navigation.
+      expect(beforeRemoveHandler).not.toBeNull();
 
-      // In create mode with no content, handleSaveAndClose just calls back().
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
       await waitFor(() => {
-        expect(mockBack).toHaveBeenCalled();
+        // Navigation was prevented and then dispatched after flush.
+        expect(preventDefault).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
 
@@ -765,17 +791,25 @@ describe('JournalEntryModal', () => {
       const contentInput = result.getByTestId('entry-content-input');
       fireEvent.changeText(contentInput, 'My new journal entry');
 
-      // Press back.
-      fireEvent.press(result.getByTestId('back'));
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
 
-      // createEntry should have been called.
+      // createEntry should have been called, then dispatch.
       await waitFor(() => {
         expect(actions.createEntry).toHaveBeenCalled();
-        expect(mockBack).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
 
-    it('still saves and navigates back when isUpdatingLocation is true', async () => {
+    it('still saves and dispatches back when isUpdatingLocation is true', async () => {
       // Prevent the geocode from resolving so isUpdatingLocation stays true.
       jest.useFakeTimers();
       // Initial fetch: resolve immediately with empty result so map appears.
@@ -798,32 +832,28 @@ describe('JournalEntryModal', () => {
         });
       });
 
-      // Verify the back button is disabled.
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(true);
+      // Verify the hint text is present.
+      expect(result.queryByText('Looking up address, please wait…')).toBeTruthy();
 
       // Type content so createEntry will be called.
       const contentInput = result.getByTestId('entry-content-input');
       fireEvent.changeText(contentInput, 'Entry during location update');
 
-      // The back button is disabled, so fireEvent.press won't trigger the
-      // onPress handler through Paper's internal disabled guard. Instead,
-      // traverse the rendered tree to find the element that actually holds
-      // the onPress callback and invoke it directly — simulating what would
-      // happen if a hardware back gesture bypassed the disabled state.
-      const pressableElement = result.UNSAFE_root.findByProps({
-        disabled: true,
-        accessibilityLabel: 'Go back',
-      });
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
       await act(async () => {
-        pressableElement.props.onPress();
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
       });
 
-      // The save should still proceed and navigate back — the old guard that
-      // used to return early (dropping data) has been removed.
+      // The save should still proceed and dispatch navigation back.
       await waitFor(() => {
         expect(actions.createEntry).toHaveBeenCalled();
-        expect(mockBack).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
 
       jest.useRealTimers();
@@ -1196,11 +1226,11 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Back button — edit mode with pending autosave
+  // beforeRemove listener — edit mode with pending autosave
   // -------------------------------------------------------------------------
 
-  describe('back button in edit mode', () => {
-    it('flushes pending autosave when back is pressed in edit mode', async () => {
+  describe('beforeRemove in edit mode', () => {
+    it('flushes pending autosave when back navigation is triggered in edit mode', async () => {
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: {
           ...DEFAULT_STATE,
@@ -1225,8 +1255,16 @@ describe('JournalEntryModal', () => {
       const contentInput = result.getByTestId('entry-content-input');
       fireEvent.changeText(contentInput, 'modified content');
 
-      // Press back — should flush the pending save.
-      fireEvent.press(result.getByTestId('back'));
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
 
       await waitFor(() => {
         expect(actions.updateEntry).toHaveBeenCalledWith(
@@ -1235,11 +1273,11 @@ describe('JournalEntryModal', () => {
             content: 'modified content',
           }),
         );
-        expect(mockBack).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
 
-    it('navigates back without saving in edit mode when content is unchanged', async () => {
+    it('dispatches navigation back without saving in edit mode when content is unchanged', async () => {
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: {
           ...DEFAULT_STATE,
@@ -1257,14 +1295,22 @@ describe('JournalEntryModal', () => {
         actions,
       });
 
-      const result = await renderModal('edit-1');
+      await renderModal('edit-1');
       await flushEffects();
 
-      // Press back without changing content.
-      fireEvent.press(result.getByTestId('back'));
+      // Simulate back navigation without changing content.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
 
       await waitFor(() => {
-        expect(mockBack).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
   });
@@ -1372,8 +1418,7 @@ describe('JournalEntryModal', () => {
       });
 
       // isUpdatingLocation should remain false.
-      const backBtn = result.getByTestId('back');
-      expect(backBtn.props.accessibilityState?.disabled).toBe(false);
+      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -1580,11 +1625,11 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Back button — create mode with createEntry failure
+  // beforeRemove — create mode with createEntry failure
   // -------------------------------------------------------------------------
 
-  describe('back button with createEntry failure', () => {
-    it('still navigates back when createEntry throws', async () => {
+  describe('beforeRemove with createEntry failure', () => {
+    it('still dispatches navigation back when createEntry throws', async () => {
       actions.createEntry.mockRejectedValue(new Error('Create failed'));
 
       const result = await renderModal();
@@ -1594,22 +1639,30 @@ describe('JournalEntryModal', () => {
       const contentInput = result.getByTestId('entry-content-input');
       fireEvent.changeText(contentInput, 'Content that fails');
 
-      // Press back.
-      fireEvent.press(result.getByTestId('back'));
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
 
-      // Should still navigate back despite the error.
+      // Should still dispatch navigation back despite the error.
       await waitFor(() => {
-        expect(mockBack).toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
   });
 
   // -------------------------------------------------------------------------
-  // Back button — edit mode with updateEntry failure
+  // beforeRemove — edit mode with updateEntry failure
   // -------------------------------------------------------------------------
 
-  describe('back button with updateEntry failure in edit mode', () => {
-    it('still navigates back when the flush updateEntry throws', async () => {
+  describe('beforeRemove with updateEntry failure in edit mode', () => {
+    it('still dispatches navigation back when the flush updateEntry throws', async () => {
       actions.updateEntry.mockRejectedValue(new Error('Update failed'));
 
       (useJournalViewModel as jest.Mock).mockReturnValue({
@@ -1636,13 +1689,208 @@ describe('JournalEntryModal', () => {
       const contentInput = result.getByTestId('entry-content-input');
       fireEvent.changeText(contentInput, 'modified');
 
-      // Press back — should try to flush the save, but it fails silently.
-      fireEvent.press(result.getByTestId('back'));
-
-      // Should still navigate back despite the error.
-      await waitFor(() => {
-        expect(mockBack).toHaveBeenCalled();
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
       });
+
+      // Should still dispatch navigation back despite the error.
+      await waitFor(() => {
+        expect(mockDispatch).toHaveBeenCalledWith(action);
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Concurrent save race — flushSave awaits in-flight autosave
+  // -------------------------------------------------------------------------
+
+  describe('flushSave awaits in-flight autosave instead of starting a concurrent one', () => {
+    it('waits for in-flight autosave and does not start a second updateEntry', async () => {
+      jest.useFakeTimers();
+
+      // Make updateEntry hang for the first call, then resolve for subsequent calls.
+      let resolveFirstSave: (v: unknown) => void;
+      const firstSavePromise = new Promise(resolve => {
+        resolveFirstSave = resolve;
+      });
+      actions.updateEntry.mockReturnValueOnce(firstSavePromise).mockResolvedValue({
+        id: 'edit-1',
+        content: 'flushed',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      });
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Type content to trigger autosave.
+      const contentInput = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(contentInput, 'changed');
+      });
+
+      // Advance past the autosave debounce to start the first save.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+
+      // The first updateEntry is now in-flight (hanging). While it's in
+      // flight, simulate a back navigation. flushSave should await the
+      // in-flight save, then check pendingSaveRef to decide if a second
+      // save is needed.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should have been called once (the autosave).
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // Resolve the first save. After it resolves, flushSave's await on
+      // saveInFlightRef completes and it checks pendingSaveRef. Since the
+      // autosave just saved "changed", and no further content change happened,
+      // pendingSaveRef should now be false and no second save should fire.
+      await act(async () => {
+        resolveFirstSave!({
+          id: 'edit-1',
+          content: 'changed',
+          datetime: new Date(),
+          created_at: new Date(),
+          modified_at: new Date(),
+          tags: [],
+        });
+      });
+
+      // Still only one updateEntry call — flushSave awaited the in-flight
+      // save and did not start a concurrent one.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+        expect(mockDispatch).toHaveBeenCalledWith(action);
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('saves again after awaiting in-flight autosave if content changed during the wait', async () => {
+      jest.useFakeTimers();
+      // Make updateEntry hang for the first call, then resolve for subsequent calls.
+      let resolveFirstSave: (v: unknown) => void;
+      const firstSavePromise = new Promise(resolve => {
+        resolveFirstSave = resolve;
+      });
+      actions.updateEntry.mockReturnValueOnce(firstSavePromise).mockResolvedValue({
+        id: 'edit-1',
+        content: 'second save',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      });
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Type content to trigger autosave.
+      const contentInput = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(contentInput, 'changed');
+      });
+
+      // Advance past the autosave debounce to start the first save.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+
+      // In-flight autosave is hanging. Simulate back navigation. flushSave
+      // will await the in-flight save.
+      const action = { type: 'GO_BACK' };
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault: jest.fn(),
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry called once for the in-flight autosave.
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // While flushSave is awaiting the in-flight save, change content again.
+      // This sets pendingSaveRef.current = true, so after the in-flight save
+      // finishes, flushSave will see pendingSaveRef is still true and save again.
+      await act(async () => {
+        fireEvent.changeText(contentInput, 'changed again');
+      });
+
+      // Resolve the first save.
+      await act(async () => {
+        resolveFirstSave!({
+          id: 'edit-1',
+          content: 'changed',
+          datetime: new Date(),
+          created_at: new Date(),
+          modified_at: new Date(),
+          tags: [],
+        });
+      });
+
+      // After the in-flight save resolves, flushSave should see that
+      // pendingSaveRef is true (because content changed during the wait)
+      // and call doEditSave for the latest content.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledTimes(2);
+        expect(mockDispatch).toHaveBeenCalledWith(action);
+      });
+
+      jest.useRealTimers();
     });
   });
 

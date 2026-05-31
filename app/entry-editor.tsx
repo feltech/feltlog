@@ -10,7 +10,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapView, Camera } from '@maplibre/maplibre-react-native';
 import * as ExpoLocation from 'expo-location';
@@ -87,7 +88,6 @@ function formatAddress(geocode: ExpoLocation.LocationGeocodedAddress): string | 
  * @returns The rendered modal screen.
  */
 export default function JournalEntryModal() {
-  const router = useRouter();
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
   const { state: vmState, actions } = useJournalViewModel();
@@ -109,6 +109,9 @@ export default function JournalEntryModal() {
   const pendingSaveRef = useRef(false);
   // Tracks whether a save API call is currently in-flight to prevent stacking.
   const savingRef = useRef(false);
+  // Holds the in-flight save promise so flushSave can await it instead of
+  // starting a concurrent write.
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
   // Ref to a stable autosave function that always has access to latest state.
   // Avoids re-running the debounce effect when non-content deps (like actions)
   // change.
@@ -122,6 +125,12 @@ export default function JournalEntryModal() {
   // need to be reset so the new entry's content loads. In the current Expo
   // Router model the modal is always pushed/popped, so this is not a concern.
   const contentInitializedRef = useRef(false);
+
+  // Ref to the shared edit-save function. Reassigned every render to close over
+  // the latest state. Both autosaveFnRef and flushSaveRef call this to avoid
+  // duplicating the save payload and the bookkeeping around
+  // savingRef / saveInFlightRef / pendingSaveRef.
+  const doEditSaveRef = useRef<() => Promise<void>>(undefined);
 
   // Location refs
   const geoDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -261,31 +270,36 @@ export default function JournalEntryModal() {
     };
   }, [isEditing, setState]);
 
-  // Stable autosave fn — reassigned every render to close over latest state.
-  // Only called from the debounce timeout, never during render.
-  autosaveFnRef.current = async () => {
-    if (!isEditing || !resolvedEntryId || !state.content.trim()) return;
-    if (savingRef.current) {
-      pendingSaveRef.current = true;
-      return;
-    }
+  // Shared edit-save logic extracted into a ref to avoid duplicating the
+  // payload and bookkeeping between autosaveFnRef and flushSaveRef.
+  // Reassigned every render to close over the latest state and actions.
+  doEditSaveRef.current = async () => {
+    if (!resolvedEntryId) return;
     savingRef.current = true;
     pendingSaveRef.current = false;
     setState(draft => {
       draft.autoSaving = true;
     });
+    const promise = actions.updateEntry(resolvedEntryId, {
+      content: state.content.trim(),
+      datetime: state.datetime,
+      tags: state.tags,
+    });
+    // Track the in-flight promise so flushSave can await it instead of
+    // starting a concurrent write to the same entry.
+    saveInFlightRef.current = promise.then(
+      () => {},
+      () => {},
+    ) as Promise<void>;
     try {
-      await actions.updateEntry(resolvedEntryId, {
-        content: state.content.trim(),
-        datetime: state.datetime,
-        tags: state.tags,
-      });
+      await promise;
       setState(draft => {
         draft.lastSaved = new Date();
       });
     } catch {
       // silently fail autosave
     } finally {
+      saveInFlightRef.current = null;
       setState(draft => {
         draft.autoSaving = false;
       });
@@ -300,6 +314,17 @@ export default function JournalEntryModal() {
         }, AUTOSAVE_DELAY_MS);
       }
     }
+  };
+
+  // Stable autosave fn — reassigned every render to close over latest state.
+  // Only called from the debounce timeout, never during render.
+  autosaveFnRef.current = async () => {
+    if (!isEditing || !resolvedEntryId || !state.content.trim()) return;
+    if (savingRef.current) {
+      pendingSaveRef.current = true;
+      return;
+    }
+    await doEditSaveRef.current?.();
   };
 
   // Autosave: debounced save after content changes (edit mode only).
@@ -442,28 +467,25 @@ export default function JournalEntryModal() {
     [isEditing, reverseGeocodeWithTimeout, setState],
   );
 
-  /**
-   * Persists the entry and navigates back. For edit mode, flushes any pending autosave.
-   * For create mode, creates the entry if there is content.
-   *
-   * The back button is disabled while a geocode is in-flight, but if this function is
-   * somehow called during that window (e.g. via a hardware back gesture), we still save
-   * whatever data we have and navigate back — the coordinates are already updated in
-   * currentLocation from the last handleRegionDidChange call, so only the address might
-   * be stale. This is much safer than silently discarding data.
-   */
-  const handleSaveAndClose = useCallback(async () => {
+  // Ref to hold the latest flush-save function (without router.back) so the
+  // beforeRemove listener always calls the current version without stale closures.
+  // flushSaveRef is reassigned every render so it closes over the latest state.
+  const flushSaveRef = useRef<() => Promise<void>>(undefined);
+
+  flushSaveRef.current = async () => {
     // Flush any pending autosave for edit mode
     clearTimeout(autosaveTimerRef.current);
     if (isEditing && resolvedEntryId && pendingSaveRef.current && state.content.trim()) {
-      try {
-        await actions.updateEntry(resolvedEntryId, {
-          content: state.content.trim(),
-          datetime: state.datetime,
-          tags: state.tags,
-        });
-      } catch {
-        // silently fail; navigate back anyway
+      // If an autosave is already in-flight, wait for it to finish. This
+      // avoids a concurrent write to the same entry when the user presses
+      // back while an autosave is pending.
+      if (saveInFlightRef.current) {
+        await saveInFlightRef.current;
+      }
+      // After awaiting the in-flight save, check again whether a save is still
+      // needed — the in-flight save may have already handled everything.
+      if (pendingSaveRef.current && state.content.trim()) {
+        await doEditSaveRef.current?.();
       }
     }
 
@@ -472,21 +494,37 @@ export default function JournalEntryModal() {
       try {
         await actions.createEntry(state.content.trim(), state.datetime, state.tags, mapLocation);
       } catch {
-        // silently fail; still navigate back
+        // silently fail; still proceed
       }
     }
+  };
 
-    router.back();
-  }, [
-    isEditing,
-    resolvedEntryId,
-    state.content,
-    state.datetime,
-    state.tags,
-    mapLocation,
-    actions,
-    router,
-  ]);
+  /**
+   * Intercepts the default back navigation to flush any pending save before allowing
+   * the navigation to proceed. This ensures that unsaved changes (autosave in edit
+   * mode, or new entries in create mode) are persisted before the screen is dismissed.
+   *
+   * A guard ref prevents infinite loops: once we start processing a back press,
+   * subsequent beforeRemove events (e.g., from the dispatched action) are allowed
+   * through.
+   */
+  const isLeavingRef = useRef(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      if (isLeavingRef.current) return;
+      e.preventDefault();
+      isLeavingRef.current = true;
+      /** Flush save and then dispatch the original back navigation action. */
+      const run = async () => {
+        await flushSaveRef.current?.();
+        navigation.dispatch(e.data.action);
+      };
+      void run();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   /**
    * Adds the current tag input value as a new tag on the entry.
@@ -599,7 +637,8 @@ export default function JournalEntryModal() {
   }, [state, setState]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
+      <Stack.Screen options={{ title: isEditing ? 'Edit Entry' : 'New Entry' }} />
       <Appbar.Header>
         <Appbar.Action
           icon="undo"
@@ -615,13 +654,6 @@ export default function JournalEntryModal() {
           onPress={handleRedo}
           disabled={!canRedo}
         />
-        <Appbar.BackAction
-          testID="back"
-          accessibilityLabel="Go back"
-          onPress={handleSaveAndClose}
-          disabled={state.isUpdatingLocation}
-        />
-        <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
       </Appbar.Header>
 
       {state.isUpdatingLocation && (
