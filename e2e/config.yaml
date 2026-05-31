@@ -7,6 +7,7 @@ executionOrder:
     - 'Edit entry flow'
     - 'Autosave and undo/redo features'
     - 'Tag management in entry'
+    - 'Tag edit back button bug'
     - 'Location features - capture and verify'
     - 'Pull to refresh'
     - 'Infinite scroll and pagination'

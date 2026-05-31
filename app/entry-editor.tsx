@@ -107,6 +107,12 @@ export default function JournalEntryModal() {
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingSaveRef = useRef(false);
+  // Tracks whether any saveable field (content, tags, datetime) has changed
+  // since the last successful save. Unlike pendingSaveRef (which is only set
+  // by the autosave debounce for content changes), dirtyRef covers tag-only
+  // and datetime-only mutations so that flushSaveRef persist them on back
+  // navigation even when no autosave was scheduled.
+  const dirtyRef = useRef(false);
   // Tracks whether a save API call is currently in-flight to prevent stacking.
   const savingRef = useRef(false);
   // Holds the in-flight save promise so flushSave can await it instead of
@@ -277,6 +283,7 @@ export default function JournalEntryModal() {
     if (!resolvedEntryId) return;
     savingRef.current = true;
     pendingSaveRef.current = false;
+    dirtyRef.current = false;
     setState(draft => {
       draft.autoSaving = true;
     });
@@ -331,6 +338,7 @@ export default function JournalEntryModal() {
   useEffect(() => {
     if (!isEditing || !state.content.trim()) return;
     pendingSaveRef.current = true;
+    dirtyRef.current = true;
     clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       autosaveFnRef.current?.();
@@ -473,9 +481,11 @@ export default function JournalEntryModal() {
   const flushSaveRef = useRef<() => Promise<void>>(undefined);
 
   flushSaveRef.current = async () => {
-    // Flush any pending autosave for edit mode
+    // Flush any pending autosave for edit mode.
+    // Use dirtyRef instead of pendingSaveRef to also cover tag-only and
+    // datetime-only mutations that never trigger the content-based autosave.
     clearTimeout(autosaveTimerRef.current);
-    if (isEditing && resolvedEntryId && pendingSaveRef.current && state.content.trim()) {
+    if (isEditing && resolvedEntryId && dirtyRef.current && state.content.trim()) {
       // If an autosave is already in-flight, wait for it to finish. This
       // avoids a concurrent write to the same entry when the user presses
       // back while an autosave is pending.
@@ -484,7 +494,7 @@ export default function JournalEntryModal() {
       }
       // After awaiting the in-flight save, check again whether a save is still
       // needed — the in-flight save may have already handled everything.
-      if (pendingSaveRef.current && state.content.trim()) {
+      if (dirtyRef.current && state.content.trim()) {
         await doEditSaveRef.current?.();
       }
     }
@@ -536,6 +546,7 @@ export default function JournalEntryModal() {
     const trimmedTag = state.tagInput.trim();
     if (trimmedTag && !state.tags.includes(trimmedTag)) {
       pushUndoState(state);
+      dirtyRef.current = true;
       setState(draft => {
         draft.tags.push(trimmedTag);
         draft.tagInput = '';
@@ -551,6 +562,7 @@ export default function JournalEntryModal() {
   const handleRemoveTag = useCallback(
     (tagToRemove: string) => {
       pushUndoState(state);
+      dirtyRef.current = true;
       setState(draft => {
         draft.tags = draft.tags.filter(tag => tag !== tagToRemove);
       });

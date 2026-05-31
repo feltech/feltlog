@@ -1,0 +1,90 @@
+appId: com.feltech.feltlog
+name: Tag edit back button bug
+
+
+# This flow reproduces a bug where adding a tag to an existing entry in edit
+# mode and pressing back WITHOUT editing the entry text causes the tag to NOT
+# be saved.
+#
+# Root cause (app-level): The autosave useEffect depends on state.content but
+# not state.tags, and the flushSave function only calls doEditSave when
+# pendingSaveRef is true. Adding a tag without changing content never sets
+# pendingSaveRef to true, so the tag change is never persisted on back press.
+#
+# Prerequisites: None - creates its own database and entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== CREATE A NEW ENTRY WITHOUT TAGS =====
+
+- evalScript: ${output.entryContent = "Test entry for tag bug " + Date.now().toString()}
+
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.entryContent}
+
+# ===== OPEN THE ENTRY IN EDIT MODE =====
+
+- takeScreenshot: journal-list-after-create
+
+- assertVisible: 'Journal entry card'
+
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+- takeScreenshot: editor-opened-in-edit-mode
+
+# Verify original content is loaded
+- assertVisible: ${output.entryContent}
+
+# ===== ADD A TAG WITHOUT EDITING CONTENT =====
+
+- evalScript: ${output.tag1 = "bugtag"}
+
+# Tap on the tag input and add a tag
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.tag1}
+
+# Press Enter to submit the tag
+- pressKey: Enter
+- waitForAnimationToEnd
+
+- takeScreenshot: editor-after-adding-tag
+
+# Verify the tag chip is visible in the editor
+- assertVisible: ${output.tag1}
+
+# ===== DO NOT EDIT CONTENT — GO STRAIGHT TO BACK =====
+# The bug: pressing back here without editing the content text means
+# the tag change is never persisted, because the autosave/flushSave
+# logic only triggers on content changes.
+
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- assertVisible:
+    id: 'create-entry-fab'
+
+- takeScreenshot: journal-list-after-back
+
+# ===== REOPEN THE ENTRY AND VERIFY TAG IS SAVED =====
+
+- assertVisible: 'Journal entry card'
+
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+- takeScreenshot: editor-reopened-to-check-tag
+
+# This assertion is expected to FAIL if the bug is present.
+# The tag should be visible because we added it and pressed back to save,
+# but the bug causes it to not be persisted.
+- assertVisible: ${output.tag1}

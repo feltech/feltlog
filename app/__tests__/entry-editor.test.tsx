@@ -1299,6 +1299,115 @@ describe('JournalEntryModal', () => {
         expect(mockDispatch).toHaveBeenCalledWith(action);
       });
     });
+
+    it('saves tag-only changes on back navigation without content edit', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Add a tag without changing content.
+      const tagInput = result.getByTestId('tag-input');
+      fireEvent.changeText(tagInput, 'newtag');
+      fireEvent.press(result.getByTestId('add-tag-icon'));
+
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should have been called with the new tag, even though
+      // content was not changed (no autosave was triggered).
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            content: 'original content',
+            tags: ['newtag'],
+          }),
+        );
+        expect(mockDispatch).toHaveBeenCalledWith(action);
+      });
+    });
+
+    it('saves tag removal on back navigation without content edit', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: ['work', 'personal'],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Remove a tag without changing content. Find the Chip for 'work' and
+      // trigger its onClose callback.
+      const allChips = result.UNSAFE_root.findAll(
+        (node: Record<string, unknown>) =>
+          (node.props as Record<string, unknown>)?.onClose !== undefined &&
+          typeof (node.props as Record<string, unknown>)?.onClose === 'function',
+      );
+      if (allChips.length > 0) {
+        await act(async () => {
+          allChips[0].props.onClose();
+        });
+      }
+
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should have been called with the removed tag.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            content: 'original content',
+            tags: ['personal'],
+          }),
+        );
+        expect(mockDispatch).toHaveBeenCalledWith(action);
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
