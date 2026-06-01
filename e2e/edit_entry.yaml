@@ -45,6 +45,7 @@ name: Edit entry flow
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -64,4 +65,5 @@ name: Edit entry flow
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible: 'Create entry'

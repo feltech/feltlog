@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { FAB, Snackbar } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 
 import { JournalList } from '@/src/presentation/components/JournalList';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';

@@ -46,4 +46,14 @@ describe('Colors', () => {
     expect(Colors.dark.tabIconDefault).toBe('#ccc');
     expect(Colors.dark.tabIconSelected).toBe('#fff');
   });
+
+  /** Tests that the unspecified theme exists (added for RN 0.85). */
+  it('has unspecified property that falls back to light', () => {
+    expect(Colors).toHaveProperty('unspecified');
+    expect(Colors.unspecified.text).toBe(Colors.light.text);
+    expect(Colors.unspecified.background).toBe(Colors.light.background);
+    expect(Colors.unspecified.tint).toBe(Colors.light.tint);
+    expect(Colors.unspecified.tabIconDefault).toBe(Colors.light.tabIconDefault);
+    expect(Colors.unspecified.tabIconSelected).toBe(Colors.light.tabIconSelected);
+  });
 });

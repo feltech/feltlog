@@ -50,3 +50,5 @@ test_output/
 /coverage/lcov.info
 /.coverage-temp
 /coverage
+android.log
+report.xml

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Card, Button, Text, Snackbar, ActivityIndicator, Title } from 'react-native-paper';
-import { StorageAccessFramework } from 'expo-file-system';
+import { StorageAccessFramework } from 'expo-file-system/legacy';
 import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
 import {
   getBackupDirectoryUri,

@@ -64,6 +64,17 @@ name: Database autosave on suspend
 
 # ===== CREATE AN ENTRY =====
 
+# Dismiss LogBox warning banner if present — it overlays the bottom tab bar
+# and intercepts point-based tab taps. The X close button is at the right
+# edge of the banner (approximately x=990, y=2210 on 1080x2400 screens).
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
 # Switch back to Journal tab (first tab at bottom)
 - tapOn:
     point: '25%,96%'

@@ -5,24 +5,31 @@ process.env.EXPO_ROUTER = 'false';
 process.env.EXPO_DEV_CLIENT = 'false';
 
 // Mocks for native modules not available in Jest environment
+
+/**
+ * Mock react-native-reanimated to avoid native module issues in the Jest environment.
+ * Reanimated v4 requires worklet runtime support that doesn't exist in Node.js.
+ */
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+
 jest.mock('@maplibre/maplibre-react-native', () => {
   const RN = require('react-native');
   const React = require('react');
 
   /**
-   * Mock for the MapView component.
+   * Mock for the Map component (renamed from MapView in MapLibre v11).
    *
    * @param props - The component props.
    *
    * @returns The rendered mock view.
    */
-  const MockMapView = props => {
+  const MockMap = props => {
     // eslint-disable-next-line react/prop-types
-    const { defaultSettings, children, ...rest } = props;
-    void defaultSettings;
+    const { initialViewState, children, ...rest } = props;
+    void initialViewState;
     return React.createElement(RN.View, rest, children);
   };
-  MockMapView.displayName = 'MockMapView';
+  MockMap.displayName = 'MockMap';
 
   /**
    * Mock for the Camera component.
@@ -46,7 +53,7 @@ jest.mock('@maplibre/maplibre-react-native', () => {
 
   return {
     __esModule: true,
-    MapView: MockMapView,
+    Map: MockMap,
     Camera: MockCamera,
     MarkerView: MockMarkerView,
   };
@@ -131,6 +138,55 @@ jest.mock('react-native-markdown-renderer', () => {
     default: MockMarkdown,
   };
 });
+
+/**
+ * Mock the React Native getDevServer module and expo/devtools to prevent repeated
+ * "Failed to initialize devtools client" tracebacks during tests.
+ *
+ * When expo-sqlite opens a database, it calls registerDatabaseForDevToolsAsync(), which
+ * calls getDevToolsPluginClientAsync() from expo/devtools. This in turn calls
+ * getDevServer() from react-native, which reads
+ * NativeSourceCode.getConstants().scriptURL and calls .match() on it. In Jest, the
+ * NativeSourceCode module returns null for scriptURL, causing: TypeError: Cannot read
+ * properties of null (reading 'match') The devtools client catches this and
+ * console.warns the full traceback once per database open (52 times across all test
+ * suites).
+ *
+ * Two mocks work together:
+ *
+ * 1. Mock getDevServer to return a valid URL so getConnectionInfo doesn't crash.
+ * 2. Mock getDevToolsPluginClientAsync to return a no-op client so the WebSocket
+ *    connection attempt doesn't fail with an unresolvable error and traceback.
+ */
+
+jest.mock(
+  'react-native/Libraries/Core/Devtools/getDevServer',
+  () => ({
+    __esModule: true,
+    default: () => ({
+      url: 'http://localhost:8081/',
+      fullBundleUrl: 'http://localhost:8081/index.bundle?platform=android',
+      bundleLoadedFromServer: true,
+    }),
+  }),
+  { virtual: true },
+);
+
+/**
+ * No-op DevTools client mock that satisfies the expo-sqlite SQLiteDevToolsClient
+ * interface. All message methods are stubbed because the devtools server is not running
+ * in the test environment.
+ */
+const mockDevToolsClient = {
+  addMessageListener: jest.fn(),
+  sendMessage: jest.fn(),
+  isConnected: jest.fn().mockReturnValue(false),
+  closeAsync: jest.fn().mockResolvedValue(undefined),
+};
+
+jest.mock('expo/devtools', () => ({
+  getDevToolsPluginClientAsync: jest.fn().mockResolvedValue(mockDevToolsClient),
+}));
 
 /**
  * Mock the MaterialCommunityIcons icon set used by react-native-paper.

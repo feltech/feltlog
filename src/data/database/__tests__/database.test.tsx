@@ -189,6 +189,10 @@ describe('useDatabase', () => {
     getBackupDirectoryUri.mockResolvedValueOnce('content://mock-backup-dir');
     backupDatabase.mockRejectedValueOnce(new Error('Backup failed'));
 
+    // Spy on console.warn to assert the production code logs the backup failure
+    // and to prevent the traceback from appearing in test output.
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
     const { result } = renderHook(() => useDatabase());
 
     await act(async () => {
@@ -200,6 +204,8 @@ describe('useDatabase', () => {
 
     expect(result.current.ready).toBe(true);
     expect(result.current.error).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith('Pre-migration backup failed:', expect.any(Error));
+    warnSpy.mockRestore();
   });
 
   /** Tests that the previous sqliteDb is closed on re-initialize. */
@@ -236,6 +242,10 @@ describe('useDatabase', () => {
     const { getPendingMigrationCount } = require('../backup');
     getPendingMigrationCount.mockRejectedValueOnce(new Error('Migration check error'));
 
+    // Spy on console.warn to assert the production code logs the migration check
+    // failure and to prevent the traceback from appearing in test output.
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
     const { result } = renderHook(() => useDatabase());
     const dbName = makeDbName();
 
@@ -248,5 +258,7 @@ describe('useDatabase', () => {
 
     expect(result.current.ready).toBe(true);
     expect(result.current.error).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith('Could not check pending migrations:', expect.any(Error));
+    warnSpy.mockRestore();
   });
 });

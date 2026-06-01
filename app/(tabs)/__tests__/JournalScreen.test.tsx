@@ -4,19 +4,14 @@ import { PaperProvider } from 'react-native-paper';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import JournalScreen from '../index';
 
-// Mock router to control navigation.
+// Mock router to control navigation and provide useFocusEffect.
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn() }),
-}));
-
-// Mock useFocusEffect to just call the callback immediately (no navigation
-// context required).
-jest.mock('@react-navigation/native', () => {
+jest.mock('expo-router', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
   return {
-    ...jest.requireActual('@react-navigation/native'),
+    useRouter: () => ({ push: mockPush, back: jest.fn() }),
+    // useFocusEffect replacement: call the callback immediately on mount.
     useFocusEffect: (cb: () => void) => {
       React.useEffect(() => {
         cb();

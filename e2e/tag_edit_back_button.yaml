@@ -69,6 +69,7 @@ name: Tag edit back button bug
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
 

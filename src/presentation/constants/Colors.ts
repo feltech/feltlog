@@ -16,4 +16,13 @@ export default {
     tabIconDefault: '#ccc',
     tabIconSelected: tintColorDark,
   },
+  // React Native 0.85 added 'unspecified' to ColorSchemeName. Fall back to
+  // the light palette when the system preference is unknown.
+  unspecified: {
+    text: '#000',
+    background: '#fff',
+    tint: tintColorLight,
+    tabIconDefault: '#ccc',
+    tabIconSelected: tintColorLight,
+  },
 };

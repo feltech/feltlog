@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ReactTestInstance } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import * as ExpoLocation from 'expo-location';
@@ -15,16 +16,18 @@ const CONTENT_UNDO_COALESCE_MS = 500;
 // ---------------------------------------------------------------------------
 
 /**
- * Mock expo-router — useLocalSearchParams returns configurable params. Stack is no
+ * Mock expo-router — useLocalSearchParams returns configurable params, and
+ * useNavigation is captured so beforeRemove listeners can be intercepted. Stack is no
  * longer imported by the component (header is now inline).
  */
 jest.mock('expo-router', () => {
   return {
     useLocalSearchParams: jest.fn(() => ({})),
+    useNavigation: jest.fn(() => mockNavigation),
   };
 });
 
-/** Mock @react-navigation/native — capture beforeRemove listeners for testing. */
+/** Capture beforeRemove listeners for testing. */
 let beforeRemoveHandler:
   | ((e: { preventDefault: () => void; data: { action: unknown } }) => void)
   | null = null;
@@ -39,9 +42,6 @@ const mockNavigation = {
   }),
 };
 
-jest.mock('@react-navigation/native', () => ({
-  useNavigation: jest.fn(() => mockNavigation),
-}));
 jest.mock('@/src/presentation/viewmodels/JournalViewModel', () => ({
   useJournalViewModel: jest.fn(),
 }));
@@ -266,8 +266,8 @@ describe('JournalEntryModal', () => {
       await waitForMap(result);
       // The map should be interactive: scroll and zoom enabled.
       const map = result.getByTestId('entry-location-map');
-      expect(map.props.scrollEnabled).toBe(true);
-      expect(map.props.zoomEnabled).toBe(true);
+      expect(map.props.dragPan).toBe(true);
+      expect(map.props.touchZoom).toBe(true);
     });
 
     it('shows "New Entry" title in create mode', async () => {
@@ -327,18 +327,18 @@ describe('JournalEntryModal', () => {
   // -------------------------------------------------------------------------
 
   describe('map interactivity', () => {
-    it('has scrollEnabled=true and zoomEnabled=true in create mode', async () => {
+    it('has dragPan=true and touchZoom=true in create mode', async () => {
       const result = await renderModal();
       await waitForMap(result);
 
       const map = result.getByTestId('entry-location-map');
-      expect(map.props.scrollEnabled).toBe(true);
-      expect(map.props.zoomEnabled).toBe(true);
+      expect(map.props.dragPan).toBe(true);
+      expect(map.props.touchZoom).toBe(true);
     });
 
-    it('has scrollEnabled=false and zoomEnabled=false in edit mode', async () => {
+    it('has dragPan=true and touchZoom=true in edit mode (map is draggable)', async () => {
       // Make the view-model return an existing entry with a location so the
-      // map renders.
+      // map renders. Users can now drag the map in edit mode to change location.
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: {
           ...DEFAULT_STATE,
@@ -365,8 +365,8 @@ describe('JournalEntryModal', () => {
       });
 
       const map = result.getByTestId('entry-location-map');
-      expect(map.props.scrollEnabled).toBe(false);
-      expect(map.props.zoomEnabled).toBe(false);
+      expect(map.props.dragPan).toBe(true);
+      expect(map.props.touchZoom).toBe(true);
     });
   });
 
@@ -391,12 +391,10 @@ describe('JournalEntryModal', () => {
 
       const map = result.getByTestId('entry-location-map');
 
-      // Trigger a user-driven map region change.
+      // Trigger a user-driven map region change (v11 event shape).
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [-122.4, 37.8] },
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
         });
       });
 
@@ -428,12 +426,10 @@ describe('JournalEntryModal', () => {
 
       const map = result.getByTestId('entry-location-map');
 
-      // Trigger a user-driven region change.
+      // Trigger a user-driven region change (v11 event shape).
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [-122.4, 37.8] },
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
         });
       });
 
@@ -460,9 +456,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [-122.4, 37.8] },
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
         });
       });
 
@@ -499,9 +493,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [-122.478, 37.819] },
+          nativeEvent: { center: [10, 20], userInteraction: true },
         });
       });
 
@@ -545,9 +537,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [-122.478, 37.819] },
+          nativeEvent: { center: [-122.478, 37.819], userInteraction: true },
         });
       });
 
@@ -579,9 +569,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [10, 20] },
+          nativeEvent: { center: [10, 20], userInteraction: true },
         });
       });
 
@@ -606,7 +594,9 @@ describe('JournalEntryModal', () => {
   // -------------------------------------------------------------------------
 
   describe('handleRegionDidChange', () => {
-    it('ignores region changes in edit mode', async () => {
+    it('updates editLocation when dragging the map in edit mode', async () => {
+      jest.useFakeTimers();
+
       // Set up an existing entry so the modal is in edit mode.
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: {
@@ -633,17 +623,18 @@ describe('JournalEntryModal', () => {
 
       const map = result.getByTestId('entry-location-map');
 
-      // Fire a user-driven region change — it should be ignored.
+      // Fire a user-driven region change — in edit mode it should now update
+      // editLocation rather than being ignored.
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [1, 2] },
+          nativeEvent: { center: [1, 2], userInteraction: true },
         });
       });
 
-      // isUpdatingLocation should remain false because the handler bailed early.
-      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
+      // isUpdatingLocation should be true (the geocode debounce hasn't fired yet).
+      expect(result.queryByText('Looking up address, please wait…')).toBeTruthy();
+
+      jest.useRealTimers();
     });
 
     it('ignores non-user-interaction region changes', async () => {
@@ -654,12 +645,10 @@ describe('JournalEntryModal', () => {
 
       const map = result.getByTestId('entry-location-map');
 
-      // Fire a programmatic region change (no isUserInteraction).
+      // Fire a programmatic region change (not user-initiated).
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: false },
-          geometry: { type: 'Point', coordinates: [1, 2] },
+          nativeEvent: { center: [1, 2], userInteraction: false },
         });
       });
 
@@ -698,9 +687,7 @@ describe('JournalEntryModal', () => {
       // First user-driven drag.
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [10, 20] },
+          nativeEvent: { center: [10, 20], userInteraction: true },
         });
       });
 
@@ -712,9 +699,7 @@ describe('JournalEntryModal', () => {
       // Second drag while first geocode is still in-flight.
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [30, 40] },
+          nativeEvent: { center: [30, 40], userInteraction: true },
         });
       });
 
@@ -737,6 +722,269 @@ describe('JournalEntryModal', () => {
       expect(result.toJSON()).toBeTruthy();
 
       jest.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Location text display
+  // -------------------------------------------------------------------------
+
+  describe('location text display', () => {
+    it('shows address text with testID when geocode resolves with an address', async () => {
+      jest.useFakeTimers();
+
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: 'Golden Gate',
+          street: '',
+          city: 'San Francisco',
+          region: 'CA',
+          postalCode: '94129',
+          country: 'US',
+        },
+      ]);
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // After initial geocode resolves, the address should be shown.
+      await waitFor(() => {
+        const addressText = result.queryByTestId('location-address-text');
+        expect(addressText).toBeTruthy();
+        expect(addressText?.props.children).toContain('Golden Gate');
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('shows coordinates text with testID when geocode fails or returns empty', async () => {
+      jest.useFakeTimers();
+
+      // Reverse geocode returns empty array — address will be undefined.
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([]);
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // After geocode resolves with no address, coordinates are shown.
+      await waitFor(() => {
+        const coordsText = result.queryByTestId('location-coordinates-text');
+        expect(coordsText).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('shows placeholder text when geocode is in progress', async () => {
+      jest.useFakeTimers();
+
+      // Initial fetch resolves immediately, but region-change geocode hangs.
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock)
+        .mockImplementationOnce(async () => [])
+        .mockImplementation(() => new Promise(() => {}));
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const map = result.getByTestId('entry-location-map');
+
+      // Trigger a user-driven region change.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
+        });
+      });
+
+      // While geocode is in progress, the placeholder should be visible.
+      expect(result.queryByTestId('location-address-placeholder')).toBeTruthy();
+
+      jest.useRealTimers();
+    });
+
+    it('shows address in edit mode when existing entry has location with address', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: {
+                latitude: 40.7128,
+                longitude: -74.006,
+                elevation: 10,
+                address: 'New York, NY',
+              },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      // The address from the existing entry should be displayed.
+      const addressText = result.getByTestId('location-address-text');
+      expect(addressText.props.children).toBe('New York, NY');
+    });
+
+    it('shows coordinates in edit mode when existing entry has location without address', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: {
+                latitude: 40.7128,
+                longitude: -74.006,
+                elevation: 10,
+              },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      const coordsText = result.getByTestId('location-coordinates-text');
+      expect(coordsText.props.children).toBeTruthy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Edit mode map drag — editLocation persistence
+  // -------------------------------------------------------------------------
+
+  describe('edit mode map drag and persistence', () => {
+    it('persists modified location when saving an edit after dragging the map', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+              location: { latitude: 40.7, longitude: -74, elevation: 10 },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const map = result.getByTestId('entry-location-map');
+
+      // Fire a user-driven region change in edit mode.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [10, 20], userInteraction: true },
+        });
+      });
+
+      // Change content to set dirty flag.
+      const contentInput = result.getByTestId('entry-content-input');
+      fireEvent.changeText(contentInput, 'modified content');
+
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should have been called with the new location from the map drag.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            location: expect.objectContaining({
+              latitude: 20,
+              longitude: 10,
+            }),
+          }),
+        );
+      });
+    });
+
+    it('preserves original location when edit is saved without dragging the map', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+              location: { latitude: 40.7, longitude: -74, elevation: 10 },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Change content but do NOT drag the map.
+      const contentInput = result.getByTestId('entry-content-input');
+      fireEvent.changeText(contentInput, 'modified content');
+
+      // Simulate the beforeRemove event fired by back navigation.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should preserve the original location.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            location: expect.objectContaining({
+              latitude: 40.7,
+              longitude: -74,
+            }),
+          }),
+        );
+      });
     });
   });
 
@@ -812,9 +1060,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [10, 20] },
+          nativeEvent: { center: [10, 20], userInteraction: true },
         });
       });
 
@@ -1375,7 +1621,7 @@ describe('JournalEntryModal', () => {
       // Remove a tag without changing content. Find the Chip for 'work' and
       // trigger its onClose callback.
       const allChips = result.UNSAFE_root.findAll(
-        (node: Record<string, unknown>) =>
+        (node: ReactTestInstance) =>
           (node.props as Record<string, unknown>)?.onClose !== undefined &&
           typeof (node.props as Record<string, unknown>)?.onClose === 'function',
       );
@@ -1485,39 +1731,13 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // handleRegionDidChange — non-Point geometry
+  // handleRegionDidChange — v11 removed the non-Point geometry branch;
+  // the handler now reads center/userInteraction directly from the
+  // ViewStateChangeEvent, so a "non-Point geometry" test is no longer
+  // applicable.
   // -------------------------------------------------------------------------
 
-  describe('handleRegionDidChange with non-Point geometry', () => {
-    it('ignores region changes with non-Point geometry', async () => {
-      jest.useFakeTimers();
-      const result = await renderModal();
-      await flushEffects();
-      await waitForMap(result);
-
-      const map = result.getByTestId('entry-location-map');
-
-      // Fire a region change with a LineString geometry (not Point).
-      await act(async () => {
-        map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [0, 0],
-              [1, 1],
-            ],
-          },
-        });
-      });
-
-      // isUpdatingLocation should remain false.
-      expect(result.queryByText('Looking up address, please wait…')).toBeNull();
-
-      jest.useRealTimers();
-    });
-  });
+  // -------------------------------------------------------------------------
 
   // -------------------------------------------------------------------------
   // Saved indicator
@@ -1701,7 +1921,7 @@ describe('JournalEntryModal', () => {
       // fiber tree. Walk the tree to find a component with both onClose
       // and children containing 'work'.
       const allChips = result.UNSAFE_root.findAll(
-        (node: Record<string, unknown>) =>
+        (node: ReactTestInstance) =>
           (node.props as Record<string, unknown>)?.onClose !== undefined &&
           typeof (node.props as Record<string, unknown>)?.onClose === 'function',
       );
@@ -2185,9 +2405,7 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       await act(async () => {
         map.props.onRegionDidChange({
-          type: 'Feature',
-          properties: { isUserInteraction: true },
-          geometry: { type: 'Point', coordinates: [10, 20] },
+          nativeEvent: { center: [10, 20], userInteraction: true },
         });
       });
 

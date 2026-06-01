@@ -76,6 +76,16 @@ name: Backup rotation
 - waitForAnimationToEnd
 - takeScreenshot: rotation-settings-after-location-chosen
 
+# Dismiss LogBox warning banner if present — it overlays the bottom of the
+# screen and can cover the Snackbar that confirms backup operations.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
 # ===== PERFORM 5 BACKUPS =====
 
 # Backup 1

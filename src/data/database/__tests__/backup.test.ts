@@ -1,5 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-jest.mock('expo-file-system', () => require('../../../test-utils/expo-file-system-mock'));
+jest.mock('expo-file-system/legacy', () => require('../../../test-utils/expo-file-system-mock'));
 
 const mockSqlExecute = jest.fn();
 jest.mock('kysely', () => ({
@@ -10,7 +10,7 @@ jest.mock('kysely', () => ({
   ),
 }));
 
-import * as ExpoFileSystem from 'expo-file-system';
+import * as ExpoFileSystem from 'expo-file-system/legacy';
 const { __resetMockFiles, __setMockFile } = ExpoFileSystem as unknown as {
   __resetMockFiles: () => void;
   __setMockFile: (

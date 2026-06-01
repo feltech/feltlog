@@ -18,6 +18,7 @@ name: Error states handling
 
 # Verify save is handled by system back - back without content just navigates back
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
 # Re-open edit to verify we landed back
@@ -38,6 +39,7 @@ name: Error states handling
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
 

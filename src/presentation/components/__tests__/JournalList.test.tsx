@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ReactTestInstance } from 'react-test-renderer';
 import { JournalList } from '../JournalList';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
@@ -156,7 +157,7 @@ describe('JournalList', () => {
     );
 
     // Find the FlatList by searching for the element with onEndReached.
-    const flatList = UNSAFE_root.find((node: Record<string, unknown>) => {
+    const flatList = UNSAFE_root.find((node: ReactTestInstance) => {
       const props = node.props as Record<string, unknown> | undefined;
       return props?.onEndReached !== undefined && typeof props?.onEndReached === 'function';
     });

@@ -82,6 +82,16 @@ name: Backup settings
 - waitForAnimationToEnd
 - takeScreenshot: settings-after-location-chosen
 
+# Dismiss LogBox warning banner if present — it overlays the bottom of the
+# screen and can cover the Snackbar that confirms backup operations.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
 # ===== VERIFY BACKUP LOCATION CONFIGURED =====
 - assertVisible: 'Location: (Pictures|Documents)'
 

@@ -19,5 +19,6 @@ appId: com.feltech.feltlog
     id: 'appbar-header'
 # System back button saves and closes
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'

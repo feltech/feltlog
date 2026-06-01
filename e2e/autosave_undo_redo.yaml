@@ -53,6 +53,7 @@ name: Autosave and undo/redo features
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -106,6 +107,7 @@ name: Autosave and undo/redo features
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -151,6 +153,7 @@ name: Autosave and undo/redo features
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -201,5 +204,6 @@ name: Autosave and undo/redo features
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'

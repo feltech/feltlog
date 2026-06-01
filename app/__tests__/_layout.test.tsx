@@ -75,9 +75,16 @@ jest.mock('expo-router', () => {
   MockStack.displayName = 'Stack';
   MockStack.Screen = jest.fn(() => null);
 
+  // Re-export the real theme values so ThemeProvider works in tests.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const realModule = jest.requireActual('expo-router');
+
   return {
     Stack: MockStack,
     ErrorBoundary: jest.fn(() => null),
+    DarkTheme: realModule.DarkTheme,
+    DefaultTheme: realModule.DefaultTheme,
+    ThemeProvider: realModule.ThemeProvider,
   };
 });
 

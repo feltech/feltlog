@@ -139,6 +139,28 @@ describe('Themed', () => {
       render(<Harness />);
       expect(result).toBe(Colors.light.text);
     });
+
+    /**
+     * Tests that the hook falls back to light theme when useColorScheme returns
+     * 'unspecified' (added in React Native 0.85).
+     */
+    it('falls back to light theme when color scheme is unspecified', () => {
+      (useColorScheme as jest.Mock).mockReturnValue('unspecified');
+      let result: string | undefined;
+
+      /**
+       * Harness component to capture hook output.
+       *
+       * @returns Null.
+       */
+      function Harness() {
+        result = useThemeColor({}, 'text');
+        return null;
+      }
+
+      render(<Harness />);
+      expect(result).toBe(Colors.light.text);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -224,10 +246,13 @@ describe('Themed', () => {
     it('applies theme background color by default', () => {
       const { toJSON } = render(<View />);
       const tree = toJSON();
+      // toJSON() may return an array in some versions; handle both cases.
+      // In practice View renders a single root element.
+      const node = Array.isArray(tree) ? tree[0] : tree;
       // The root view should have the background color from the light theme.
-      const flatStyle = Array.isArray(tree?.props?.style)
-        ? Object.assign({}, ...tree.props.style.filter(Boolean))
-        : tree?.props?.style;
+      const flatStyle = Array.isArray(node?.props?.style)
+        ? Object.assign({}, ...node.props.style.filter(Boolean))
+        : node?.props?.style;
       expect(flatStyle?.backgroundColor).toBe(Colors.light.background);
     });
 
@@ -236,9 +261,10 @@ describe('Themed', () => {
       (useColorScheme as jest.Mock).mockReturnValue('light');
       const { toJSON } = render(<View lightColor="#light-bg" />);
       const tree = toJSON();
-      const flatStyle = Array.isArray(tree?.props?.style)
-        ? Object.assign({}, ...tree.props.style.filter(Boolean))
-        : tree?.props?.style;
+      const node = Array.isArray(tree) ? tree[0] : tree;
+      const flatStyle = Array.isArray(node?.props?.style)
+        ? Object.assign({}, ...node.props.style.filter(Boolean))
+        : node?.props?.style;
       expect(flatStyle?.backgroundColor).toBe('#light-bg');
     });
 
@@ -247,9 +273,10 @@ describe('Themed', () => {
       (useColorScheme as jest.Mock).mockReturnValue('dark');
       const { toJSON } = render(<View darkColor="#dark-bg" />);
       const tree = toJSON();
-      const flatStyle = Array.isArray(tree?.props?.style)
-        ? Object.assign({}, ...tree.props.style.filter(Boolean))
-        : tree?.props?.style;
+      const node = Array.isArray(tree) ? tree[0] : tree;
+      const flatStyle = Array.isArray(node?.props?.style)
+        ? Object.assign({}, ...node.props.style.filter(Boolean))
+        : node?.props?.style;
       expect(flatStyle?.backgroundColor).toBe('#dark-bg');
     });
 
@@ -257,9 +284,10 @@ describe('Themed', () => {
     it('allows custom style overrides', () => {
       const { toJSON } = render(<View style={{ padding: 16 }} />);
       const tree = toJSON();
-      const flatStyle = Array.isArray(tree?.props?.style)
-        ? Object.assign({}, ...tree.props.style.filter(Boolean))
-        : tree?.props?.style;
+      const node = Array.isArray(tree) ? tree[0] : tree;
+      const flatStyle = Array.isArray(node?.props?.style)
+        ? Object.assign({}, ...node.props.style.filter(Boolean))
+        : node?.props?.style;
       expect(flatStyle?.padding).toBe(16);
     });
   });

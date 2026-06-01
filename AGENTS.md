@@ -24,6 +24,14 @@ level.
 - Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `python3`, `create-avd`
   helper
 
+### Agent restriction on `build_env/` changes
+
+Agents must **not** automatically modify files in the `build_env/` directory (especially
+`flake.nix`, `flake.lock`, or any Nix configuration). Any changes to the build environment —
+including adding/removing NDK versions, SDK packages, build tools, or system dependencies — must
+first be requested from the user. Only proceed with `build_env/` edits after receiving explicit
+user approval.
+
 ### Running tests
 
 - Unit tests are via jest. The canonical verification command that builders MUST run after code
@@ -36,7 +44,7 @@ level.
 - To run e2e tests:
   1. Restart ADB (if in a bad state): `adb kill-server && adb start-server`
   2. Start the emulator via Maestro: `maestro start-device --platform \`
-     `android --device-model "pixel_6" --device-os android-35`
+     `android --device-model "pixel_6" --device-os android-36`
   3. Build and install the app in a **separate terminal** (Metro bundler runs indefinitely — it
      does not exit after the build): `npm run android` Wait for "BUILD SUCCESSFUL" and the app to
      appear on the emulator before proceeding. The Metro process must remain running for the app to

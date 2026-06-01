@@ -45,21 +45,35 @@
 
         sdk = android-nixpkgs.sdk.${system} (sdkPkgs:
           with sdkPkgs; [
-            build-tools-35-0-0
+            # SDK 36 components required by Expo SDK 56 (compileSdk/targetSdk 36)
+            build-tools-36-0-0
+            platforms-android-36
+            system-images-android-36-google-apis-x86-64
             cmdline-tools-latest
             emulator
             platform-tools
-            platforms-android-35
-            system-images-android-35-google-apis-x86-64
-            # Versions dictated by what expo run tried to auto install but failed because SDK dir is not writeable.
-            ndk-27-1-12297006
+
+            # Versions dictated by what expo run tried to auto install but failed
+            # because SDK dir is not writeable.
+
+            # For expo modules (well-behaved ones)
+            ndk-27-1-12297006 
+            # For expo-sqlite - upstream bug where ndkVersion is not inherited and falls back on
+            # Android Gradle Plugin default. 
+            ndk-27-0-12077973
             cmake-3-22-1
+            # Needed until upstream bugfix: expo-module-gradle-plugin (applied to every
+            # library module) calls applyDefaultAndroidSdkVersions() to sync SDK
+            # version with the root project, but doesn't set buildToolsVersion, so the
+            # official Android Gradle Plugin (AGP) falls back to
+            # DEFAULT_BUILD_TOOLS_REVISION=35 when building libraries.
+            build-tools-35-0-0
           ]);
         create-avd = pkgs.writeShellScriptBin "create-avd" ''
             set -euo pipefail
 
             name=phone
-            sysimg="system-images;android-35;google_apis;x86_64"
+            sysimg="system-images;android-3dn6;google_apis;x86_64"
             device="pixel_4"
 
             avdmanager create avd --force --name "$name" --package "$sysimg" --device "$device"

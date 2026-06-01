@@ -146,4 +146,14 @@ describe('TabLayout', () => {
     const { toJSON } = render(<TabLayout />);
     expect(toJSON()).toBeTruthy();
   });
+
+  /**
+   * Tests that the tab layout falls back to light theme when color scheme is
+   * 'unspecified' (added in React Native 0.85).
+   */
+  it('falls back to light theme when color scheme is unspecified', () => {
+    (useColorScheme as jest.Mock).mockReturnValue('unspecified');
+    const { toJSON } = render(<TabLayout />);
+    expect(toJSON()).toBeTruthy();
+  });
 });

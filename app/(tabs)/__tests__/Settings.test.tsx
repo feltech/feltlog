@@ -12,8 +12,8 @@ jest.mock('@/src/domain/repositories/DatabaseContext', () => ({
   useDatabaseInfo: jest.fn(),
 }));
 
-/** Mock expo-file-system StorageAccessFramework. */
-jest.mock('expo-file-system', () => ({
+/** Mock expo-file-system/legacy StorageAccessFramework. */
+jest.mock('expo-file-system/legacy', () => ({
   StorageAccessFramework: {
     requestDirectoryPermissionsAsync: jest.fn(),
     readDirectoryAsync: jest.fn(),
@@ -36,7 +36,7 @@ jest.mock('@/src/data/database/dbBackupStorage', () => ({
 }));
 
 import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
-import { StorageAccessFramework } from 'expo-file-system';
+import { StorageAccessFramework } from 'expo-file-system/legacy';
 import {
   getBackupDirectoryUri,
   setBackupDirectoryUri,

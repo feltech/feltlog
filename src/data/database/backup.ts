@@ -5,7 +5,7 @@ import {
   deleteAsync,
   StorageAccessFramework,
   EncodingType,
-} from 'expo-file-system';
+} from 'expo-file-system/legacy';
 import { Kysely, sql } from 'kysely';
 import { MIGRATIONS } from './migrations';
 import {

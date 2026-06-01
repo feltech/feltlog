@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
 import {
   Appbar,
   Chip,
@@ -11,9 +11,9 @@ import {
   ActivityIndicator,
 } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MapView, Camera } from '@maplibre/maplibre-react-native';
+import { Map, Camera, type ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import * as ExpoLocation from 'expo-location';
 import { useImmer } from 'use-immer';
 
@@ -47,6 +47,8 @@ interface ModalState {
   lastSaved: Date | null;
   /** Current map location (create mode only). */
   currentLocation: JournalEntry['location'] | undefined;
+  /** Modified location during edit mode, separate from the saved entry location. */
+  editLocation: JournalEntry['location'] | undefined;
   /** Whether location permission was denied. */
   locDenied: boolean;
   /** Whether a reverse-geocode is in progress. */
@@ -101,6 +103,7 @@ export default function JournalEntryModal() {
     autoSaving: false,
     lastSaved: null,
     currentLocation: undefined,
+    editLocation: undefined,
     locDenied: false,
     isUpdatingLocation: false,
   });
@@ -291,6 +294,14 @@ export default function JournalEntryModal() {
       content: state.content.trim(),
       datetime: state.datetime,
       tags: state.tags,
+      // Persist location changes made by dragging the map in edit mode.
+      // If the user dragged the map, editLocation is set; otherwise fall back
+      // to the existing entry's saved location (which may be undefined).
+      ...(state.editLocation !== undefined
+        ? { location: state.editLocation }
+        : existingEntry?.location !== undefined
+          ? { location: existingEntry.location }
+          : {}),
     });
     // Track the in-flight promise so flushSave can await it instead of
     // starting a concurrent write to the same entry.
@@ -360,8 +371,11 @@ export default function JournalEntryModal() {
   }, []);
 
   const mapLocation = useMemo(() => {
-    return existingEntry?.location ?? state.currentLocation;
-  }, [existingEntry?.location, state.currentLocation]);
+    // In edit mode, if the user has dragged the map, use the edited location.
+    // Otherwise fall back to the existing entry's location (edit) or the GPS
+    // location (create).
+    return state.editLocation ?? existingEntry?.location ?? state.currentLocation;
+  }, [state.editLocation, existingEntry?.location, state.currentLocation]);
 
   const mapCenter: [number, number] | undefined = useMemo(() => {
     if (!mapLocation) return undefined;
@@ -406,27 +420,44 @@ export default function JournalEntryModal() {
    * Called when the map region finishes changing after a user gesture. Updates the
    * target location to the new centre coordinate.
    *
-   * @param feature - GeoJSON feature containing the new region payload.
+   * In MapLibre v11, the event payload is a `ViewStateChangeEvent` delivered via
+   * `event.nativeEvent`, replacing the v10 GeoJSON Feature payload. The new center is
+   * in `nativeEvent.center` as `[longitude, latitude]` and the user-interaction flag is
+   * `nativeEvent.userInteraction` (was `feature.properties.isUserInteraction`).
+   *
+   * In edit mode, updates `editLocation` so the change can be persisted on save. In
+   * create mode, updates `currentLocation` as before.
+   *
+   * @param event - Native synthetic event whose `nativeEvent` contains the new view
+   *   state including `center`, `zoom`, `userInteraction`, etc.
    */
   const handleRegionDidChange = useCallback(
-    (feature: GeoJSON.Feature) => {
-      if (isEditing) return;
-
-      const props = feature.properties as { isUserInteraction?: boolean } | null;
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+      const { center, userInteraction } = event.nativeEvent;
       // Only react to user-driven gestures, not programmatic camera moves.
-      if (!props?.isUserInteraction) return;
+      if (!userInteraction) return;
 
-      const geom = feature.geometry;
-      if (geom.type !== 'Point') return;
-      const [newLng, newLat] = (geom as GeoJSON.Point).coordinates;
+      const [newLng, newLat] = center;
+
+      // The location field to update depends on whether we are in edit or create mode.
+      // In edit mode, we write to editLocation so the original entry location is
+      // preserved until the user saves; in create mode, we write to currentLocation.
+      const locationField = isEditing ? 'editLocation' : 'currentLocation';
 
       // Update coordinates immediately so the save uses the right location.
       // Elevation is reset to 0 because there is no elevation API for arbitrary
       // coordinates — only the initial GPS fetch provides real altitude data.
       setState(draft => {
-        if (draft.currentLocation) {
-          draft.currentLocation = {
-            ...draft.currentLocation,
+        if (draft[locationField]) {
+          draft[locationField] = {
+            ...draft[locationField]!,
+            latitude: newLat,
+            longitude: newLng,
+            elevation: 0,
+          };
+        } else {
+          // First drag on the map — create a location from the current map center.
+          draft[locationField] = {
             latitude: newLat,
             longitude: newLng,
             elevation: 0,
@@ -447,13 +478,10 @@ export default function JournalEntryModal() {
           const address = await reverseGeocodeWithTimeout(newLat, newLng);
           // Ignore stale results if the user dragged again while geocoding.
           if (geocodeId === pendingGeocodeRef.current) {
-            // If currentLocation is undefined (e.g. permission was denied and the
-            // map never loaded), we drop the update — the map wouldn't be visible
-            // anyway, so there's nothing to geocode.
             setState(draft => {
-              if (draft.currentLocation) {
-                draft.currentLocation = {
-                  ...draft.currentLocation,
+              if (draft[locationField]) {
+                draft[locationField] = {
+                  ...draft[locationField]!,
                   latitude: newLat,
                   longitude: newLng,
                   address,
@@ -522,7 +550,8 @@ export default function JournalEntryModal() {
   const navigation = useNavigation();
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', e => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
       if (isLeavingRef.current) return;
       e.preventDefault();
       isLeavingRef.current = true;
@@ -746,7 +775,7 @@ export default function JournalEntryModal() {
           <Text variant="titleMedium" style={styles.sectionTitle}>
             Location
           </Text>
-          {isEditing && !existingEntry?.location && (
+          {isEditing && !existingEntry?.location && !state.editLocation && (
             <Text variant="bodySmall" style={styles.locationHint}>
               No location was recorded for this entry.
             </Text>
@@ -769,23 +798,49 @@ export default function JournalEntryModal() {
 
           {mapCenter && mapLocation && (
             <View style={styles.mapContainer}>
-              <MapView
+              {/* Geocoded location text above the map */}
+              {state.isUpdatingLocation ? (
+                <Text
+                  variant="bodySmall"
+                  testID="location-address-placeholder"
+                  style={styles.locationAddressText}
+                >
+                  Getting address…
+                </Text>
+              ) : mapLocation.address ? (
+                <Text
+                  variant="bodySmall"
+                  testID="location-address-text"
+                  style={styles.locationAddressText}
+                >
+                  {mapLocation.address}
+                </Text>
+              ) : (
+                <Text
+                  variant="bodySmall"
+                  testID="location-coordinates-text"
+                  style={styles.locationAddressText}
+                >
+                  {mapLocation.latitude.toFixed(4)}, {mapLocation.longitude.toFixed(4)}
+                </Text>
+              )}
+              <Map
                 testID="entry-location-map"
                 mapStyle={MAP_STYLE_URL}
                 style={styles.map}
-                scrollEnabled={!isEditing}
-                zoomEnabled={!isEditing}
-                rotateEnabled={false}
-                pitchEnabled={false}
+                dragPan={true}
+                touchZoom={true}
+                touchRotate={false}
+                touchPitch={false}
                 onRegionDidChange={handleRegionDidChange}
               >
                 <Camera
-                  defaultSettings={{
-                    centerCoordinate: mapCenter,
-                    zoomLevel: 15,
+                  initialViewState={{
+                    center: mapCenter,
+                    zoom: 15,
                   }}
                 />
-              </MapView>
+              </Map>
               {/*
                 Fixed centre pin rendered over the map.
                 pointerEvents="none" lets touch gestures pass through to the
@@ -944,5 +999,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#999',
     paddingVertical: 2,
+  },
+  locationAddressText: {
+    color: '#555',
+    marginBottom: 4,
+    textAlign: 'center',
   },
 });

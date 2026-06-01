@@ -64,6 +64,7 @@ name: Tag management in entry
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -99,5 +100,6 @@ name: Tag management in entry
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
+- waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
