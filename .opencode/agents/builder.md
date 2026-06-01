@@ -5,8 +5,6 @@ model: ollama-cloud/glm-5.1
 temperature: 0.0
 permission:
   edit: allow
-  # Disable firecrawl due to MCP bug with kimi
-  firecrawl*: deny
   maestro*: deny
 ---
 
