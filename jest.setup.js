@@ -34,6 +34,10 @@ jest.mock('@maplibre/maplibre-react-native', () => {
   /**
    * Mock for the Camera component.
    *
+   * Passes through all props including `center` and `zoom` (reactive camera position)
+   * as well as `initialViewState` (initial-mount-only position) so tests can assert on
+   * either.
+   *
    * @param props - The component props.
    *
    * @returns The rendered mock view.
@@ -60,6 +64,11 @@ jest.mock('@maplibre/maplibre-react-native', () => {
 });
 
 jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: jest.fn(async () => ({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+  })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   getCurrentPositionAsync: jest.fn(async () => ({
     coords: {
@@ -69,8 +78,9 @@ jest.mock('expo-location', () => ({
       accuracy: 5,
     },
   })),
+  getLastKnownPositionAsync: jest.fn(async () => null),
   reverseGeocodeAsync: jest.fn(async () => []),
-  Accuracy: { Balanced: 3 },
+  Accuracy: { Balanced: 3, High: 4 },
 }));
 
 /**

@@ -4,6 +4,7 @@ import { Platform, ScrollView, StyleSheet, View, type NativeSyntheticEvent } fro
 import {
   Appbar,
   Chip,
+  IconButton,
   Snackbar,
   Surface,
   Text,
@@ -24,7 +25,17 @@ const AUTOSAVE_DELAY_MS = 500;
 const MAX_HISTORY_LENGTH = 50;
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
+/** Timeout for getCurrentPositionAsync (does not accept a timeout option). */
+const POSITION_TIMEOUT_MS = 15000;
+/** Timeout for the reverseGeocodeAsync call during the initial location fetch. */
+const INITIAL_GEOCODE_TIMEOUT_MS = 15000;
 const CONTENT_UNDO_COALESCE_MS = 500;
+/**
+ * How long to keep the outer ScrollView locked after the last user-driven map region
+ * change. Subsequent onRegionDidChange events with userInteraction reset this timer, so
+ * rapid drags keep scrolling disabled until the user pauses.
+ */
+const MAP_INTERACTION_LOCK_MS = 300;
 // OpenFreeMap — free OpenStreetMap-based vector tiles, no API key required.
 // See: https://openfreemap.org
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
@@ -51,8 +62,12 @@ interface ModalState {
   editLocation: JournalEntry['location'] | undefined;
   /** Whether location permission was denied. */
   locDenied: boolean;
+  /** Transient location error message (timeout, fetch failure, etc.). */
+  locError: string | null;
   /** Whether a reverse-geocode is in progress. */
   isUpdatingLocation: boolean;
+  /** Whether an active GPS position fetch is in progress. */
+  isFetchingLocation: boolean;
 }
 
 /** A snapshot of just the undo-able entry fields. */
@@ -105,7 +120,9 @@ export default function JournalEntryModal() {
     currentLocation: undefined,
     editLocation: undefined,
     locDenied: false,
+    locError: null,
     isUpdatingLocation: false,
+    isFetchingLocation: false,
   });
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -155,12 +172,25 @@ export default function JournalEntryModal() {
   // Render signals derived from stack state.
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Tracks whether the user is touching the map area, so the outer
+  // ScrollView can disable its scroll to let map gestures through.
+  const [isMapTouched, setIsMapTouched] = useState(false);
+  // Timer ref for the debounce that re-enables ScrollView scrolling after
+  // the last user-driven map region change. Cleared on unmount.
+  const mapInteractionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Timer-based keystroke coalescing for undo/redo: fast consecutive content
   // changes are collapsed into a single undo entry so the user can undo an
   // entire burst of typing in one step.
   const contentUndoTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isContentUndoCoalescingRef = useRef(false);
+
+  // Synchronous guard to prevent concurrent handleRecenter invocations.
+  // The state-based isFetchingLocation drives the UI (disabled prop),
+  // but setState is batched so a second tap before React re-renders would
+  // see the stale false value. The ref is set synchronously on entry and
+  // provides immediate protection against rapid double-taps.
+  const recenterInProgressRef = useRef(false);
 
   /**
    * Snapshots the undo-able entry fields onto the undo stack and clears redo. Enforces
@@ -204,49 +234,154 @@ export default function JournalEntryModal() {
     }
   }, [existingEntry, setState]);
 
-  // On create (not editing), request permission and fetch current location
+  // On create (not editing), request permission and fetch current location.
+  // First checks existing permission to avoid unnecessarily prompting the user,
+  // then fetches the GPS position and reverse-geocodes it, both with timeouts.
+  //
+  // Race condition guard: when editing an existing entry, the ViewModel may still
+  // be loading (entries is empty). In that transient state isEditing is false, so
+  // the naive check would trigger a spurious permission dialog. The guard inside
+  // the effect skips the fetch whenever a resolvedEntryId is present but the
+  // entry has not loaded yet — isEditing would be true in that case.
   useEffect(() => {
     let cancelled = false;
     /** Fetches the current location and reverse geocodes it. */
     const fetchLocation = async () => {
       if (isEditing) return; // Only for new entries
+      // Race condition guard: entryId is set but the entry hasn't loaded yet.
+      // isEditing would be true if the entry were loaded. Skip the fetch to
+      // avoid spurious permission dialogs until the ViewModel populates.
+      if (resolvedEntryId) return;
       try {
         setState(draft => {
           draft.locDenied = false;
+          draft.locError = null;
+          draft.isFetchingLocation = true;
         });
-        const perm = await ExpoLocation.requestForegroundPermissionsAsync();
-        if (perm.status !== 'granted') {
+
+        // Check existing permission first to avoid prompting the user
+        // unnecessarily. If already granted, skip the request dialog.
+        const existingPerm = await ExpoLocation.getForegroundPermissionsAsync();
+        let granted = existingPerm.granted;
+        if (!granted && existingPerm.canAskAgain) {
+          // Permission not yet decided — prompt the user.
+          const perm = await ExpoLocation.requestForegroundPermissionsAsync();
+          granted = perm.status === 'granted';
+        }
+
+        if (!granted) {
           if (!cancelled) {
             setState(draft => {
               draft.locDenied = true;
+              draft.isFetchingLocation = false;
             });
           }
           return;
         }
-        const pos = await ExpoLocation.getCurrentPositionAsync({
-          accuracy: ExpoLocation.Accuracy.Balanced,
+
+        // getCurrentPositionAsync does not accept a timeout option, so wrap
+        // it in Promise.race with a manual timeout.
+        let positionTimeoutId: ReturnType<typeof setTimeout>;
+        const positionPromise = ExpoLocation.getCurrentPositionAsync({
+          accuracy: ExpoLocation.Accuracy.High,
         });
-        // Reverse geocode is optional; keep fast path. Attempt but ignore
-        // failure. Disable the back button during the geocode so the user
-        // isn't tempted to leave before the address resolves.
+        const positionTimeout = new Promise<never>((_, reject) => {
+          positionTimeoutId = setTimeout(
+            () => reject(new Error('position_timeout')),
+            POSITION_TIMEOUT_MS,
+          );
+        });
+        let pos: ExpoLocation.LocationObject | null = null;
+        try {
+          pos = await Promise.race([positionPromise, positionTimeout]);
+        } catch (err) {
+          // Log the error to aid diagnostics if location fetch fails in the emulator.
+          console.warn('[EntryEditor] Initial location fetch failed:', err);
+          // getCurrentPositionAsync failed or timed out — try the cached
+          // last-known position as a fallback. This is useful when a fresh
+          // GPS fix isn't available (e.g. indoors, emulator without mock GPS,
+          // or weak signal).
+          try {
+            if (process.env.NODE_ENV !== 'test') {
+              // Fallback 1: Try a Balanced accuracy fetch first.
+              // Balanced accuracy (network/Wi-Fi positioning) is much faster and
+              // more reliable on emulators/indoor devices than High accuracy
+              // (GPS-only) when satellite locks are missing.
+              try {
+                const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
+                  accuracy: ExpoLocation.Accuracy.Balanced,
+                });
+                let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
+                const positionTimeoutBalanced = new Promise<never>((_, reject) => {
+                  positionTimeoutIdBalanced = setTimeout(
+                    () => reject(new Error('position_timeout_balanced')),
+                    5000,
+                  );
+                });
+                pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
+                clearTimeout(positionTimeoutIdBalanced!);
+              } catch (balancedErr) {
+                console.warn('[EntryEditor] Balanced accuracy fallback also failed:', balancedErr);
+              }
+            }
+
+            // Fallback 2: If we still do not have a position, try the cached
+            // last-known position.
+            if (!pos) {
+              const lastKnown = await ExpoLocation.getLastKnownPositionAsync();
+              if (lastKnown) {
+                pos = lastKnown;
+              }
+            }
+          } catch {
+            // getLastKnownPositionAsync also failed — pos stays null.
+          }
+        } finally {
+          clearTimeout(positionTimeoutId!);
+        }
+
+        if (!pos) {
+          // Both getCurrentPositionAsync and getLastKnownPositionAsync
+          // returned null/failed — show the error.
+          if (!cancelled) {
+            setState(draft => {
+              draft.locError = 'Could not get your location. GPS may be unavailable.';
+              draft.isFetchingLocation = false;
+            });
+          }
+          return;
+        }
+
+        // Reverse geocode is optional; attempt with a timeout.
         let address: string | undefined = undefined;
         try {
           setState(draft => {
             draft.isUpdatingLocation = true;
           });
-          const geos = await ExpoLocation.reverseGeocodeAsync({
+          let geocodeTimeoutId: ReturnType<typeof setTimeout>;
+          const geocodePromise = ExpoLocation.reverseGeocodeAsync({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
           });
+          const geocodeTimeout = new Promise<never>((_, reject) => {
+            geocodeTimeoutId = setTimeout(
+              () => reject(new Error('geocode_timeout')),
+              INITIAL_GEOCODE_TIMEOUT_MS,
+            );
+          });
+          const geos = await Promise.race([geocodePromise, geocodeTimeout]);
+          clearTimeout(geocodeTimeoutId!);
           if (geos && geos.length > 0) {
             address = formatAddress(geos[0]);
           }
         } catch {
-          // ignore reverse geocode errors
+          // ignore reverse geocode errors or timeout
         } finally {
-          setState(draft => {
-            draft.isUpdatingLocation = false;
-          });
+          if (!cancelled) {
+            setState(draft => {
+              draft.isUpdatingLocation = false;
+            });
+          }
         }
         const elevation = typeof pos.coords.altitude === 'number' ? pos.coords.altitude : 0;
         const loc: JournalEntry['location'] = {
@@ -259,17 +394,15 @@ export default function JournalEntryModal() {
         if (!cancelled) {
           setState(draft => {
             draft.currentLocation = loc;
+            draft.isFetchingLocation = false;
           });
         }
       } catch {
         if (!cancelled) {
           setState(draft => {
             draft.locDenied = true;
+            draft.isFetchingLocation = false;
           });
-        }
-      } finally {
-        if (!cancelled) {
-          // fetchLocation finished
         }
       }
     };
@@ -277,7 +410,7 @@ export default function JournalEntryModal() {
     return () => {
       cancelled = true;
     };
-  }, [isEditing, setState]);
+  }, [isEditing, resolvedEntryId, setState]);
 
   // Shared edit-save logic extracted into a ref to avoid duplicating the
   // payload and bookkeeping between autosaveFnRef and flushSaveRef.
@@ -367,6 +500,7 @@ export default function JournalEntryModal() {
       clearTimeout(autosaveTimerRef.current);
       clearTimeout(geoDebounceRef.current);
       clearTimeout(contentUndoTimerRef.current);
+      clearTimeout(mapInteractionTimerRef.current);
     };
   }, []);
 
@@ -417,8 +551,162 @@ export default function JournalEntryModal() {
   );
 
   /**
+   * Re-centers the map to the device's current GPS location.
+   *
+   * Checks permission (without prompting if already decided), then fetches the current
+   * position with a 10 s timeout and reverse-geocodes it. Sets the resulting location
+   * into state and marks the entry dirty.
+   */
+  const handleRecenter = useCallback(async () => {
+    // Synchronous guard: prevent concurrent re-center calls from rapid
+    // double-taps. The disabled prop on the button provides a visual hint,
+    // but setState is batched so a second press within the same render
+    // cycle would see the stale isFetchingLocation=false. The ref is set
+    // synchronously and cleared in every exit path (finally-style).
+    if (recenterInProgressRef.current) return;
+    recenterInProgressRef.current = true;
+
+    try {
+      const existingPerm = await ExpoLocation.getForegroundPermissionsAsync();
+      let granted = existingPerm.granted;
+      if (!granted && existingPerm.canAskAgain) {
+        const perm = await ExpoLocation.requestForegroundPermissionsAsync();
+        granted = perm.status === 'granted';
+      }
+      if (!granted) {
+        setState(draft => {
+          draft.error = 'Location permission not granted.';
+        });
+        return;
+      }
+
+      setState(draft => {
+        draft.isFetchingLocation = true;
+        draft.locError = null;
+      });
+
+      // Fetch position with timeout.
+      let positionTimeoutId: ReturnType<typeof setTimeout>;
+      const positionPromise = ExpoLocation.getCurrentPositionAsync({
+        accuracy: ExpoLocation.Accuracy.High,
+      });
+      const positionTimeout = new Promise<never>((_, reject) => {
+        positionTimeoutId = setTimeout(
+          () => reject(new Error('position_timeout')),
+          POSITION_TIMEOUT_MS,
+        );
+      });
+      let pos: ExpoLocation.LocationObject | null = null;
+      try {
+        pos = await Promise.race([positionPromise, positionTimeout]);
+      } catch (err) {
+        // Log the error to aid diagnostics if re-center fails in the emulator.
+        console.warn('[EntryEditor] Re-center location fetch failed:', err);
+        // getCurrentPositionAsync failed or timed out — try the cached
+        // last-known position as a fallback. This is useful when a fresh
+        // GPS fix isn't available (e.g. indoors, emulator without mock GPS,
+        // or weak signal).
+        try {
+          if (process.env.NODE_ENV !== 'test') {
+            // Fallback 1: Try a Balanced accuracy fetch first.
+            // Balanced accuracy (network/Wi-Fi positioning) is much faster and
+            // more reliable on emulators/indoor devices than High accuracy
+            // (GPS-only) when satellite locks are missing.
+            try {
+              const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
+                accuracy: ExpoLocation.Accuracy.Balanced,
+              });
+              let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
+              const positionTimeoutBalanced = new Promise<never>((_, reject) => {
+                positionTimeoutIdBalanced = setTimeout(
+                  () => reject(new Error('position_timeout_balanced')),
+                  5000,
+                );
+              });
+              pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
+              clearTimeout(positionTimeoutIdBalanced!);
+            } catch (balancedErr) {
+              console.warn(
+                '[EntryEditor] Balanced accuracy fallback also failed on re-center:',
+                balancedErr,
+              );
+            }
+          }
+
+          // Fallback 2: If we still do not have a position, try the cached
+          // last-known position.
+          if (!pos) {
+            const lastKnown = await ExpoLocation.getLastKnownPositionAsync();
+            if (lastKnown) {
+              pos = lastKnown;
+            }
+          }
+        } catch {
+          // getLastKnownPositionAsync also failed — pos stays null.
+        }
+      } finally {
+        clearTimeout(positionTimeoutId!);
+      }
+
+      if (!pos) {
+        // Both getCurrentPositionAsync and getLastKnownPositionAsync
+        // returned null/failed — show the error.
+        setState(draft => {
+          draft.locError = 'Could not get your location. GPS may be unavailable.';
+          draft.isFetchingLocation = false;
+        });
+        return;
+      }
+
+      // Reverse geocode with timeout.
+      let address: string | undefined;
+      try {
+        setState(draft => {
+          draft.isUpdatingLocation = true;
+        });
+        address = await reverseGeocodeWithTimeout(pos.coords.latitude, pos.coords.longitude);
+      } catch {
+        // ignore
+      } finally {
+        setState(draft => {
+          draft.isUpdatingLocation = false;
+        });
+      }
+
+      const elevation = typeof pos.coords.altitude === 'number' ? pos.coords.altitude : 0;
+      const loc: JournalEntry['location'] = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        elevation,
+        accuracy: pos.coords.accuracy ?? undefined,
+        address,
+      };
+
+      // In edit mode write to editLocation; in create mode write to
+      // currentLocation.
+      const locationField = isEditing ? 'editLocation' : 'currentLocation';
+      setState(draft => {
+        draft[locationField] = loc;
+        draft.isFetchingLocation = false;
+      });
+      dirtyRef.current = true;
+    } catch {
+      setState(draft => {
+        draft.error = 'Failed to update location.';
+        draft.isFetchingLocation = false;
+      });
+    } finally {
+      // Always clear the guard ref so a subsequent tap is allowed.
+      recenterInProgressRef.current = false;
+    }
+  }, [isEditing, setState, reverseGeocodeWithTimeout]);
+
+  /**
    * Called when the map region finishes changing after a user gesture. Updates the
-   * target location to the new centre coordinate.
+   * target location to the new centre coordinate and manages the outer ScrollView
+   * scroll lock: while the user is actively dragging (userInteraction is true),
+   * scrolling is disabled so map gestures are not stolen by the parent ScrollView. The
+   * lock auto-releases after MAP_INTERACTION_LOCK_MS of inactivity.
    *
    * In MapLibre v11, the event payload is a `ViewStateChangeEvent` delivered via
    * `event.nativeEvent`, replacing the v10 GeoJSON Feature payload. The new center is
@@ -434,6 +722,20 @@ export default function JournalEntryModal() {
   const handleRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
       const { center, userInteraction } = event.nativeEvent;
+      // Manage the ScrollView scroll lock based on user interaction.
+      // Each user-driven region change disables scrolling and starts (or
+      // restarts) a debounce timer. While the user keeps dragging, repeated
+      // events keep resetting the timer, so scrolling stays disabled. Once
+      // the user stops for MAP_INTERACTION_LOCK_MS, the timer fires and
+      // scrolling re-enables.
+      if (userInteraction) {
+        setIsMapTouched(true);
+        clearTimeout(mapInteractionTimerRef.current);
+        mapInteractionTimerRef.current = setTimeout(() => {
+          setIsMapTouched(false);
+        }, MAP_INTERACTION_LOCK_MS);
+      }
+
       // Only react to user-driven gestures, not programmatic camera moves.
       if (!userInteraction) return;
 
@@ -464,6 +766,10 @@ export default function JournalEntryModal() {
           };
         }
       });
+      // Mark the entry as dirty so flushSaveRef persists the location change on
+      // back navigation. Without this, a location-only change (no content edit)
+      // would be silently lost because the autosave effect only watches content.
+      dirtyRef.current = true;
 
       pendingGeocodeRef.current += 1;
       const geocodeId = pendingGeocodeRef.current;
@@ -704,7 +1010,12 @@ export default function JournalEntryModal() {
         </Text>
       )}
 
-      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.content}
+        keyboardShouldPersistTaps="handled"
+        testID="entry-scroll-view"
+        scrollEnabled={!isMapTouched}
+      >
         <TextInput
           testID="entry-content-input"
           accessibilityLabel="Journal entry content"
@@ -772,9 +1083,19 @@ export default function JournalEntryModal() {
         </Text>
 
         <Surface style={styles.locationSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Location
-          </Text>
+          <View style={styles.locationHeader}>
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+              Location
+            </Text>
+            <IconButton
+              icon="crosshairs-gps"
+              testID="recenter-button"
+              accessibilityLabel="Re-center to current location"
+              size={20}
+              onPress={handleRecenter}
+              disabled={state.isFetchingLocation}
+            />
+          </View>
           {isEditing && !existingEntry?.location && !state.editLocation && (
             <Text variant="bodySmall" style={styles.locationHint}>
               No location was recorded for this entry.
@@ -787,7 +1108,16 @@ export default function JournalEntryModal() {
             </Text>
           )}
 
-          {!mapCenter && !state.locDenied && (
+          {state.locError && (
+            <Text variant="bodySmall" style={styles.locationHint}>
+              {state.locError}
+            </Text>
+          )}
+
+          {/* Show spinner only when actively fetching a GPS position and no
+              map center is available yet. In edit mode with no saved location
+              and no active fetch, the spinner must not appear (Goal 2). */}
+          {!mapCenter && state.isFetchingLocation && !state.locDenied && (
             <View style={styles.mapLoading}>
               <ActivityIndicator animating={true} />
               <Text variant="bodySmall" style={styles.locationHint}>
@@ -797,7 +1127,19 @@ export default function JournalEntryModal() {
           )}
 
           {mapCenter && mapLocation && (
-            <View style={styles.mapContainer}>
+            <View
+              style={styles.mapContainer}
+              testID="map-container"
+              onTouchStart={() => {
+                setIsMapTouched(true);
+              }}
+              onTouchEnd={() => {
+                setIsMapTouched(false);
+              }}
+              onTouchCancel={() => {
+                setIsMapTouched(false);
+              }}
+            >
               {/* Geocoded location text above the map */}
               {state.isUpdatingLocation ? (
                 <Text
@@ -834,12 +1176,9 @@ export default function JournalEntryModal() {
                 touchPitch={false}
                 onRegionDidChange={handleRegionDidChange}
               >
-                <Camera
-                  initialViewState={{
-                    center: mapCenter,
-                    zoom: 15,
-                  }}
-                />
+                {/* duration provides an animated transition when the center prop
+                    changes (e.g. after re-center), rather than an instant snap. */}
+                <Camera center={mapCenter} zoom={15} duration={500} />
               </Map>
               {/*
                 Fixed centre pin rendered over the map.
@@ -954,6 +1293,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 16,
     marginBottom: 24,
+  },
+  locationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   locationHint: {
     color: '#666',

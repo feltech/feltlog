@@ -3,7 +3,17 @@ name: Location features - capture and verify
 
 
 # This flow tests location capture on new entry creation, geocoded address text
-# display, map drag in edit mode, and persistence of location changes.
+# display, map pan via swipe changing the geocoded address, persistence of
+# location across save/reopen, and the re-center button.
+#
+# NOTE: Maestro swipe CAN pan the MapLibre map when using `from:` to target the
+# map element directly (e.g. `from: id: 'map-container'`). Direction-only swipes
+# (without `from:`) target screen center and may miss the map if it's not centered.
+# Use `from:` to ensure the swipe lands on the map.
+#
+# See also: location_recenter.yaml for re-center button, no-location state,
+# and double-tap-safety tests.
+#
 # Prerequisites: None - this test is independent and creates its own entries.
 ---
 - runFlow: subflows/setup_database.yaml
@@ -34,12 +44,26 @@ name: Location features - capture and verify
 - assertVisible:
     id: 'entry-location-map'
 
+# Verify the map container is visible (the touch handler target that
+# disables the outer ScrollView when the map is touched).
+- assertVisible:
+    id: 'map-container'
+
 # Verify geocoded address text is displayed above the map.
 # The mock location is London, UK so the address should resolve.
-# One of these testIDs must be visible: address (geocode succeeded)
-# or coordinates (geocode failed).
 - assertVisible:
     id: 'location-address-text'
+
+# Capture the London address text for later comparison.
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressLondon = maestro.copiedText}
+
+# Verify the re-center button is visible in the location section
+- assertVisible:
+    id: 'recenter-button'
+
+- takeScreenshot: screenshot-london-entry-recenter-button
 
 # Type content
 - tapOn:
@@ -88,6 +112,10 @@ name: Location features - capture and verify
 - assertVisible:
     id: 'location-address-text'
 
+# Verify the re-center button is present in edit mode too
+- assertVisible:
+    id: 'recenter-button'
+
 # Go back to list (system back)
 # Dismiss keyboard / blur input before system back
 - tapOn:
@@ -97,53 +125,54 @@ name: Location features - capture and verify
 
 - assertVisible: 'Create entry'
 
-# ===== TEST 4: Map drag in edit mode changes location =====
-# Re-open the entry in edit mode
-- tapOn: 'Journal entry card'
+# ===== TEST 4: Different GPS location resolves to a different geocoded address =====
+# Set the emulator GPS to Paris and create a new entry. This proves that
+# geocoding resolves different GPS coordinates correctly.
+- setLocation:
+    latitude: 48.8566
+    longitude: 2.3522
+
+- waitForAnimationToEnd
+
+- assertVisible: 'Create entry'
+
+# Dismiss LogBox warning banner if present — it overlays the bottom of the
+# screen and can block FAB taps.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- evalScript: ${output.entryText2 = "Entry in Paris " + Date.now().toString()}
+- tapOn:
+    id: 'create-entry-fab'
+- waitForAnimationToEnd
 - assertVisible:
     id: 'entry-content-input'
 
-# Wait for everything to load
+# Wait for map and location to appear at the Paris coordinates
 - waitForAnimationToEnd
-
-# Verify map and address text are showing before drag
 - assertVisible:
     id: 'entry-location-map'
 - assertVisible:
     id: 'location-address-text'
 
-# Capture the current address text so we can prove it changed after drag.
-# We use evalScript to store a flag; the proof is that after the drag,
-# a *different* address resolves. Since Maestro text matching is full-string,
-# if the address changed, the old text is no longer the exact text of any
-# element — so assertNotVisible on the old text would pass.
-# However, we cannot read element text programmatically in Maestro, so we
-# use a structural approach: after dragging, the geocoding placeholder should
-# briefly appear, then a new address text appears. The proof that the drag
-# worked is that isUpdatingLocation fires (placeholder appears).
-
-# Drag the map to change the location — swipe left across the map area
-- swipe:
-    start: 50%, 50%
-    end: 30%, 50%
-
-# Wait for geocoding to process and new address to resolve
-- extendedWaitUntil:
-    visible:
-      id: 'location-address-text'
-    timeout: 5000
-
-# Verify that the new address text is visible after the drag.
-# If the drag had no effect, the geocoder would not have fired
-# and the placeholder would not have appeared.
-- assertVisible:
+# Capture the Paris address text
+- copyTextFrom:
     id: 'location-address-text'
+- evalScript: ${output.addressParis = maestro.copiedText}
 
-# Take a screenshot to verify the new location after drag
-- takeScreenshot: screenshot-location-after-drag
+# PROOF: the Paris address must differ from the original London address.
+- assertTrue:
+    condition: ${output.addressLondon != output.addressParis}
+    label: Paris GPS address differs from London GPS address
 
-# ===== TEST 5: Location changes persist after pressing back =====
-# Press back to save the entry with the new location
+- takeScreenshot: screenshot-location-paris
+
+# Close the Paris entry
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK
@@ -151,26 +180,224 @@ name: Location features - capture and verify
 
 - assertVisible: 'Create entry'
 
-# Re-open the entry to verify the dragged location persisted
+# ===== TEST 5: Map swipe pans map and updates geocoded address =====
+# Open the existing London entry in edit mode, swipe the map, and verify the
+# geocoded address changes. This proves that map panning triggers
+# handleRegionDidChange with userInteraction: true and that the geocoder
+# resolves the new center coordinates to a different address.
+#
+# Reset emulator GPS to London so the map centers correctly.
+- setLocation:
+    latitude: 51.5074
+    longitude: -0.1278
+
+- waitForAnimationToEnd
+
 - tapOn: 'Journal entry card'
 - assertVisible:
     id: 'entry-content-input'
 
 # Wait for map and location to render
 - waitForAnimationToEnd
-
-# Verify map is still showing (location persisted)
 - assertVisible:
     id: 'entry-location-map'
-
-# Verify geocoded address text is displayed (new location was saved)
 - assertVisible:
     id: 'location-address-text'
 
-# Take a screenshot to verify the persisted location
-- takeScreenshot: screenshot-location-persisted
+# Capture the current (London) address text before swiping
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressBeforeSwipe = maestro.copiedText}
+
+# Take a screenshot before swiping for diagnostics
+- takeScreenshot: screenshot-before-map-swipe
+
+# Swipe the map RIGHT (eastward). Using `from:` ensures the swipe starts on
+# the map element rather than screen center. This pans the MapLibre map and
+# triggers handleRegionDidChange with userInteraction: true.
+- swipe:
+    from:
+      id: 'map-container'
+    direction: RIGHT
+
+# Wait for the geocode debounce (600ms) + reverse geocode network call.
+# The address text element will update once the geocoded result returns.
+# "Getting address…" placeholder (location-address-placeholder) may briefly
+# appear before the new address text replaces it.
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 8000
+
+# Capture the new address text after the swipe
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressAfterSwipe = maestro.copiedText}
+
+# Take a screenshot after swiping for diagnostics
+- takeScreenshot: screenshot-after-map-swipe
+
+# PROOF: the address must have changed after swiping the map.
+# If the map pan failed (no-op), the address would still be the original
+# London address. A successful eastward pan moves the map center and the
+# geocoder resolves different coordinates to a different street/area.
+- assertTrue:
+    condition: ${output.addressBeforeSwipe != output.addressAfterSwipe}
+    label: Address changed after map swipe
+
+# Save the entry with the new location (system back saves)
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+
+- assertVisible: 'Create entry'
+
+# ===== TEST 6: Swiped location persists after save/reopen =====
+# Re-open the entry and verify the post-swipe address is still displayed,
+# proving the new location was persisted to the database on save.
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Wait for map and location to render
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'entry-location-map'
+- assertVisible:
+    id: 'location-address-text'
+
+# Wait for geocode to resolve
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 8000
+
+# Capture the address text after reopening
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressAfterReopen = maestro.copiedText}
+
+# PROOF: the address after reopen must differ from the pre-swipe address
+# (not the original London address). If the save failed to persist the new
+# coordinates, the address would revert to the original.
+- assertTrue:
+    condition: ${output.addressAfterReopen != output.addressBeforeSwipe}
+    label: Post-swipe address persisted after save and reopen
+
+# Take a screenshot to verify persisted location
+- takeScreenshot: screenshot-location-after-reopen
 
 # Go back to list
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+
+- assertVisible: 'Create entry'
+
+# ===== TEST 7: Re-center button updates location on an existing entry =====
+# Re-open the London entry in edit mode, change the emulator GPS to Berlin,
+# tap the re-center button, and verify the address updates from London to
+# Berlin. This proves the re-center button fetches the current GPS position
+# and updates the entry's location.
+#
+# Change emulator GPS to Berlin.
+- setLocation:
+    latitude: 52.52
+    longitude: 13.405
+
+- waitForAnimationToEnd
+
+# Dismiss LogBox warning banner if present — it overlays the bottom of the
+# screen and can block FAB taps.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Wait for map and location to render. The geocode may still be in
+# progress after re-opening an existing entry, so wait for the address
+# text to resolve instead of asserting immediately.
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'entry-location-map'
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 8000
+
+# Capture the current address before re-centering (should be the
+# post-swipe or original London area address)
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressBeforeRecenter = maestro.copiedText}
+
+# Tap the re-center button to fetch the new Berlin GPS location
+- tapOn:
+    id: 'recenter-button'
+
+# Wait for the position fetch + reverse geocode to complete.
+# During the fetch, the re-center button should be disabled and the
+# address text may briefly show "Getting address…". Wait for the final
+# address text to appear.
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 15000
+
+- takeScreenshot: screenshot-after-recenter
+
+# Capture the new address after re-centering
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressAfterRecenter = maestro.copiedText}
+
+# PROOF: the address must have changed after re-centering. If the re-center
+# button failed (no-op), the address would still be the pre-recenter London
+# address. A successful re-center fetches Berlin coordinates and the geocoder
+# resolves them to a different address.
+- assertTrue:
+    condition: ${output.addressBeforeRecenter != output.addressAfterRecenter}
+    label: Address changed after re-center to Berlin
+
+# ===== TEST 7b: Re-center button disabled during fetch — double tap is safe =====
+# Change GPS again and double-tap the re-center button quickly. The second
+# tap while the button is disabled (isFetchingLocation=true) or while
+# recenterInProgressRef is true must be a harmless no-op. A Snackbar error
+# or crash would indicate a bug.
+- setLocation:
+    latitude: 41.9028
+    longitude: 12.4964
+
+- waitForAnimationToEnd
+
+# Double-tap re-center: the first tap starts a fetch; the second tap may
+# land while the button is disabled or while the ref guard is active.
+# Both must be harmless. On the slow emulator the first fetch typically
+# completes before the second tap registers, so this mainly verifies the
+# ref guard and the disabled prop don't cause a crash.
+- tapOn:
+    id: 'recenter-button'
+- tapOn:
+    id: 'recenter-button'
+
+# Wait for the fetch to complete either way
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 15000
+
+- takeScreenshot: screenshot-after-recenter-double-tap
+
+# Save the entry with the re-centered location (system back saves)
 - tapOn:
     id: 'appbar-header'
 - pressKey: BACK

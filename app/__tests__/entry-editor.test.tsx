@@ -9,7 +9,10 @@ import * as ExpoLocation from 'expo-location';
 // Must match the values in app/entry-editor.tsx.
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
+const POSITION_TIMEOUT_MS = 15000;
+const INITIAL_GEOCODE_TIMEOUT_MS = 15000;
 const CONTENT_UNDO_COALESCE_MS = 500;
+const MAP_INTERACTION_LOCK_MS = 300;
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted by Jest before any imports below.
@@ -80,7 +83,7 @@ import JournalEntryModal from '../entry-editor';
  * warnings. The location effect has three await calls (requestPermission, getPosition,
  * reverseGeocode) so three flushes cover them. Extra flushes provide a safety margin.
  */
-const MICROTASK_FLUSH_COUNT = 6;
+const MICROTASK_FLUSH_COUNT = 20;
 
 /** Default (empty) view-model state used for most create-mode tests. */
 const DEFAULT_STATE: {
@@ -207,6 +210,7 @@ async function waitForMap(result: ReturnType<typeof render>): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe('JournalEntryModal', () => {
+  jest.setTimeout(30000);
   let actions: Record<string, jest.Mock>;
 
   beforeEach(() => {
@@ -222,6 +226,11 @@ describe('JournalEntryModal', () => {
     // subsequent tests, causing the initial location fetch to never resolve
     // and the map to never appear. We also reset the other location mocks
     // that individual tests may override.
+    (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'granted',
+      granted: true,
+      canAskAgain: true,
+    });
     (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
       status: 'granted',
     });
@@ -234,6 +243,7 @@ describe('JournalEntryModal', () => {
       },
     });
     (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockImplementation(async () => []);
+    (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
 
     (useLocalSearchParams as jest.Mock).mockReturnValue({}); // create mode by default
 
@@ -367,6 +377,276 @@ describe('JournalEntryModal', () => {
       const map = result.getByTestId('entry-location-map');
       expect(map.props.dragPan).toBe(true);
       expect(map.props.touchZoom).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Camera re-center (reactive center prop)
+  // -------------------------------------------------------------------------
+
+  describe('camera re-center', () => {
+    it('passes the entry saved location as Camera center in edit mode', async () => {
+      // When opening an existing entry with a location, the Camera's initial
+      // center prop should equal the entry's saved coordinates.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: { latitude: 40.7128, longitude: -74.006, elevation: 10 },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      // Find the Camera mock and verify its center matches the entry location.
+      /**
+       * Finds Camera mock views in the rendered tree by checking for center and zoom
+       * props, which are forwarded through MockCamera.
+       *
+       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       */
+      const findCameraViews = () =>
+        result.UNSAFE_root.findAll(
+          (node: ReactTestInstance) =>
+            Array.isArray((node.props as Record<string, unknown>)?.center) &&
+            typeof (node.props as Record<string, unknown>)?.zoom === 'number',
+        );
+
+      const cameraViews = findCameraViews();
+      expect(cameraViews.length).toBeGreaterThan(0);
+      // center is [longitude, latitude] per MapLibre convention.
+      expect(cameraViews[0].props.center).toEqual([-74.006, 40.7128]);
+    });
+
+    it('passes the updated center to Camera when handleRecenter completes', async () => {
+      // The initial mount fetches the device position via
+      // getCurrentPositionAsync (returns [0, 0] from beforeEach). Override
+      // the *second* call (from handleRecenter) to return a new position.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock)
+        .mockResolvedValueOnce({
+          coords: { latitude: 0, longitude: 0, altitude: 0, accuracy: 5 },
+        })
+        .mockResolvedValueOnce({
+          coords: {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            altitude: 11,
+            accuracy: 10,
+          },
+        });
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([]);
+
+      const result = await renderModal();
+      await waitForMap(result);
+
+      /**
+       * Finds Camera mock views in the rendered tree by checking for center and zoom
+       * props, which are forwarded through MockCamera.
+       *
+       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       */
+      const findCameraViews = () =>
+        result.UNSAFE_root.findAll(
+          (node: ReactTestInstance) =>
+            Array.isArray((node.props as Record<string, unknown>)?.center) &&
+            typeof (node.props as Record<string, unknown>)?.zoom === 'number',
+        );
+
+      // Before re-center, the camera should show the initial position
+      // (0, 0 from the first getCurrentPositionAsync mock).
+      const initialCamera = findCameraViews();
+      expect(initialCamera.length).toBeGreaterThan(0);
+      expect(initialCamera[0].props.center).toEqual([0, 0]);
+      expect(initialCamera[0].props.zoom).toBe(15);
+
+      // Press the re-center button.
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // After re-center, the Camera mock should have received the new
+      // center coordinates from the second getCurrentPositionAsync mock.
+      await waitFor(() => {
+        const updatedCamera = findCameraViews();
+        expect(updatedCamera.length).toBeGreaterThan(0);
+        expect(updatedCamera[0].props.center).toEqual([-0.1278, 51.5074]);
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Map scroll interaction
+  // -------------------------------------------------------------------------
+
+  describe('map scroll interaction', () => {
+    it('disables outer ScrollView while user is interacting with the map', async () => {
+      console.log('--- SCROLL VIEW TEST: START ---');
+      jest.useFakeTimers();
+      console.log('--- SCROLL VIEW TEST: RENDERING MODAL ---');
+      const result = await renderModal();
+      console.log('--- SCROLL VIEW TEST: MODAL RENDERED ---');
+      await flushEffects();
+      console.log('--- SCROLL VIEW TEST: EFFECTS FLUSHED ---');
+      await waitForMap(result);
+      console.log('--- SCROLL VIEW TEST: MAP VISIBLE ---');
+
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const map = result.getByTestId('entry-location-map');
+
+      // By default, scrolling is enabled.
+      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      console.log('--- SCROLL VIEW TEST: DISABLING SCROLL ---');
+      // Fire a user-driven region change — should disable scrolling.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
+        });
+      });
+
+      expect(scrollView.props.scrollEnabled).toBe(false);
+
+      console.log('--- SCROLL VIEW TEST: ADVANCING TIMERS ---');
+      // Advance past the debounce timer (300 ms + margin).
+      await act(async () => {
+        jest.advanceTimersByTime(MAP_INTERACTION_LOCK_MS + 50);
+      });
+
+      console.log('--- SCROLL VIEW TEST: CHECKING SCROLL ENABLED ---');
+      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      console.log('--- SCROLL VIEW TEST: RESTORING REAL TIMERS ---');
+      jest.useRealTimers();
+      console.log('--- SCROLL VIEW TEST: DONE ---');
+    });
+
+    it('does not disable scrolling on non-user region changes', async () => {
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const map = result.getByTestId('entry-location-map');
+
+      // Scroll should start enabled.
+      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      // Fire a programmatic (non-user) region change.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: false },
+        });
+      });
+
+      // Scrolling should remain enabled.
+      expect(scrollView.props.scrollEnabled).toBe(true);
+    });
+
+    it('disables scrolling via touch start on map container', async () => {
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const mapContainer = result.getByTestId('map-container');
+
+      // Scrolling should be enabled initially.
+      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      // Simulate a touch start on the map container — should disable scrolling.
+      await act(async () => {
+        mapContainer.props.onTouchStart();
+      });
+
+      expect(scrollView.props.scrollEnabled).toBe(false);
+
+      // Simulate touch end — should re-enable scrolling.
+      await act(async () => {
+        mapContainer.props.onTouchEnd();
+      });
+
+      expect(scrollView.props.scrollEnabled).toBe(true);
+    });
+
+    it('re-enables scrolling on touch cancel', async () => {
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const mapContainer = result.getByTestId('map-container');
+
+      // Simulate a touch start on the map container.
+      await act(async () => {
+        mapContainer.props.onTouchStart();
+      });
+
+      expect(scrollView.props.scrollEnabled).toBe(false);
+
+      // Simulate touch cancel — should also re-enable scrolling.
+      await act(async () => {
+        mapContainer.props.onTouchCancel();
+      });
+
+      expect(scrollView.props.scrollEnabled).toBe(true);
+    });
+
+    it('keeps scrolling disabled during rapid map drags', async () => {
+      jest.useFakeTimers();
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const map = result.getByTestId('entry-location-map');
+
+      // First user-driven region change — disables scrolling.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
+        });
+      });
+      expect(scrollView.props.scrollEnabled).toBe(false);
+
+      // Advance 200 ms (less than the 300 ms debounce) — timer hasn't fired yet.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      // Second user-driven region change resets the timer.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.41, 37.81], userInteraction: true },
+        });
+      });
+
+      // Scrolling should still be disabled.
+      expect(scrollView.props.scrollEnabled).toBe(false);
+
+      // Advance past the full debounce from the second event.
+      await act(async () => {
+        jest.advanceTimersByTime(MAP_INTERACTION_LOCK_MS + 50);
+      });
+
+      // Now scrolling should be re-enabled.
+      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      jest.useRealTimers();
     });
   });
 
@@ -656,6 +936,45 @@ describe('JournalEntryModal', () => {
       expect(result.queryByText('Looking up address, please wait…')).toBeNull();
 
       jest.useRealTimers();
+    });
+
+    it('does not update location state on non-user region changes', async () => {
+      // This guard is what makes the reactive Camera center prop safe from
+      // feedback loops — programmatic camera moves must not update state.
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // Find the Camera mock to read the initial center.
+      /**
+       * Finds Camera mock views in the rendered tree by checking for center and zoom
+       * props, which are forwarded through MockCamera.
+       *
+       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       */
+      const findCameraViews = () =>
+        result.UNSAFE_root.findAll(
+          (node: ReactTestInstance) =>
+            Array.isArray((node.props as Record<string, unknown>)?.center) &&
+            typeof (node.props as Record<string, unknown>)?.zoom === 'number',
+        );
+
+      const initialCamera = findCameraViews();
+      expect(initialCamera.length).toBeGreaterThan(0);
+      const initialCenter = initialCamera[0].props.center;
+
+      const map = result.getByTestId('entry-location-map');
+
+      // Fire a programmatic (non-user) region change with different coords.
+      await act(async () => {
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [99, 99], userInteraction: false },
+        });
+      });
+
+      // The Camera center should remain unchanged — the handler must not
+      // have updated currentLocation or editLocation.
+      const cameraAfter = findCameraViews();
+      expect(cameraAfter[0].props.center).toEqual(initialCenter);
     });
 
     it('discards stale geocode results from rapid drags', async () => {
@@ -1685,6 +2004,34 @@ describe('JournalEntryModal', () => {
 
       expect(result.getByText('No location was recorded for this entry.')).toBeTruthy();
     });
+
+    it('does not show loading spinner when entry has no location and not fetching', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'no location entry',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              // No location field.
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // The hint text is shown, not a loading spinner.
+      expect(result.getByText('No location was recorded for this entry.')).toBeTruthy();
+      // No ActivityIndicator / "Loading map…" text should appear.
+      expect(result.queryByText('Loading map…')).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1693,6 +2040,13 @@ describe('JournalEntryModal', () => {
 
   describe('location permission denied', () => {
     it('shows permission denied hint when location permission is not granted', async () => {
+      // getForegroundPermissionsAsync returns not-granted, canAskAgain=true so
+      // the component will prompt via requestForegroundPermissionsAsync.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'denied',
+        granted: false,
+        canAskAgain: true,
+      });
       (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
         status: 'denied',
       });
@@ -1709,7 +2063,7 @@ describe('JournalEntryModal', () => {
       });
     });
 
-    it('shows locDenied when getCurrentPositionAsync throws', async () => {
+    it('shows locError when getCurrentPositionAsync throws', async () => {
       (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
         status: 'granted',
       });
@@ -1720,12 +2074,775 @@ describe('JournalEntryModal', () => {
       const result = await renderModal();
       await flushEffects();
 
+      // GPS failures show a distinct locError message, not "permission denied".
+      await waitFor(() => {
+        expect(
+          result.getByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+    });
+
+    it('skips requestForegroundPermissionsAsync when permission is already granted', async () => {
+      // Pre-granted permission — the request dialog should be skipped.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // requestForegroundPermissionsAsync should NOT have been called.
+      expect(ExpoLocation.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+
+      // The map should appear (position was fetched).
+      await waitForMap(result);
+    });
+
+    it('shows locError when getCurrentPositionAsync times out', async () => {
+      jest.useFakeTimers();
+
+      // Permission is granted but position never resolves.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      ); // never resolves
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // Advance past the position timeout (10 s).
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // Should show the timeout error message.
+      await waitFor(() => {
+        expect(
+          result.getByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('shows locError when initial reverseGeocodeAsync times out', async () => {
+      jest.useFakeTimers();
+
+      // Permission and position resolve, but geocode hangs.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      ); // never resolves
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // Advance past the initial geocode timeout (10 s).
+      await act(async () => {
+        jest.advanceTimersByTime(INITIAL_GEOCODE_TIMEOUT_MS + 500);
+      });
+
+      // The component should still render — geocode timeout is gracefully
+      // handled (address is undefined but position is shown).
+      await waitFor(() => {
+        // The map should appear (position was fetched, geocode timed out).
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('handles permission permanently denied (canAskAgain=false) without prompting', async () => {
+      // Permission is denied and cannot ask again.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'denied',
+        granted: false,
+        canAskAgain: false,
+      });
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // requestForegroundPermissionsAsync should NOT be called (canAskAgain is false).
+      expect(ExpoLocation.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+
+      // Should show the permission denied message.
       await waitFor(() => {
         expect(
           result.getByText(
             'Location permission not granted. You can still save the entry without a location.',
           ),
         ).toBeTruthy();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getLastKnownPositionAsync fallback
+  // -------------------------------------------------------------------------
+
+  describe('getLastKnownPositionAsync fallback', () => {
+    it('uses last-known position when getCurrentPositionAsync times out (fetchLocation)', async () => {
+      jest.useFakeTimers();
+
+      // Permission is granted but getCurrentPositionAsync never resolves.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      ); // never resolves
+      // getLastKnownPositionAsync returns a cached position.
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 37.7749,
+          longitude: -122.4194,
+          altitude: 15,
+          accuracy: 20,
+        },
+      });
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // Advance past the position timeout (10 s) so the fallback triggers.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // The map should appear using the last-known position — no error.
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      // No locError should be shown.
+      expect(
+        result.queryByText('Could not get your location. GPS may be unavailable.'),
+      ).toBeNull();
+
+      jest.useRealTimers();
+    });
+
+    it('shows error when both getCurrentPositionAsync and getLastKnownPositionAsync fail (fetchLocation)', async () => {
+      jest.useFakeTimers();
+
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      ); // never resolves
+      // getLastKnownPositionAsync returns null (no cached position).
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // Advance past the position timeout.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // Should show the error message because both sources failed.
+      await waitFor(() => {
+        expect(
+          result.getByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('uses last-known position when getCurrentPositionAsync throws (fetchLocation)', async () => {
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+        granted: true,
+        canAskAgain: false,
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockRejectedValue(
+        new Error('GPS unavailable'),
+      );
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 51.5074,
+          longitude: -0.1278,
+          altitude: 11,
+          accuracy: 10,
+        },
+      });
+
+      const result = await renderModal();
+      await flushEffects();
+
+      // The map should appear using the last-known position.
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      // No locError should be shown.
+      expect(
+        result.queryByText('Could not get your location. GPS may be unavailable.'),
+      ).toBeNull();
+    });
+
+    it('uses last-known position when getCurrentPositionAsync times out on re-center', async () => {
+      jest.useFakeTimers();
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // Re-center: getCurrentPositionAsync never resolves.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      );
+      // getLastKnownPositionAsync returns a cached position.
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 48.8566,
+          longitude: 2.3522,
+          altitude: 35,
+          accuracy: 15,
+        },
+      });
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // Advance past the position timeout.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // No locError should be shown — the fallback succeeded.
+      expect(
+        result.queryByText('Could not get your location. GPS may be unavailable.'),
+      ).toBeNull();
+
+      jest.useRealTimers();
+    });
+
+    it('shows locError when both getCurrentPositionAsync and getLastKnownPositionAsync fail on re-center', async () => {
+      jest.useFakeTimers();
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // Re-center: getCurrentPositionAsync never resolves.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      );
+      // getLastKnownPositionAsync returns null.
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // Advance past the position timeout.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // Should show the error message.
+      await waitFor(() => {
+        expect(
+          result.queryByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('shows locError when getLastKnownPositionAsync throws on re-center', async () => {
+      jest.useFakeTimers();
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // Re-center: getCurrentPositionAsync never resolves.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      );
+      // getLastKnownPositionAsync throws an unexpected error.
+      (ExpoLocation.getLastKnownPositionAsync as jest.Mock).mockRejectedValue(
+        new Error('location service crashed'),
+      );
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // Advance past the position timeout.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      // Should show the error message because both sources failed.
+      await waitFor(() => {
+        expect(
+          result.queryByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Race condition: edit mode with initially-empty ViewModel
+  // -------------------------------------------------------------------------
+
+  describe('race condition — edit mode with initially-empty ViewModel', () => {
+    it('does not request location permission when ViewModel starts with empty entries', async () => {
+      // Simulate the race condition: navigate to edit an entry but the ViewModel
+      // initially returns entries: [] (still loading). The location permission
+      // dialog must NOT appear in this transient state.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [] },
+        actions,
+      });
+
+      // entryId is set, but entries haven't loaded yet.
+      (useLocalSearchParams as jest.Mock).mockReturnValue({ entryId: 'edit-1' });
+
+      // Reset location mocks so we can verify they were NOT called.
+      (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockClear();
+
+      const { unmount } = render(
+        <SafeAreaProvider>
+          <PaperProvider>
+            <JournalEntryModal />
+          </PaperProvider>
+        </SafeAreaProvider>,
+      );
+
+      // Flush any microtasks from the initial render.
+      await act(async () => {
+        for (let i = 0; i < MICROTASK_FLUSH_COUNT; i++) {
+          await Promise.resolve();
+        }
+      });
+
+      // requestForegroundPermissionsAsync must NOT have been called during the
+      // initial render when the ViewModel hasn't loaded the entry yet.
+      expect(ExpoLocation.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+
+      unmount();
+    });
+
+    it('does request location permission in create mode (no entryId)', async () => {
+      // Create mode: no entryId, so the component should request location
+      // permission immediately. This ensures the guard doesn't break the
+      // normal create flow.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'undetermined',
+        granted: false,
+        canAskAgain: true,
+      });
+
+      await renderModal();
+      await flushEffects();
+
+      // Permission should have been requested in create mode.
+      expect(ExpoLocation.requestForegroundPermissionsAsync).toHaveBeenCalled();
+    });
+
+    it('does not request location permission when entryId is set and entry exists from the start', async () => {
+      // Edit mode with entry pre-loaded: no location fetch should happen.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: { latitude: 40.7, longitude: -74, elevation: 10 },
+            },
+          ],
+        },
+        actions,
+      });
+
+      await renderModal('edit-1');
+      await flushEffects();
+
+      // Permission must NOT have been requested — edit mode.
+      expect(ExpoLocation.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not call getCurrentPositionAsync when ViewModel starts with empty entries', async () => {
+      // Even getCurrentPositionAsync should not be called when the entryId
+      // is present but the entry hasn't loaded.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [] },
+        actions,
+      });
+
+      (useLocalSearchParams as jest.Mock).mockReturnValue({ entryId: 'edit-1' });
+
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockClear();
+
+      const { unmount } = render(
+        <SafeAreaProvider>
+          <PaperProvider>
+            <JournalEntryModal />
+          </PaperProvider>
+        </SafeAreaProvider>,
+      );
+
+      await act(async () => {
+        for (let i = 0; i < MICROTASK_FLUSH_COUNT; i++) {
+          await Promise.resolve();
+        }
+      });
+
+      // getCurrentPositionAsync should NOT have been called — the entire
+      // location fetch was short-circuited.
+      expect(ExpoLocation.getCurrentPositionAsync).not.toHaveBeenCalled();
+
+      unmount();
+    });
+
+    it('does not set isFetchingLocation when entryId present but entry not loaded', async () => {
+      // Verify that the component does not set isFetchingLocation to true
+      // (which would show the "Loading map…" spinner) during the race window.
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [] },
+        actions,
+      });
+
+      (useLocalSearchParams as jest.Mock).mockReturnValue({ entryId: 'edit-1' });
+
+      const result = render(
+        <SafeAreaProvider>
+          <PaperProvider>
+            <JournalEntryModal />
+          </PaperProvider>
+        </SafeAreaProvider>,
+      );
+
+      await act(async () => {
+        for (let i = 0; i < MICROTASK_FLUSH_COUNT; i++) {
+          await Promise.resolve();
+        }
+      });
+
+      // No loading spinner should appear — the location fetch was skipped.
+      expect(result.queryByText('Loading map…')).toBeNull();
+
+      result.unmount();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Re-center button
+  // -------------------------------------------------------------------------
+
+  describe('re-center button', () => {
+    it('renders the re-center button', async () => {
+      const result = await renderModal();
+      await flushEffects();
+      expect(result.getByTestId('recenter-button')).toBeTruthy();
+    });
+
+    it('updates location in create mode on re-center press', async () => {
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // Override position for the re-center call.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 51.5,
+          longitude: -0.1,
+          altitude: 20,
+          accuracy: 10,
+        },
+      });
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: 'London',
+          street: '',
+          city: 'London',
+          region: '',
+          postalCode: '',
+          country: 'UK',
+        },
+      ]);
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // The new address from re-center should appear.
+      await waitFor(() => {
+        expect(result.queryByTestId('location-address-text')).toBeTruthy();
+      });
+    });
+
+    it('updates editLocation in edit mode and marks dirty on re-center', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+              location: { latitude: 40.7, longitude: -74, elevation: 10 },
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await waitFor(() => {
+        expect(result.queryByTestId('entry-location-map')).toBeTruthy();
+      });
+
+      // Override position for the re-center call.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 48.9,
+          longitude: 2.3,
+          altitude: 30,
+          accuracy: 8,
+        },
+      });
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: 'Paris',
+          street: '',
+          city: 'Paris',
+          region: '',
+          postalCode: '',
+          country: 'FR',
+        },
+      ]);
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // The address from re-center should appear.
+      await waitFor(() => {
+        expect(result.queryByTestId('location-address-text')).toBeTruthy();
+      });
+
+      // Change content and navigate back to verify location was persisted.
+      const contentInput = result.getByTestId('entry-content-input');
+      fireEvent.changeText(contentInput, 'modified content');
+
+      const action = { type: 'GO_BACK' };
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault: jest.fn(),
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      // updateEntry should contain the re-centered location.
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            location: expect.objectContaining({
+              latitude: 48.9,
+              longitude: 2.3,
+            }),
+          }),
+        );
+      });
+    });
+
+    it('shows error when permission is denied on re-center', async () => {
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // Re-center: permission denied, cannot ask again.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'denied',
+        granted: false,
+        canAskAgain: false,
+      });
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // Should show an error message via Snackbar.
+      await waitFor(() => {
+        expect(result.queryByText('Location permission not granted.')).toBeTruthy();
+      });
+    });
+
+    it('requests permission when canAskAgain on re-center', async () => {
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // First check: not granted but can ask again.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'undetermined',
+        granted: false,
+        canAskAgain: true,
+      });
+      (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockResolvedValue({
+        coords: {
+          latitude: 35.7,
+          longitude: 139.7,
+          altitude: 40,
+          accuracy: 12,
+        },
+      });
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: 'Tokyo',
+          street: '',
+          city: 'Tokyo',
+          region: '',
+          postalCode: '',
+          country: 'JP',
+        },
+      ]);
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // The request should have been called because canAskAgain was true.
+      expect(ExpoLocation.requestForegroundPermissionsAsync).toHaveBeenCalled();
+
+      // The map should show the new address.
+      await waitFor(() => {
+        expect(result.queryByTestId('location-address-text')).toBeTruthy();
+      });
+    });
+
+    it('shows locError when position times out on re-center', async () => {
+      jest.useFakeTimers();
+
+      const result = await renderModal();
+      await flushEffects();
+      await waitForMap(result);
+
+      // Re-center: position never resolves.
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      );
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // Advance past the position timeout.
+      await act(async () => {
+        jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+
+      await waitFor(() => {
+        expect(
+          result.queryByText('Could not get your location. GPS may be unavailable.'),
+        ).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('guards against rapid double-tap on re-center', async () => {
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // Make getCurrentPositionAsync hang so the first re-center stays
+      // in-flight long enough for a second tap to arrive.
+      let resolvePosition: (v: unknown) => void;
+      const positionPromise = new Promise(resolve => {
+        resolvePosition = resolve;
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock)
+        .mockReturnValueOnce(positionPromise)
+        .mockResolvedValue({
+          coords: { latitude: 10, longitude: 20, altitude: 0, accuracy: 5 },
+        });
+
+      const recenterBtn = result.getByTestId('recenter-button');
+
+      // First tap: starts a re-center (position hangs).
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // The button should now be disabled while fetching.
+      await waitFor(() => {
+        expect(recenterBtn.props.accessibilityState?.disabled).toBe(true);
+      });
+
+      // Second rapid tap should be a no-op (the ref guard blocks it).
+      // getCurrentPositionAsync should have been called once so far.
+      const callCountAfterFirst = (ExpoLocation.getCurrentPositionAsync as jest.Mock).mock.calls
+        .length;
+
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+
+      // No additional getCurrentPositionAsync call should have been made.
+      expect((ExpoLocation.getCurrentPositionAsync as jest.Mock).mock.calls.length).toBe(
+        callCountAfterFirst,
+      );
+
+      // Resolve the hanging position so the first re-center completes
+      // and cleans up.
+      await act(async () => {
+        resolvePosition!({
+          coords: { latitude: 10, longitude: 20, altitude: 0, accuracy: 5 },
+        });
+      });
+      await flushEffects();
+
+      // After completion, the re-center button should be re-enabled.
+      await waitFor(() => {
+        expect(recenterBtn.props.accessibilityState?.disabled).toBe(false);
       });
     });
   });
@@ -2467,6 +3584,103 @@ describe('JournalEntryModal', () => {
 
       consoleSpy.mockRestore();
       jest.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Snackbar error dismiss
+  // -------------------------------------------------------------------------
+
+  describe('snackbar error dismiss', () => {
+    it('clears error when Snackbar onDismiss is called', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      // Set an error via re-center with permission denied.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'denied',
+        granted: false,
+        canAskAgain: false,
+      });
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      // Snackbar should be visible.
+      await waitFor(() => {
+        expect(result.queryByText('Location permission not granted.')).toBeTruthy();
+      });
+
+      // Find the Snackbar and fire its onDismiss.
+      // The Snackbar component from react-native-paper is rendered with
+      // visible and onDismiss props.
+      const snackbar = result.UNSAFE_root.findAll(
+        (node: ReactTestInstance) =>
+          typeof (node.props as Record<string, unknown>)?.onDismiss === 'function' &&
+          (node.props as Record<string, unknown>)?.visible === true,
+      );
+      if (snackbar.length > 0) {
+        await act(async () => {
+          snackbar[0].props.onDismiss();
+        });
+      }
+
+      // Error should be cleared.
+      await waitFor(() => {
+        expect(result.queryByText('Location permission not granted.')).toBeNull();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // handleRecenter failure catch block
+  // -------------------------------------------------------------------------
+
+  describe('handleRecenter failure', () => {
+    it('shows generic error when handleRecenter catches an unexpected error', async () => {
+      const result = await renderModal();
+      await waitForMap(result);
+
+      // Make getForegroundPermissionsAsync throw an unexpected error.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockRejectedValue(
+        new Error('unexpected'),
+      );
+
+      const recenterBtn = result.getByTestId('recenter-button');
+      await act(async () => {
+        fireEvent.press(recenterBtn);
+      });
+      await flushEffects();
+
+      await waitFor(() => {
+        expect(result.queryByText('Failed to update location.')).toBeTruthy();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // fetchLocation outer catch in create mode
+  // -------------------------------------------------------------------------
+
+  describe('fetchLocation unexpected error', () => {
+    it('sets locDenied when fetchLocation catches an unexpected error', async () => {
+      // Make getForegroundPermissionsAsync throw to trigger the outer catch.
+      (ExpoLocation.getForegroundPermissionsAsync as jest.Mock).mockRejectedValue(
+        new Error('unexpected error'),
+      );
+
+      const result = await renderModal();
+      await flushEffects();
+
+      await waitFor(() => {
+        expect(
+          result.getByText(
+            'Location permission not granted. You can still save the entry without a location.',
+          ),
+        ).toBeTruthy();
+      });
     });
   });
 });

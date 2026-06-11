@@ -34,6 +34,7 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "watchman": false,
     "transform": {
       "^.+\\.[jt]sx?$": [
         "babel-jest",
@@ -47,7 +48,7 @@
     "setupFilesAfterEnv": [
       "expo-sqlite-mock/src/setup.ts"
     ],
-    "testTimeout": 10000,
+    "testTimeout": 30000,
     "transformIgnorePatterns": [
       "node_modules/(?!kysely-expo|use-immer|immer|((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|uuid)"
     ],

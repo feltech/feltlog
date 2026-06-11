@@ -1,0 +1,450 @@
+appId: com.feltech.feltlog
+name: Location re-center and no-location state
+
+
+# This flow tests the re-center button behaviour and the "no location" state
+# for entries created without location permission.
+#
+# TEST 1: Re-center button on a single entry in edit mode changes address.
+# TEST 2: Entry with no saved location shows text, no spinner, and the
+#         re-center button is present.
+# TEST 3: Re-center button can add a location to a no-location entry.
+# TEST 4: Double-tapping the re-center button while a fetch is in
+#         progress is harmless.
+#
+# By using a fresh database with one entry at a time, this test avoids
+# the multi-card matching problem on the journal list.
+#
+# Prerequisites: None - this test is independent and creates its own entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== SET PERMISSIONS AND MOCK LOCATION =====
+- setPermissions:
+    permissions:
+      all: allow
+
+# Set a known location before creating the entry (London, UK)
+- setLocation:
+    latitude: 51.5074
+    longitude: -0.1278
+
+# ===== TEST 1: Re-center button updates location on an existing entry =====
+# Create an entry with a London location, save it, reopen it in edit
+# mode, change GPS to Berlin, then tap re-center and verify the address
+# updates from London to Berlin.
+- evalScript: ${output.entryText = "Recenter test " + Date.now().toString()}
+
+# Create new entry - location should be captured automatically
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Wait for map and location to appear
+- waitForAnimationToEnd
+
+# Verify the map is showing (location captured)
+- assertVisible:
+    id: 'entry-location-map'
+
+# Verify geocoded address text is displayed
+- assertVisible:
+    id: 'location-address-text'
+
+# Verify the re-center button is visible
+- assertVisible:
+    id: 'recenter-button'
+
+# Capture the initial London address text for later comparison
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressBeforeRecenter = maestro.copiedText}
+
+# Type content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryText}
+
+# Save entry (system back saves)
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# Change emulator GPS to Berlin
+- setLocation:
+    latitude: 52.52
+    longitude: 13.405
+
+- waitForAnimationToEnd
+
+# Dismiss LogBox warning banner if present — it overlays the bottom of
+# the screen and can block FAB taps.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Re-open the entry in edit mode (only one entry on the list)
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Wait for map and location to render. The geocode may still be in
+# progress after re-opening an existing entry, so wait for the address
+# text to resolve instead of asserting immediately.
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'entry-location-map'
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 8000
+
+# Capture the current address before re-centering
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressBeforeRecenter2 = maestro.copiedText}
+
+# Tap the re-center button to fetch the new Berlin GPS location
+- tapOn:
+    id: 'recenter-button'
+
+# Wait for the position fetch + reverse geocode to complete.
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 15000
+
+- takeScreenshot: screenshot-recenter-berlin
+
+# Capture the new address after re-centering
+- copyTextFrom:
+    id: 'location-address-text'
+- evalScript: ${output.addressAfterRecenter = maestro.copiedText}
+
+# PROOF: the address must have changed after re-centering. If the
+# re-center button failed (no-op), the address would still be the
+# pre-recenter London address.
+- assertTrue:
+    condition: ${output.addressBeforeRecenter2 != output.addressAfterRecenter}
+    label: Address changed after re-center to Berlin
+
+# Go back to list
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# ===== TEST 2: Entry with no saved location — no spinner, text visible, re-center present =====
+# Start fresh with a new database to avoid multi-card matching issues.
+# Deny location permission, create an entry, save it, reopen it.
+# Verify:
+# - "No location was recorded for this entry" is visible
+# - No loading spinner / map is shown
+# - The re-center button is present
+- setPermissions:
+    permissions:
+      location: deny
+
+# Clear app state and set up a fresh database with location denied.
+- clearState
+- launchApp:
+    permissions:
+      location: deny
+- waitForAnimationToEnd
+
+# Set up a fresh database
+- evalScript: ${output.dbName2 = "noloc_" + Date.now().toString() + ".db"}
+- evalScript: ${output.dbKey2 = "key_" + Date.now().toString()}
+- tapOn:
+    id: 'db-name-input'
+    point: '95%,50%'
+- eraseText
+- inputText: ${output.dbName2}
+- tapOn:
+    id: 'db-key-input'
+- inputText: ${output.dbKey2}
+- tapOn:
+    id: 'db-open-btn'
+- assertVisible: 'Create entry'
+
+- evalScript: ${output.noLocationEntryText = "No location " + Date.now().toString()}
+
+# Dismiss LogBox warning banner if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- tapOn:
+    id: 'create-entry-fab'
+
+# With location: deny, the app may still show the Android system
+# permission prompt (canAskAgain is true). Dismiss it by denying.
+# Handle both deny button variants: first-denial shows
+# "permission_deny_button", subsequent denials show
+# "permission_deny_and_dont_ask_again_button".
+- runFlow:
+    when:
+      visible:
+        id: 'com.android.permissioncontroller:id/permission_deny_button'
+    commands:
+      - tapOn:
+          id: 'com.android.permissioncontroller:id/permission_deny_button'
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: 'com.android.permissioncontroller:id/permission_deny_and_dont_ask_again_button'
+    commands:
+      - tapOn:
+          id: 'com.android.permissioncontroller:id/permission_deny_and_dont_ask_again_button'
+      - waitForAnimationToEnd
+
+- assertVisible:
+    id: 'entry-content-input'
+
+# Wait for the location fetch attempt to complete
+- waitForAnimationToEnd
+
+# Verify the permission-denial hint is shown for new entries
+- assertVisible:
+    'Location permission not granted. You can still save the entry without a location.'
+
+# Type content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.noLocationEntryText}
+
+# Save entry (system back saves)
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# Dismiss LogBox warning banner if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Re-open the entry we just saved (it has no location).
+# With a fresh database there's only 1 entry on the list.
+# Wait for the card to appear on the list before tapping.
+- extendedWaitUntil:
+    visible: 'Journal entry card'
+    timeout: 5000
+
+- tapOn:
+    id: 'journal-entry-card-container'
+- waitForAnimationToEnd
+
+# Wait for the ViewModel entries to load and the editor to settle into
+# edit mode. The entry-content-input should become visible once the
+# editor is ready.
+- extendedWaitUntil:
+    visible:
+      id: 'entry-content-input'
+    timeout: 5000
+
+# Verify the entry content matches
+- assertVisible: ${output.noLocationEntryText}
+
+# Wait for any transient location logic to settle
+- waitForAnimationToEnd
+
+# Verify "No location was recorded for this entry" text is visible
+- assertVisible: 'No location was recorded for this entry.'
+
+# Verify the re-center button is present even when entry has no location
+- assertVisible:
+    id: 'recenter-button'
+
+# Verify NO map is shown (no location to centre on)
+- assertNotVisible:
+    id: 'entry-location-map'
+
+# Verify NO map container (no map rendered for an entry without location)
+- assertNotVisible:
+    id: 'map-container'
+
+- takeScreenshot: screenshot-no-location-entry
+
+# Go back to list
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# ===== TEST 3: Re-center button adds location to a no-location entry =====
+# Re-open the no-location entry, grant location permission, tap re-center,
+# and verify the map and address appear.
+#
+# Re-grant location permission. This may kill the app. Relaunch and
+# re-open the database.
+- setPermissions:
+    permissions:
+      location: allow
+
+- setLocation:
+    latitude: 35.6762
+    longitude: 139.6503
+
+- waitForAnimationToEnd
+
+- launchApp:
+    permissions:
+      location: allow
+- waitForAnimationToEnd
+
+# If the app restarted at the setup screen, re-enter credentials.
+- runFlow:
+    when:
+      visible:
+        id: 'db-name-input'
+    commands:
+      - tapOn:
+          id: 'db-name-input'
+          point: '95%,50%'
+      - eraseText
+      - inputText: ${output.dbName2}
+      - tapOn:
+          id: 'db-key-input'
+      - inputText: ${output.dbKey2}
+      - tapOn:
+          id: 'db-open-btn'
+      - assertVisible: 'Create entry'
+
+# Dismiss LogBox warning banner if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# With only 1 entry on the list, just tap the card directly.
+- tapOn: 'Journal entry card'
+- waitForAnimationToEnd
+
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify the entry content matches
+- assertVisible: ${output.noLocationEntryText}
+
+# Wait for any transient state to settle
+- waitForAnimationToEnd
+
+# The entry still has no saved location, so the "no location" text should
+# still be visible before we tap re-center.
+- assertVisible: 'No location was recorded for this entry.'
+
+# Tap the re-center button to fetch the current (Tokyo) location
+- tapOn:
+    id: 'recenter-button'
+
+# Wait for the position fetch + reverse geocode to complete.
+# The map should appear after the location is fetched.
+- extendedWaitUntil:
+    visible:
+      id: 'entry-location-map'
+    timeout: 15000
+
+# Verify the map container is now visible
+- assertVisible:
+    id: 'map-container'
+
+# Verify geocoded address text is displayed (Tokyo)
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 8000
+
+- takeScreenshot: screenshot-no-location-after-recenter
+
+# Save the entry with the new location
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# ===== TEST 4: Double-tap re-center during fetch is safe =====
+# Re-open the entry, change GPS, and double-tap re-center quickly.
+# The second tap while the button is disabled or the ref guard is
+# active must be harmless.
+- setLocation:
+    latitude: 40.7128
+    longitude: -74.006
+
+- waitForAnimationToEnd
+
+# Dismiss LogBox warning banner if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# With only 1 entry on the list, just tap the card directly.
+- tapOn: 'Journal entry card'
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: 'entry-content-input'
+    timeout: 5000
+- assertVisible: ${output.noLocationEntryText}
+
+# Wait for map and location to render
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: 'entry-location-map'
+    timeout: 10000
+
+# Wait for geocode to settle
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 10000
+
+# Double-tap re-center: the second tap may land while the button is
+# disabled or while recenterInProgressRef is true. Both must be safe.
+- tapOn:
+    id: 'recenter-button'
+- tapOn:
+    id: 'recenter-button'
+
+# Wait for the fetch to complete
+- extendedWaitUntil:
+    visible:
+      id: 'location-address-text'
+    timeout: 15000
+
+- takeScreenshot: screenshot-after-double-tap-recenter
+
+# Save the entry
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'

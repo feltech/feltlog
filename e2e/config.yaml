@@ -9,6 +9,7 @@ executionOrder:
     - 'Tag management in entry'
     - 'Tag edit back button bug'
     - 'Location features - capture and verify'
+    - 'Location re-center and no-location state'
     - 'Pull to refresh'
     - 'Infinite scroll and pagination'
     - 'Backup settings'
