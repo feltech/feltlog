@@ -1,8 +1,19 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import type { ReactTestInstance } from 'react-test-renderer';
 import { JournalList } from '../JournalList';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
+
+/**
+ * Structural type for the test instances returned by RNTL's UNSAFE_root queries.
+ *
+ * We avoid importing `ReactTestInstance` from the deprecated `react-test-renderer`
+ * package directly. RNTL transitively depends on `react-test-renderer` (and its types
+ * via @types/react-test-renderer), so the runtime tree is unchanged — only our direct
+ * dependency on the deprecated package is removed. The callbacks we pass to
+ * find/findAll only touch `props`, so a narrow structural type is sufficient and keeps
+ * the test decoupled from RTR's public surface.
+ */
+type TestInstance = { props: Record<string, unknown> };
 
 /**
  * Test suite for the JournalList component. Covers rendering entries, empty state,
@@ -157,7 +168,7 @@ describe('JournalList', () => {
     );
 
     // Find the FlatList by searching for the element with onEndReached.
-    const flatList = UNSAFE_root.find((node: ReactTestInstance) => {
+    const flatList = UNSAFE_root.find((node: TestInstance) => {
       const props = node.props as Record<string, unknown> | undefined;
       return props?.onEndReached !== undefined && typeof props?.onEndReached === 'function';
     });

@@ -1,6 +1,5 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import type { ReactTestInstance } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import * as ExpoLocation from 'expo-location';
@@ -13,6 +12,18 @@ const POSITION_TIMEOUT_MS = 15000;
 const INITIAL_GEOCODE_TIMEOUT_MS = 15000;
 const CONTENT_UNDO_COALESCE_MS = 500;
 const MAP_INTERACTION_LOCK_MS = 300;
+
+/**
+ * Structural type for the test instances returned by RNTL's UNSAFE_root queries.
+ *
+ * We avoid importing `ReactTestInstance` from the deprecated `react-test-renderer`
+ * package directly. RNTL transitively depends on `react-test-renderer` (and its types
+ * via @types/react-test-renderer), so the runtime tree is unchanged — only our direct
+ * dependency on the deprecated package is removed. The callbacks we pass to
+ * find/findAll only touch `props`, so a narrow structural type is sufficient and keeps
+ * the test decoupled from RTR's public surface.
+ */
+type TestInstance = { props: Record<string, unknown> };
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted by Jest before any imports below.
@@ -416,11 +427,11 @@ describe('JournalEntryModal', () => {
        * Finds Camera mock views in the rendered tree by checking for center and zoom
        * props, which are forwarded through MockCamera.
        *
-       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       * @returns Array of TestInstance nodes matching the Camera mock.
        */
       const findCameraViews = () =>
         result.UNSAFE_root.findAll(
-          (node: ReactTestInstance) =>
+          (node: TestInstance) =>
             Array.isArray((node.props as Record<string, unknown>)?.center) &&
             typeof (node.props as Record<string, unknown>)?.zoom === 'number',
         );
@@ -456,11 +467,11 @@ describe('JournalEntryModal', () => {
        * Finds Camera mock views in the rendered tree by checking for center and zoom
        * props, which are forwarded through MockCamera.
        *
-       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       * @returns Array of TestInstance nodes matching the Camera mock.
        */
       const findCameraViews = () =>
         result.UNSAFE_root.findAll(
-          (node: ReactTestInstance) =>
+          (node: TestInstance) =>
             Array.isArray((node.props as Record<string, unknown>)?.center) &&
             typeof (node.props as Record<string, unknown>)?.zoom === 'number',
         );
@@ -949,11 +960,11 @@ describe('JournalEntryModal', () => {
        * Finds Camera mock views in the rendered tree by checking for center and zoom
        * props, which are forwarded through MockCamera.
        *
-       * @returns Array of ReactTestInstance nodes matching the Camera mock.
+       * @returns Array of TestInstance nodes matching the Camera mock.
        */
       const findCameraViews = () =>
         result.UNSAFE_root.findAll(
-          (node: ReactTestInstance) =>
+          (node: TestInstance) =>
             Array.isArray((node.props as Record<string, unknown>)?.center) &&
             typeof (node.props as Record<string, unknown>)?.zoom === 'number',
         );
@@ -1940,7 +1951,7 @@ describe('JournalEntryModal', () => {
       // Remove a tag without changing content. Find the Chip for 'work' and
       // trigger its onClose callback.
       const allChips = result.UNSAFE_root.findAll(
-        (node: ReactTestInstance) =>
+        (node: TestInstance) =>
           (node.props as Record<string, unknown>)?.onClose !== undefined &&
           typeof (node.props as Record<string, unknown>)?.onClose === 'function',
       );
@@ -3038,7 +3049,7 @@ describe('JournalEntryModal', () => {
       // fiber tree. Walk the tree to find a component with both onClose
       // and children containing 'work'.
       const allChips = result.UNSAFE_root.findAll(
-        (node: ReactTestInstance) =>
+        (node: TestInstance) =>
           (node.props as Record<string, unknown>)?.onClose !== undefined &&
           typeof (node.props as Record<string, unknown>)?.onClose === 'function',
       );
@@ -3617,7 +3628,7 @@ describe('JournalEntryModal', () => {
       // The Snackbar component from react-native-paper is rendered with
       // visible and onDismiss props.
       const snackbar = result.UNSAFE_root.findAll(
-        (node: ReactTestInstance) =>
+        (node: TestInstance) =>
           typeof (node.props as Record<string, unknown>)?.onDismiss === 'function' &&
           (node.props as Record<string, unknown>)?.visible === true,
       );

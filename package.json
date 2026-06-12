@@ -159,7 +159,6 @@
     "markdownlint-cli": "^0.48.0",
     "prettier": "^3.8.3",
     "prettier-plugin-jsdoc": "^1.8.0",
-    "react-test-renderer": "^19.0.0",
     "typescript": "~6.0.3",
     "typescript-language-server": "^5.1.3"
   },
