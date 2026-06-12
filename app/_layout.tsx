@@ -12,6 +12,7 @@ import { DatabaseInfoProvider } from '@/src/domain/repositories/DatabaseContext'
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 import { useDatabase } from '@/src/data/database/database';
 import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScreen';
+import RestoreFromBackupScreen from '@/src/presentation/components/RestoreFromBackupScreen';
 import { performLifecycleBackup, getLatestMigrationKey } from '@/src/data/database/backup';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 
@@ -71,6 +72,7 @@ function RootLayoutNav() {
     useDatabase();
   const colorScheme = useColorScheme();
   const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
+  const [restoreMode, setRestoreMode] = useState(false);
 
   // Lifecycle-triggered backup: attempt on background, confirm/retry on resume.
   useEffect(() => {
@@ -129,11 +131,19 @@ function RootLayoutNav() {
   if (!ready || !db) {
     return (
       <PaperProvider>
-        <SetupDatabaseScreen
-          initialize={initialize}
-          lastDatabaseName={lastDatabaseName}
-          error={error}
-        />
+        {restoreMode ? (
+          <RestoreFromBackupScreen
+            lastDatabaseName={lastDatabaseName}
+            onCancel={() => setRestoreMode(false)}
+          />
+        ) : (
+          <SetupDatabaseScreen
+            initialize={initialize}
+            lastDatabaseName={lastDatabaseName}
+            error={error}
+            onRestore={() => setRestoreMode(true)}
+          />
+        )}
       </PaperProvider>
     );
   }

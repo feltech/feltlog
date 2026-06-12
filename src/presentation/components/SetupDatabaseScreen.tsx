@@ -15,6 +15,8 @@ export interface SetupDatabaseScreenProps {
   lastDatabaseName: string | null;
   /** Any error that occurred during initialization. */
   error: unknown | null;
+  /** Callback to switch to the restore-from-backup screen. */
+  onRestore?: () => void;
 }
 
 /**
@@ -24,6 +26,8 @@ export interface SetupDatabaseScreenProps {
  * @param props.initialize - Callback to initialize the database.
  * @param props.lastDatabaseName - The last used database name.
  * @param props.error - Any error to display.
+ * @param props.onRestore - Callback invoked when the user taps the "Restore from
+ *   backup" button. Omit to hide the button entirely.
  *
  * @returns The rendered setup screen.
  */
@@ -31,6 +35,7 @@ export default function SetupDatabaseScreen({
   initialize,
   lastDatabaseName,
   error,
+  onRestore,
 }: SetupDatabaseScreenProps) {
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [key, setKey] = useState('');
@@ -101,6 +106,19 @@ export default function SetupDatabaseScreen({
       >
         Open or create database
       </Button>
+
+      {onRestore ? (
+        <Button
+          mode="outlined"
+          testID="restore-backup-btn"
+          accessibilityLabel="Restore from backup"
+          disabled={submitting}
+          onPress={onRestore}
+          style={{ marginTop: 12 }}
+        >
+          Restore from backup
+        </Button>
+      ) : null}
     </View>
   );
 }

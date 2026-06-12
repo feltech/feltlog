@@ -41,9 +41,45 @@ jest.mock('@/src/data/database/dbBackupStorage', () => ({
 /** Mock SetupDatabaseScreen to simplify assertions. */
 jest.mock('@/src/presentation/components/SetupDatabaseScreen', () => ({
   __esModule: true,
-  default: jest.fn(({ error }: { error?: string }) => (
-    <>{error ? `Setup Error: ${error}` : 'SetupDatabaseScreen'}</>
-  )),
+  default: jest.fn(({ error, onRestore }: { error?: string; onRestore?: () => void }) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RN = require('react-native');
+    return React.createElement(
+      RN.View,
+      null,
+      React.createElement(RN.Text, null, error ? `Setup Error: ${error}` : 'SetupDatabaseScreen'),
+      onRestore
+        ? React.createElement(RN.TouchableOpacity, {
+            testID: 'restore-backup-btn',
+            onPress: onRestore,
+          })
+        : null,
+    );
+  }),
+}));
+
+/** Mock RestoreFromBackupScreen to simplify assertions. */
+jest.mock('@/src/presentation/components/RestoreFromBackupScreen', () => ({
+  __esModule: true,
+  default: jest.fn(({ onCancel }: { onCancel?: () => void }) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RN = require('react-native');
+    return React.createElement(
+      RN.View,
+      null,
+      React.createElement(RN.Text, null, 'RestoreFromBackupScreen'),
+      onCancel
+        ? React.createElement(RN.TouchableOpacity, {
+            testID: 'restore-cancel-btn',
+            onPress: onCancel,
+          })
+        : null,
+    );
+  }),
 }));
 
 /** Mock the color scheme hook to return 'light' by default. */
@@ -199,6 +235,57 @@ describe('RootLayout', () => {
       const { toJSON } = await renderLayout(true, false, 'DB error');
       const json = JSON.stringify(toJSON());
       expect(json).toContain('Setup Error: DB error');
+    });
+
+    /** Tests that the setup screen receives an onRestore callback. */
+    it('passes onRestore callback to setup screen', async () => {
+      const { toJSON } = await renderLayout(true, false);
+      const json = JSON.stringify(toJSON());
+      expect(json).toContain('SetupDatabaseScreen');
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mockSetup = require('@/src/presentation/components/SetupDatabaseScreen').default;
+      const lastCall = mockSetup.mock.calls[mockSetup.mock.calls.length - 1][0];
+      expect(typeof lastCall.onRestore).toBe('function');
+    });
+
+    /**
+     * Tests that the restore screen receives an onCancel callback. We force restoreMode
+     * by invoking onRestore and asserting the restore screen renders with the expected
+     * prop.
+     */
+    it('passes onCancel callback to restore screen', async () => {
+      const { toJSON } = await renderLayout(true, false);
+      const json = JSON.stringify(toJSON());
+      expect(json).toContain('SetupDatabaseScreen');
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mockSetup = require('@/src/presentation/components/SetupDatabaseScreen').default;
+      const setupCall = mockSetup.mock.calls[mockSetup.mock.calls.length - 1][0];
+      expect(typeof setupCall.onRestore).toBe('function');
+
+      // Invoke onRestore to toggle restoreMode in RootLayoutNav.
+      await act(async () => {
+        setupCall.onRestore();
+      });
+
+      // After toggling, the restore screen should be rendered.
+      const restoreJson = JSON.stringify(toJSON());
+      expect(restoreJson).toContain('RestoreFromBackupScreen');
+
+      // Verify onCancel was passed to RestoreFromBackupScreen.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mockRestore = require('@/src/presentation/components/RestoreFromBackupScreen').default;
+      const restoreCall = mockRestore.mock.calls[mockRestore.mock.calls.length - 1][0];
+      expect(typeof restoreCall.onCancel).toBe('function');
+
+      // Invoke onCancel to return to setup.
+      await act(async () => {
+        restoreCall.onCancel();
+      });
+
+      const backJson = JSON.stringify(toJSON());
+      expect(backJson).toContain('SetupDatabaseScreen');
     });
   });
 

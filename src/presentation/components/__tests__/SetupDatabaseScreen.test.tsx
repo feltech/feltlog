@@ -155,6 +155,61 @@ describe('SetupDatabaseScreen', () => {
     expect(queryByTestId('db-error-text')).toBeNull();
   });
 
+  /** Tests that restore button renders when onRestore is provided. */
+  it('renders restore button when onRestore prop is provided', () => {
+    const { getByTestId } = render(
+      <SetupDatabaseScreen {...defaultProps} onRestore={jest.fn()} />,
+    );
+    expect(getByTestId('restore-backup-btn')).toBeTruthy();
+  });
+
+  /**
+   * Tests that the "Restore from backup" button is NOT rendered when onRestore is
+   * omitted.
+   */
+  it('does not render restore button when onRestore prop is omitted', () => {
+    const { queryByTestId } = render(<SetupDatabaseScreen {...defaultProps} />);
+    expect(queryByTestId('restore-backup-btn')).toBeNull();
+  });
+
+  /** Tests that the restore button calls onRestore when pressed. */
+  it('calls onRestore when restore button is pressed', () => {
+    const onRestore = jest.fn();
+    const { getByTestId } = render(
+      <SetupDatabaseScreen {...defaultProps} onRestore={onRestore} />,
+    );
+
+    fireEvent.press(getByTestId('restore-backup-btn'));
+    expect(onRestore).toHaveBeenCalled();
+  });
+
+  /** Tests that the restore button is disabled while submitting. */
+  it('disables restore button while submitting', async () => {
+    const onRestore = jest.fn();
+    let resolveInit: () => void;
+    const initPromise = new Promise<void>(resolve => {
+      resolveInit = resolve;
+    });
+    const initialize = jest.fn().mockReturnValue(initPromise);
+
+    const { getByTestId } = render(
+      <SetupDatabaseScreen {...defaultProps} initialize={initialize} onRestore={onRestore} />,
+    );
+
+    fireEvent.changeText(getByTestId('db-name-input'), 'test.db');
+
+    await act(async () => {
+      fireEvent.press(getByTestId('db-open-btn'));
+    });
+
+    const restoreBtn = getByTestId('restore-backup-btn');
+    expect(restoreBtn.props.accessibilityState?.disabled).toBe(true);
+
+    await act(async () => {
+      resolveInit!();
+    });
+  });
+
   /** Tests that the submit button shows loading state during submission. */
   it('shows loading state during submission', async () => {
     // Make initialize hang so we can observe the loading state.
