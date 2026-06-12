@@ -1,10 +1,13 @@
 ---
 description: Primary implementation agent for code changes
 mode: all
-model: ollama-cloud/glm-5.1
+model: ollama-cloud/kimi-k2.6
 temperature: 0.0
 permission:
   edit: allow
+  task:
+    '*': deny
+    reviewer: allow
   maestro*: deny
 ---
 

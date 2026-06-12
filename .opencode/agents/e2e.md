@@ -428,8 +428,9 @@ This automatically syncs device time and passes `--test-output-dir`.
 ### MCP for diagnostics only
 
 Use `maestro_inspect_screen`, `maestro_take_screenshot`, `maestro_list_devices`, etc. for
-diagnostic purposes. Do NOT use `maestro_run` to execute test flows — always prefer the CLI via npm
-scripts.
+diagnostic purposes. After taking a screenshot with `maestro_take_screenshot`, always pass the file
+path to `describe_image` before continuing — you must not skip image analysis. Do NOT use
+`maestro_run` to execute test flows — always prefer the CLI via npm scripts.
 
 ### JavaScript log capture
 
@@ -475,8 +476,13 @@ report it and rely on CLI diagnostics only.
 
 When tests fail, systematically check the following, in order:
 
+- **Screenshots:** When you call `maestro_take_screenshot`, you MUST determine the saved file path
+  (check the tool output, `test_output/`, or the repo root) and immediately analyse it with the
+  `describe_image` tool. Do not skip this step.
+
 1. Maestro test output (stdout/stderr, failing assertion messages, exit codes).
-2. Screenshots from `test_output/` and the repo root (use `describe_image` tool to analyse them).
+2. Screenshots from `test_output/` and the repo root (analyse every screenshot with
+   `describe_image` — never skip image analysis).
 3. Screen hierarchy via `maestro_inspect_screen` (if MCP is responsive).
 4. `android.log` (Expo dev server / Metro bundler output).
 5. Logcat from the device:
@@ -518,9 +524,10 @@ hierarchy as compact JSON. This helps identify what UI elements are visible and 
 
 ### Image analysis
 
-If screenshots are available, use the `describe_image` tool to analyse them for visual issues —
-look for layout problems, missing elements, error states, or unexpected UI state. Include the
-descriptions in your report.
+You MUST use the `describe_image` tool to analyse every screenshot for visual issues. Look for
+layout problems, missing elements, error states, or unexpected UI state. Include the descriptions
+in your report. Do not claim you cannot view the screenshot — the `describe_image` tool exists for
+exactly this purpose.
 
 ---
 
