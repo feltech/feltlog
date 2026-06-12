@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   Button,
@@ -11,15 +11,8 @@ import {
   TextInput,
   Title,
 } from 'react-native-paper';
-import { StorageAccessFramework } from 'expo-file-system/legacy';
-import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
-import {
-  backupDatabase,
-  extractFileName,
-  getLatestMigrationKey,
-} from '@/src/data/database/backup';
-import { restoreDatabase } from '@/src/data/database/restore';
-import { useDatabase } from '@/src/data/database/database';
+import { extractFileName } from '@/src/data/database/backup';
+import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
 
 /**
  * Screen that lets the user restore a database from a SAF-backed backup file.
@@ -28,12 +21,12 @@ import { useDatabase } from '@/src/data/database/database';
  *
  * 1. Collect target database name and encryption key.
  * 2. Show a "Select backup file" button that lists `.db` files from the configured SAF
- *    backup directory. 3. If a DB already exists at the target name, show a
- *    confirmation dialog: a safety backup of the current database will be saved before
- *    overwriting.
- * 3. Call `restoreDatabase` to overwrite the target file, then re-open the DB via
+ *    backup directory.
+ * 3. If a DB already exists at the target name, show a confirmation dialog: a safety
+ *    backup of the current database will be saved before overwriting.
+ * 4. Call `restoreDatabase` to overwrite the target file, then re-open the DB via
  *    `useDatabase().initialize()` so the app transitions to the tabs layout.
- * 4. Errors are surfaced through a snackbar matching the Settings pattern.
+ * 5. Errors are surfaced through a snackbar matching the Settings pattern.
  *
  * Because the setup screen is rendered outside the Stack navigator, this screen is
  * intended to be rendered as a sibling of `SetupDatabaseScreen` via a parent state
@@ -59,213 +52,27 @@ export default function RestoreFromBackupScreen({
   lastDatabaseName,
   onCancel,
 }: RestoreFromBackupScreenProps) {
-  const { initialize } = useDatabase();
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [key, setKey] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const [backupDirUri, setBackupDirUriState] = useState<string | null>(null);
+  const [backupDirUri, setBackupDirUri] = useState<string | null>(null);
   const [backupFiles, setBackupFiles] = useState<string[]>([]);
   const [selectedFileUri, setSelectedFileUri] = useState<string | null>(null);
 
-  const [snackbar, setSnackbar] = useState<{
-    visible: boolean;
-    message: string;
-    isError: boolean;
-  }>({ visible: false, message: '', isError: false });
-
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [safetyBackupRequired, setSafetyBackupRequired] = useState(false);
+  const deps = useRestoreFlowDeps();
+  const flow = useRestoreFlow({ databaseName, key, selectedFileUri, backupDirUri }, deps);
 
   // Load the configured backup directory on mount.
   useEffect(() => {
     (async () => {
-      const uri = await getBackupDirectoryUri();
+      const uri = await deps.getBackupDirectoryUri();
       if (uri) {
-        setBackupDirUriState(uri);
-        try {
-          const files = await StorageAccessFramework.readDirectoryAsync(uri);
-          // Filter to likely database backup files.
-          const dbFiles = files.filter(f => f.endsWith('.db'));
-          setBackupFiles(dbFiles);
-        } catch {
-          // If listing fails, leave the list empty.
-        }
+        setBackupDirUri(uri);
+        const files = await flow.refreshFileList(uri);
+        setBackupFiles(files);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const canSubmit = useMemo(
-    () => databaseName.trim().length > 0 && selectedFileUri !== null && !submitting,
-    [databaseName, selectedFileUri, submitting],
-  );
-
-  /**
-   * Shows a snackbar message.
-   *
-   * @param message - The message text to display.
-   * @param isError - When true, the snackbar is styled as an error.
-   */
-  const showSnackbar = (message: string, isError: boolean) => {
-    setSnackbar({ visible: true, message, isError });
-  };
-
-  /**
-   * Requests a SAF backup directory if none is configured.
-   *
-   * @returns The configured (or newly chosen) backup directory URI, or null if the user
-   *   declined the SAF picker or it failed.
-   */
-  async function ensureBackupDir(): Promise<string | null> {
-    if (backupDirUri) return backupDirUri;
-
-    try {
-      const result = await StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (result.granted && result.directoryUri) {
-        await setBackupDirectoryUri(result.directoryUri);
-        setBackupDirUriState(result.directoryUri);
-        return result.directoryUri;
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showSnackbar(`Failed to choose directory: ${message}`, true);
-    }
-    return null;
-  }
-
-  /**
-   * Checks whether the target database file already exists.
-   *
-   * Opens a transient database handle to discover the file path, then queries its
-   * existence via `getInfoAsync`. Returns `true` if a safety backup is needed.
-   *
-   * @param targetName - The target database file name.
-   *
-   * @returns True if a database file exists at the target path; false otherwise.
-   */
-  async function checkTargetExists(targetName: string): Promise<boolean> {
-    const { openDatabaseAsync } = await import('expo-sqlite');
-    const sqliteDb = await openDatabaseAsync(targetName);
-    const targetPath = sqliteDb.databasePath;
-    await sqliteDb.closeAsync();
-
-    const { getInfoAsync } = await import('expo-file-system/legacy');
-    const info = await getInfoAsync(`file://${targetPath}`);
-    return info.exists;
-  }
-
-  /** Initiates the restore process. */
-  const handleRestore = async () => {
-    if (!selectedFileUri) return;
-
-    setSubmitting(true);
-
-    const dirUri = await ensureBackupDir();
-    if (!dirUri) {
-      showSnackbar('Choose a backup location first', true);
-      setSubmitting(false);
-      return;
-    }
-
-    const trimmedKey = key.trim();
-    const targetName = databaseName.trim();
-
-    // Refresh file list if the directory changed.
-    try {
-      const files = await StorageAccessFramework.readDirectoryAsync(dirUri);
-      const dbFiles = files.filter(f => f.endsWith('.db'));
-      setBackupFiles(dbFiles);
-    } catch {
-      // ignore
-    }
-
-    // Check if a safety backup is needed.
-    try {
-      const exists = await checkTargetExists(targetName);
-      if (exists) {
-        setSafetyBackupRequired(true);
-        setShowConfirmDialog(true);
-        setSubmitting(false);
-        return;
-      }
-    } catch {
-      // If the check itself fails, assume we need confirmation.
-      setSafetyBackupRequired(true);
-      setShowConfirmDialog(true);
-      setSubmitting(false);
-      return;
-    }
-
-    // No existing DB — proceed directly.
-    await performRestore(targetName, trimmedKey, selectedFileUri);
-    setSubmitting(false);
-  };
-
-  /**
-   * Performs the actual restore after any confirmation dialogs have been acknowledged.
-   *
-   * @param targetName - The target database name.
-   * @param targetKey - The encryption key for the target database.
-   * @param sourceUri - The SAF URI of the backup file to restore from.
-   */
-  async function performRestore(
-    targetName: string,
-    targetKey: string,
-    sourceUri: string,
-  ): Promise<void> {
-    // If a safety backup was required, perform it before overwriting.
-    if (safetyBackupRequired) {
-      const dirUri = backupDirUri ?? (await ensureBackupDir());
-      if (!dirUri) {
-        showSnackbar('Choose a backup location first', true);
-        return;
-      }
-
-      try {
-        const { openDatabaseAsync } = await import('expo-sqlite');
-        const sqliteDb = await openDatabaseAsync(targetName);
-        const targetPath = sqliteDb.databasePath;
-        await sqliteDb.closeAsync();
-
-        const migrationKey = getLatestMigrationKey();
-        const safetyResult = await backupDatabase(targetPath, dirUri, migrationKey, targetName);
-        if (!safetyResult.success) {
-          showSnackbar(`Safety backup failed: ${safetyResult.error}`, true);
-          return;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        showSnackbar(`Safety backup failed: ${message}`, true);
-        return;
-      }
-    }
-
-    const result = await restoreDatabase(targetName, targetKey, sourceUri);
-    if (!result.success) {
-      showSnackbar(`Restore failed: ${result.error}`, true);
-      return;
-    }
-
-    // Reopen the database so the app proceeds to the tabs layout.
-    try {
-      await initialize({ encryptionKey: targetKey, databaseName: targetName });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showSnackbar(`Failed to open restored database: ${message}`, true);
-    }
-  }
-
-  /** Handles confirmation from the safety-backup dialog. */
-  const onConfirmRestore = async () => {
-    setShowConfirmDialog(false);
-    setSubmitting(true);
-    const trimmedKey = key.trim();
-    const targetName = databaseName.trim();
-    if (selectedFileUri) {
-      await performRestore(targetName, trimmedKey, selectedFileUri);
-    }
-    setSubmitting(false);
-  };
 
   return (
     <View style={styles.root}>
@@ -297,7 +104,11 @@ export default function RestoreFromBackupScreen({
         </HelperText>
 
         {!backupDirUri && (
-          <HelperText type="error" testID="restore-error-text">
+          <HelperText
+            type="error"
+            testID="restore-error-text"
+            accessibilityLabel={`backup-dir-uri-${backupDirUri ?? 'null'}`}
+          >
             No backup location configured. Tap &quot;Choose Backup Location&quot; below.
           </HelperText>
         )}
@@ -305,19 +116,11 @@ export default function RestoreFromBackupScreen({
         <Button
           mode="outlined"
           onPress={async () => {
-            try {
-              const result = await StorageAccessFramework.requestDirectoryPermissionsAsync();
-              if (result.granted && result.directoryUri) {
-                await setBackupDirectoryUri(result.directoryUri);
-                setBackupDirUriState(result.directoryUri);
-                const files = await StorageAccessFramework.readDirectoryAsync(result.directoryUri);
-                setBackupFiles(files.filter(f => f.endsWith('.db')));
-              } else {
-                showSnackbar('Permission denied', true);
-              }
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              showSnackbar(`Failed to choose directory: ${message}`, true);
+            const newUri = await flow.chooseBackupDirectory();
+            if (newUri) {
+              setBackupDirUri(newUri);
+              const files = await flow.refreshFileList(newUri);
+              setBackupFiles(files);
             }
           }}
           style={styles.button}
@@ -340,7 +143,8 @@ export default function RestoreFromBackupScreen({
               const fileName = extractFileName(uri);
               return (
                 <View key={uri} style={styles.radioItem}>
-                  <RadioButton value={uri} />
+                  {/* testID makes the radio press target addressable in tests. */}
+                  <RadioButton value={uri} testID={`restore-radio-${fileName}`} />
                   <Text style={styles.radioLabel} testID={`restore-source-item-${fileName}`}>
                     {fileName}
                   </Text>
@@ -355,9 +159,9 @@ export default function RestoreFromBackupScreen({
             mode="contained"
             testID="restore-confirm-btn"
             accessibilityLabel="Restore database"
-            disabled={!canSubmit}
-            loading={submitting}
-            onPress={handleRestore}
+            disabled={!flow.canSubmit}
+            loading={flow.submitting}
+            onPress={flow.handleRestore}
             style={styles.confirmButton}
           >
             Restore
@@ -367,7 +171,7 @@ export default function RestoreFromBackupScreen({
             mode="outlined"
             testID="restore-cancel-btn"
             accessibilityLabel="Cancel restore"
-            disabled={submitting}
+            disabled={flow.submitting}
             onPress={onCancel}
             style={styles.cancelButton}
           >
@@ -378,8 +182,8 @@ export default function RestoreFromBackupScreen({
 
       <Portal>
         <Dialog
-          visible={showConfirmDialog}
-          onDismiss={() => setShowConfirmDialog(false)}
+          visible={flow.showConfirmDialog}
+          onDismiss={flow.cancelRestore}
           testID="restore-confirm-dialog"
         >
           <Dialog.Title>Confirm restore</Dialog.Title>
@@ -390,10 +194,10 @@ export default function RestoreFromBackupScreen({
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setShowConfirmDialog(false)} testID="restore-dialog-cancel">
+            <Button onPress={flow.cancelRestore} testID="restore-dialog-cancel">
               Cancel
             </Button>
-            <Button onPress={onConfirmRestore} testID="restore-dialog-confirm">
+            <Button onPress={flow.confirmRestore} testID="restore-dialog-confirm">
               Restore
             </Button>
           </Dialog.Actions>
@@ -401,13 +205,13 @@ export default function RestoreFromBackupScreen({
       </Portal>
 
       <Snackbar
-        visible={snackbar.visible}
-        onDismiss={() => setSnackbar(prev => ({ ...prev, visible: false }))}
+        visible={flow.snackbar.visible}
+        onDismiss={flow.dismissSnackbar}
         duration={3000}
-        style={snackbar.isError ? styles.snackbarError : styles.snackbarSuccess}
+        style={flow.snackbar.isError ? styles.snackbarError : styles.snackbarSuccess}
         testID="restore-snackbar"
       >
-        {snackbar.message}
+        {flow.snackbar.message}
       </Snackbar>
     </View>
   );

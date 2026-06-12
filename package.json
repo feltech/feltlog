@@ -88,7 +88,6 @@
       "src/presentation/components/useColorScheme.ts",
       "src/presentation/components/useColorScheme.web.ts",
       "src/presentation/components/useClientOnlyValue.web.ts",
-      "src/presentation/components/RestoreFromBackupScreen.tsx",
       "app/\\+html.tsx",
       "app/restore-backup.tsx",
       "src/test-utils/"
