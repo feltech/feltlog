@@ -1,0 +1,1 @@
+Oops! Error occurred during decryption. Please, read first the Troubleshooting Guide at http://goo.gl/Swx7f or http://sites.google.com/site/drodiary/documentation/troubleshooting-decryption-error or contact support via drosoft.support@googlemail.com and DO NOT change password anymore!

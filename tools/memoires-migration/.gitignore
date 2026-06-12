@@ -1,0 +1,6 @@
+# Local install + build artifacts (node_modules/, coverage/) are matched
+# by the root .gitignore via unanchored patterns — no need to repeat here.
+
+# Logs and OS junk
+*.log
+.DS_Store
