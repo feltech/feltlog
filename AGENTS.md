@@ -251,15 +251,13 @@ that hide real timing issues.
 - Use ES modules in all application source code (`src/`, `app/`).
 - You may make git commits, but must propose the commit structure for review first.
 - When writing commit body messages, split long lines into multiple lines rather than shortening
-  the content. Commitlint enforces a 100-character body line limit. Use additional `-m` flags with
-  `git commit` to create separate body paragraphs, and keep each paragraph under 100 columns.
+  the content. Commitlint enforces a 100-character body line limit.
 - Add inline comments explaining **why** code is added — the rationale, the context, the constraint
   that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
   Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
 - All non-trivial functions must have docstrings.
 - All classes and interfaces must have docstrings.
 - Avoid the use of singletons, prefer dependency injection or contexts.
-- Keep transactions minimal in Expo SQLite (avoid complex multi-table transactions).
 
 ## E2E Testability Constraints
 
@@ -359,7 +357,6 @@ prevent the gap.
 - Automatic theme switching (light/dark toggle only)
 - Mood tracking
 - Tag hierarchies
-- Tag suggestions
 - Location-based search
 - Database indices or query optimization
 - Automatic backups
@@ -383,14 +380,3 @@ prevent the gap.
 - Kysely queries join/aggregate tags in a single round-trip per page
 - Autosave with debounce
 - Virtualized list via FlatList for smooth scrolling
-
-## Future Expansion Areas
-
-- Cross-platform support (iOS scaffold exists)
-- Media attachments
-- Cloud sync options
-- Advanced search features
-- Performance optimizations (indices, query tuning)
-- Database migration versioning
-- Import/export via Storage Access Framework
-- Settings screen (tab route exists but screen file is missing)
