@@ -47,12 +47,15 @@ describe('SetupDatabaseScreen', () => {
     expect(nameInput.props.value).toBe('mydb.db');
   });
 
-  /** Tests that the submit button is disabled when the encryption key is empty. */
-  it('disables the submit button when encryption key is empty', () => {
+  /**
+   * Tests that the submit button remains enabled when the encryption key is empty. An
+   * empty key means "no encryption" and is a valid configuration.
+   */
+  it('enables the submit button when database name is filled and key is empty (unencrypted)', () => {
     const { getByTestId } = render(<SetupDatabaseScreen {...defaultProps} />);
     const btn = getByTestId('db-open-btn');
-    // The button should be disabled since key starts empty.
-    expect(btn.props.accessibilityState?.disabled).toBe(true);
+    // The button should be enabled because the default database name is non-empty.
+    expect(btn.props.accessibilityState?.disabled).toBe(false);
   });
 
   /** Tests that the submit button becomes enabled when both fields are filled. */
@@ -66,6 +69,15 @@ describe('SetupDatabaseScreen', () => {
 
     const btn = getByTestId('db-open-btn');
     expect(btn.props.accessibilityState?.disabled).toBe(false);
+  });
+
+  /**
+   * Tests that the helper text informs the user that an empty encryption key creates an
+   * unencrypted database.
+   */
+  it('displays helper text indicating empty key means unencrypted', () => {
+    const { getByText } = render(<SetupDatabaseScreen {...defaultProps} />);
+    expect(getByText(/leave empty for an unencrypted database/i)).toBeTruthy();
   });
 
   /**
@@ -100,6 +112,30 @@ describe('SetupDatabaseScreen', () => {
 
     expect(initialize).toHaveBeenCalledWith({
       encryptionKey: 'my-secret',
+      databaseName: 'test.db',
+    });
+  });
+
+  /**
+   * Tests that pressing submit with an empty encryption key passes the empty string
+   * through to initialize unchanged. The data layer (openKysely) treats '' as "no
+   * encryption", so this contract must remain stable.
+   */
+  it('calls initialize with empty key when key field is left blank', async () => {
+    const initialize = jest.fn().mockResolvedValue(undefined);
+    const { getByTestId } = render(
+      <SetupDatabaseScreen {...defaultProps} initialize={initialize} />,
+    );
+
+    fireEvent.changeText(getByTestId('db-name-input'), 'test.db');
+    // Leave the key field empty (default is '').
+
+    await act(async () => {
+      fireEvent.press(getByTestId('db-open-btn'));
+    });
+
+    expect(initialize).toHaveBeenCalledWith({
+      encryptionKey: '',
       databaseName: 'test.db',
     });
   });

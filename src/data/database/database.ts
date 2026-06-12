@@ -47,7 +47,8 @@ export async function openKysely(
     dialect: new ExpoDialect({ database: sqliteDb }),
   });
 
-  // Apply encryption key if provided. We do not attempt to validate here,
+  // Apply encryption key if provided. An empty string is treated as "no
+  // encryption" (SQLCipher is bypassed). We do not attempt to validate here,
   // callers should handle errors thrown by SQLite when the key is wrong.
   if (encryptionKey) {
     await db.executeQuery(CompiledQuery.raw(`PRAGMA key='${encryptionKey}'`));

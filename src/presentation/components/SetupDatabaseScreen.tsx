@@ -36,15 +36,18 @@ export default function SetupDatabaseScreen({
   const [key, setKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = useMemo(
-    () => databaseName.trim().length > 0 && key.length > 0,
-    [databaseName, key],
-  );
+  // The submit button is enabled as soon as the database name is non-empty.
+  // An empty encryption key is explicitly allowed; openKysely treats '' as
+  // "no encryption" and skips the PRAGMA key statement.
+  const canSubmit = useMemo(() => databaseName.trim().length > 0, [databaseName]);
 
   /** Handles the submission of the database setup form. */
   const onSubmit = async () => {
     setSubmitting(true);
-    await initialize({ encryptionKey: key, databaseName });
+    // Trim the key so a stray space doesn't create a database with a
+    // whitespace-only encryption key.
+    const trimmedKey = key.trim();
+    await initialize({ encryptionKey: trimmedKey, databaseName });
     setSubmitting(false);
   };
 
@@ -68,14 +71,14 @@ export default function SetupDatabaseScreen({
       <TextInput
         testID="db-key-input"
         accessibilityLabel="Encryption key input"
-        label="Encryption key"
+        label="Encryption key (leave empty for unencrypted)"
         value={key}
         onChangeText={setKey}
         secureTextEntry
         style={{ marginBottom: 8 }}
       />
       <HelperText type="info">
-        The location will be remembered. The key is required on every startup.
+        The location will be remembered. Leave empty for an unencrypted database.
       </HelperText>
 
       {error ? (

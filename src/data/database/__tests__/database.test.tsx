@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { useDatabase } from '../database';
+import { Kysely } from 'kysely';
+import { useDatabase, openKysely } from '../database';
 
 // Mock backup functions to control pre-migration backup behavior.
 jest.mock('../backup', () => ({
@@ -178,6 +179,38 @@ describe('useDatabase', () => {
     expect(result.current.ready).toBe(true);
   });
 
+  /**
+   * Tests that initialization still completes when migrations are pending but no backup
+   * directory is configured. Covers the `if (backupDirUri)` false branch in database.ts
+   * (line 150). Relies on the module-level mock factory defaults — no explicit cleanup
+   * is needed because `getBackupDirectoryUri` already returns `null` and
+   * `getPendingMigrationCount` uses a one-shot `mockResolvedValueOnce`.
+   */
+  it('should skip backup when backup directory is not configured', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getPendingMigrationCount } = require('../backup');
+
+    // Force the pre-migration backup path to be entered.
+    getPendingMigrationCount.mockResolvedValueOnce(2);
+
+    // getBackupDirectoryUri keeps its default return value of null, so the inner
+    // `if (backupDirUri)` branch takes the false path and backupDatabase is
+    // skipped.
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    // Initialization must still succeed when the backup is skipped.
+    expect(result.current.ready).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   /** Tests that initialization continues even if pre-migration backup fails. */
   it('should continue initialization when pre-migration backup fails', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -260,5 +293,29 @@ describe('useDatabase', () => {
     expect(result.current.error).toBeNull();
     expect(warnSpy).toHaveBeenCalledWith('Could not check pending migrations:', expect.any(Error));
     warnSpy.mockRestore();
+  });
+
+  /**
+   * Tests that openKysely does NOT issue PRAGMA key when the encryption key is an empty
+   * string, and still returns a valid Kysely/SQLiteDatabase pair.
+   */
+  it('should open an unencrypted database when the encryption key is empty', async () => {
+    const dbName = makeDbName();
+    const executeQuerySpy = jest.spyOn(Kysely.prototype, 'executeQuery');
+
+    const { db, sqliteDb } = await openKysely('', dbName);
+
+    // Ensure the returned objects are valid.
+    expect(db).toBeInstanceOf(Kysely);
+    expect(sqliteDb).toBeTruthy();
+
+    // Verify that PRAGMA key was NOT called.
+    const pragmaKeyCalls = executeQuerySpy.mock.calls.filter(call => {
+      const query = call[0] as { sql?: string };
+      return query.sql?.includes('PRAGMA key');
+    });
+    expect(pragmaKeyCalls.length).toBe(0);
+
+    executeQuerySpy.mockRestore();
   });
 });
