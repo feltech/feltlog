@@ -46,6 +46,7 @@
         sdk = android-nixpkgs.sdk.${system} (sdkPkgs:
           with sdkPkgs; [
             # SDK 36 components required by Expo SDK 56 (compileSdk/targetSdk 36)
+
             build-tools-36-0-0
             platforms-android-36
             system-images-android-36-google-apis-x86-64
@@ -88,12 +89,16 @@
             nodejs
             # Java Development Kit for Android builds
             openjdk
-            # GitHub CLI
-            gh
 
             # Tools that agents like to use
-            jq
+
             python3
+            # JSON parser
+            jq
+            # html parser
+            pup
+            # GitHub CLI
+            gh
 
             # Custom script (above) to create an appropriate AVD.
             create-avd
@@ -101,9 +106,13 @@
             # Watch files and take action when change
             # TODO(DF): not sure what its a dependency of.
             watchman
+
             # e2e testing
             maestro
 
+            # sqlite command-line (e.g. for db migration script)
+            sqlite
+            sqlcipher # encryption support
 
             # AI coding agent
             opencode
