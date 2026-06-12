@@ -1,0 +1,604 @@
+appId: com.feltech.feltlog
+name: Restore from backup
+
+
+# E2E test for the Restore from Backup feature.
+# Verifies the entry point on the setup screen lets the user restore
+# a database from a backup file.
+#
+# Flow A: Restore to a fresh DB (no existing DB to overwrite).
+#   Sets up a DB, configures backup location, creates a backup, wipes
+#   state, then restores from that backup into a new DB name.
+#   No safety-backup confirm dialog should appear.
+#
+# Flow B: Cancel/return flow + restore with location reconfiguration.
+#   Tests that Cancel returns to setup, that the backup location can be
+#   reconfigured on the restore screen, and that restore succeeds.
+#
+# Note: The overwrite confirm dialog (safety backup for existing DB)
+# cannot be tested via clearState because `adb pm clear` wipes all app
+# data including DB files. After clearState, there's never a DB at the
+# target name to trigger the overwrite path. That path is covered by
+# unit tests in useRestoreFlow.test.ts.
+---
+# Flow A: Restore to a fresh DB (no existing DB to back up).
+- clearState
+- launchApp
+
+# Wait for the app to fully load after clearState kills the process
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 30000
+
+# ===== INITIAL SETUP: Create a database with known credentials =====
+- evalScript: ${output.dbName = "restore_fresh_" + Date.now() + ".db"}
+- evalScript: ${output.dbKey = "restore_key_fresh"}
+
+- assertVisible:
+    id: 'db-name-input'
+- tapOn:
+    id: 'db-name-input'
+    point: '95%,50%'
+- eraseText
+- inputText: ${output.dbName}
+- tapOn:
+    id: 'db-key-input'
+- inputText: ${output.dbKey}
+- tapOn:
+    id: 'db-open-btn'
+
+# Wait for the journal screen to appear
+- assertVisible: 'Create entry'
+- takeScreenshot: restore-flow-a-journal-ready
+
+# ===== NAVIGATE TO SETTINGS AND CONFIGURE BACKUP LOCATION =====
+
+- waitForAnimationToEnd
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-settings
+
+# Verify backup section
+- assertVisible: 'Backup'
+- assertVisible: 'No backup location configured'
+
+# Open SAF picker for backup location
+- tapOn:
+    id: 'choose-backup-location-btn'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-saf-picker
+
+# If a breadcrumb with device name is visible, navigate back to root
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+      - takeScreenshot: restore-flow-a-saf-root
+
+# Select Pictures folder (may be below the fold in root listing)
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+      - takeScreenshot: restore-flow-a-saf-folder-selected
+
+# Confirm folder selection
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+
+# Grant permission
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-settings-location-set
+
+# Dismiss LogBox warning banner if present — it can cover the Snackbar
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Verify backup location is now configured
+- assertVisible: 'Location: (Pictures|Documents)'
+
+# ===== CREATE A BACKUP =====
+
+# Guard against minute-boundary races
+- evalScript: ${output.backupSecond = new Date().getUTCSeconds()}
+- runFlow:
+    when:
+      true: ${output.backupSecond >= 55}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'wait-element-for-minute-crossing'
+          timeout: 6000
+          optional: true
+
+# Compute expected backup filename prefix for later verification
+- runScript: scripts/compute-backup-prefix.js
+
+- tapOn:
+    id: 'backup-now-btn'
+- waitForAnimationToEnd
+
+# Wait for backup to complete (SAF operations can take several seconds)
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- assertVisible: 'Backup saved'
+- takeScreenshot: restore-flow-a-backup-done
+
+# ===== WIPE APP STATE AND RESTORE FROM BACKUP =====
+
+# Clear all state so the app returns to the setup screen
+- clearState
+- launchApp
+
+# Wait for the app to fully load after clearState kills the process
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 30000
+
+# Dismiss LogBox warning if it appears on the setup screen
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Should be on the setup screen now
+- assertVisible:
+    id: 'db-name-input'
+
+# Verify the "Restore from backup" button is visible
+- assertVisible:
+    id: 'restore-backup-btn'
+- takeScreenshot: restore-flow-a-setup-screen
+
+# Tap "Restore from backup" to open the RestoreFromBackupScreen
+- tapOn:
+    id: 'restore-backup-btn'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-restore-screen
+
+# Verify restore screen elements are visible
+- assertVisible:
+    id: 'restore-db-name-input'
+- assertVisible:
+    id: 'restore-db-key-input'
+- assertVisible:
+    id: 'restore-confirm-btn'
+- assertVisible:
+    id: 'restore-cancel-btn'
+
+# clearState wipes AsyncStorage, so the backup directory URI is lost.
+# The error text is always shown after clearState. Reconfigure the backup
+# location unconditionally.
+- tapOn:
+    id: 'restore-choose-backup-location-btn'
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-restore-location-reconfigured
+
+# Wait for backup files to load
+- extendedWaitUntil:
+    visible: 'Backup files'
+    timeout: 10000
+
+# Dismiss LogBox warning if it reappeared
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# The backup file list should show the backup we just created.
+# Use the specific regex computed before the backup so we match the
+# right file and not an old one from previous test runs.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- assertVisible: ${output.backupFileRegex}
+- takeScreenshot: restore-flow-a-backup-files-listed
+
+# Select the backup file by tapping the radio button that sits to the
+# left of the visible filename label. The RadioButton itself has no text,
+# so we use the position matcher `leftOf` the filename Text element.
+- tapOn:
+    leftOf:
+      text: ${output.backupFileRegex}
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-a-file-selected
+
+# Set the target DB name to a NEW name so there's no existing DB to
+# overwrite (no confirm dialog will appear).
+- tapOn:
+    id: 'restore-db-name-input'
+    point: '95%,50%'
+- eraseText
+- evalScript: ${output.restoredDbName = "restored_fresh_" + Date.now() + ".db"}
+- inputText: ${output.restoredDbName}
+
+# Set the encryption key to match the original database
+- tapOn:
+    id: 'restore-db-key-input'
+- inputText: ${output.dbKey}
+- takeScreenshot: restore-flow-a-restore-form-filled
+
+# Dismiss LogBox warning if it covers the Restore button
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Tap Restore — no confirm dialog should appear because the target
+# DB name doesn't exist yet
+- tapOn:
+    id: 'restore-confirm-btn'
+
+# Wait for the restore to complete and the journal screen to appear.
+# SAF operations (base64 read/write) can take several seconds.
+- extendedWaitUntil:
+    visible: 'Create entry'
+    timeout: 60000
+- assertVisible: 'Create entry'
+- takeScreenshot: restore-flow-a-restore-complete
+
+---
+# Flow B: Cancel/return flow + restore with location reconfiguration.
+# Tests that Cancel returns to the setup screen, that the backup location
+# can be configured on the restore screen, and that restore succeeds.
+- clearState
+- launchApp
+
+# Wait for the app to fully load after clearState kills the process
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 30000
+
+# ===== INITIAL SETUP =====
+- evalScript: ${output.dbName = "restore_cancel_" + Date.now() + ".db"}
+- evalScript: ${output.dbKey = "restore_key_cancel"}
+
+- assertVisible:
+    id: 'db-name-input'
+- tapOn:
+    id: 'db-name-input'
+    point: '95%,50%'
+- eraseText
+- inputText: ${output.dbName}
+- tapOn:
+    id: 'db-key-input'
+- inputText: ${output.dbKey}
+- tapOn:
+    id: 'db-open-btn'
+
+- assertVisible: 'Create entry'
+
+# ===== CREATE AN ENTRY AND BACKUP =====
+
+# Dismiss LogBox warning if present — it can cover the FAB
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- setLocation:
+    latitude: 53.787977855061214
+    longitude: -2.244492876694697
+
+- evalScript: ${output.entryText = "Restore cancel test " + Date.now()}
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryText}
+# Dismiss keyboard / blur input before system back
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+- takeScreenshot: restore-flow-b-entry-created
+
+# ===== NAVIGATE TO SETTINGS AND CONFIGURE BACKUP =====
+
+- waitForAnimationToEnd
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-b-settings
+
+- assertVisible: 'Backup'
+- assertVisible: 'No backup location configured'
+
+# Open SAF picker for backup location
+- tapOn:
+    id: 'choose-backup-location-btn'
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+
+# Dismiss LogBox warning banner if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- assertVisible: 'Location: (Pictures|Documents)'
+
+# Guard against minute-boundary races
+- evalScript: ${output.backupSecond = new Date().getUTCSeconds()}
+- runFlow:
+    when:
+      true: ${output.backupSecond >= 55}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'wait-element-for-minute-crossing'
+          timeout: 6000
+          optional: true
+
+- runScript: scripts/compute-backup-prefix.js
+
+- tapOn:
+    id: 'backup-now-btn'
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible: 'Backup saved'
+    timeout: 60000
+- assertVisible: 'Backup saved'
+- takeScreenshot: restore-flow-b-backup-done
+
+# ===== WIPE STATE AND TEST CANCEL/RETURN FLOW =====
+
+- clearState
+- launchApp
+
+# Wait for the app to fully load after clearState kills the process
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 30000
+
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- assertVisible:
+    id: 'db-name-input'
+- assertVisible:
+    id: 'restore-backup-btn'
+
+# Tap "Restore from backup" to open the restore screen
+- tapOn:
+    id: 'restore-backup-btn'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-b-restore-screen
+
+# Verify restore screen elements
+- assertVisible:
+    id: 'restore-db-name-input'
+- assertVisible:
+    id: 'restore-db-key-input'
+- assertVisible:
+    id: 'restore-confirm-btn'
+- assertVisible:
+    id: 'restore-cancel-btn'
+
+# Tap Cancel — should return to the setup screen
+- tapOn:
+    id: 'restore-cancel-btn'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-b-back-to-setup
+
+# Verify we're back on the setup screen
+- assertVisible:
+    id: 'db-name-input'
+- assertVisible:
+    id: 'db-open-btn'
+- assertVisible:
+    id: 'restore-backup-btn'
+
+# ===== NOW TEST THE FULL RESTORE FLOW =====
+
+# Tap "Restore from backup" again
+- tapOn:
+    id: 'restore-backup-btn'
+- waitForAnimationToEnd
+
+# Verify the "No backup location configured" error is shown on the
+# RestoreFromBackupScreen. The full text is "No backup location
+# configured. Tap "Choose Backup Location" below." — use regex for
+# a partial match since Maestro matches full element text.
+# (clearState wiped AsyncStorage which held the backup dir URI)
+- assertVisible: '/No backup location configured/'
+- takeScreenshot: restore-flow-b-no-backup-location
+
+# Reconfigure backup location via SAF picker on the restore screen
+- tapOn:
+    id: 'restore-choose-backup-location-btn'
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: 'sdk_gphone64_x86_64'
+    commands:
+      - tapOn: 'sdk_gphone64_x86_64'
+      - waitForAnimationToEnd
+
+- scrollUntilVisible:
+    element: 'Pictures'
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: 'Pictures'
+    commands:
+      - tapOn: 'Pictures'
+      - waitForAnimationToEnd
+
+- tapOn: 'USE THIS FOLDER'
+- waitForAnimationToEnd
+- tapOn: 'ALLOW'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-b-restore-location-configured
+
+# Dismiss LogBox if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Wait for backup files to load
+- extendedWaitUntil:
+    visible: 'Backup files'
+    timeout: 10000
+
+# The backup file list should show the backup we just created.
+# Use the specific regex computed before the backup so we match the
+# right file and not an old one from previous test runs.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- assertVisible: ${output.backupFileRegex}
+- takeScreenshot: restore-flow-b-files-listed
+
+# Select the backup file. See Flow A comment about the tap strategy.
+- tapOn:
+    leftOf:
+      text: ${output.backupFileRegex}
+- waitForAnimationToEnd
+
+# Set a new target DB name (no existing DB to overwrite)
+- tapOn:
+    id: 'restore-db-name-input'
+    point: '95%,50%'
+- eraseText
+- evalScript: ${output.restoredDbName = "restored_cancel_" + Date.now() + ".db"}
+- inputText: ${output.restoredDbName}
+
+# Set the encryption key
+- tapOn:
+    id: 'restore-db-key-input'
+- inputText: ${output.dbKey}
+- takeScreenshot: restore-flow-b-restore-form-filled
+
+# Dismiss LogBox if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Tap Restore — should proceed without confirm dialog
+- tapOn:
+    id: 'restore-confirm-btn'
+
+# Wait for the restore to complete and the journal screen to appear
+- extendedWaitUntil:
+    visible: 'Create entry'
+    timeout: 60000
+- assertVisible: 'Create entry'
+- takeScreenshot: restore-flow-b-restore-complete
+
+# Dismiss LogBox if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Navigate to Settings and verify the restored database
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: restore-flow-b-settings-verified
+
+# Verify database section shows encryption is enabled
+- assertVisible: 'Encryption: Enabled'
