@@ -204,6 +204,13 @@ formatting-only lint failures — Prettier enforces the 99-character line limit 
 - Coverage applies to statements, branches, functions, and lines — all must be ≥ 90%
 - Files excluded from coverage are listed in `coveragePathIgnorePatterns` in the Jest config (these
   are type-only, platform-specific, or framework boilerplate files)
+- Do NOT add files to `coveragePathIgnorePatterns` to bypass writing tests for non-trivial source
+  code. The ignore list is for type-only declarations, platform-specific shims, and framework
+  boilerplate (e.g., the existing `app/+html.tsx` re-export). It is NOT for hiding components,
+  screens, or modules that contain real logic. If a file is large or awkward to test, write the
+  tests — don't exclude the file from coverage. A coverage report that hides a 463-line component
+  with real logic at "excluded" gives a false sense of completeness; future maintainers will not
+  know the file is untested.
 - Tests must run on both:
   - Node.js environment (unit tests)
   - Android Emulator (integration tests)
