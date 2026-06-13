@@ -9,6 +9,12 @@ level.
 Code is in constant flux, frequently refactored wih sweeping changes for code quality and
 testability in line with common best practices.
 
+## Agent conduct
+
+Agents must never assume they can throw away changes. The user or other agents may be working in
+the same codebase, so agents must not run `git checkout`, `git reset`, `git clean`, or otherwise
+discard or revert existing working-tree changes unless explicitly instructed by the user.
+
 ## Development Environment
 
 ### Core Tools
