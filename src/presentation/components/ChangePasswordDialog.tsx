@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Button, Dialog, HelperText, Portal, TextInput } from 'react-native-paper';
 import {
   useChangePassword,
@@ -68,54 +68,68 @@ export default function ChangePasswordDialog({
 
   return (
     <Portal>
-      <Dialog visible={flow.isOpen} onDismiss={onClose} testID="change-password-dialog">
-        <Dialog.Title>Change encryption password</Dialog.Title>
-        <Dialog.ScrollArea>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Dialog.Content>
-              <TextInput
-                testID="change-password-current-key"
-                label="Current key"
-                placeholder={isCurrentlyEncrypted ? 'Current encryption key' : 'Leave empty'}
-                value={flow.currentKey}
-                onChangeText={flow.setCurrentKey}
-                secureTextEntry
-              />
-              <HelperText type="info">
-                {isCurrentlyEncrypted
-                  ? 'Enter your current encryption key.'
-                  : 'Database is unencrypted — leave empty.'}
-              </HelperText>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <Dialog visible={flow.isOpen} onDismiss={onClose} testID="change-password-dialog">
+          <Dialog.Title>Change encryption password</Dialog.Title>
+          <Dialog.ScrollArea>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Dialog.Content>
+                <HelperText type="info" testID="safety-backup-notice">
+                  A safety backup of the current database will be saved to the configured backup
+                  location before changing the password.
+                </HelperText>
 
-              <TextInput
-                testID="change-password-new-key"
-                label="New key"
-                placeholder="Leave empty to remove encryption"
-                value={flow.newKey}
-                onChangeText={flow.setNewKey}
-                secureTextEntry
-              />
+                <TextInput
+                  testID="change-password-current-key"
+                  label="Current key"
+                  placeholder={isCurrentlyEncrypted ? 'Current encryption key' : 'Leave empty'}
+                  value={flow.currentKey}
+                  onChangeText={flow.setCurrentKey}
+                  secureTextEntry
+                />
+                <HelperText type="info">
+                  {isCurrentlyEncrypted
+                    ? 'Enter your current encryption key.'
+                    : 'Database is unencrypted — leave empty.'}
+                </HelperText>
 
-              <TextInput
-                testID="change-password-confirm-key"
-                label="Confirm new key"
-                placeholder="Re-enter the new key"
-                value={flow.confirmKey}
-                onChangeText={flow.setConfirmKey}
-                secureTextEntry
-              />
-            </Dialog.Content>
-          </ScrollView>
-        </Dialog.ScrollArea>
-        <Dialog.Actions>
-          <Button onPress={onClose} testID="change-password-cancel">
-            Cancel
-          </Button>
-          <Button onPress={flow.submit} testID="change-password-submit" disabled={flow.submitting}>
-            Change
-          </Button>
-        </Dialog.Actions>
-      </Dialog>
+                <TextInput
+                  testID="change-password-new-key"
+                  label="New key"
+                  placeholder="Leave empty to remove encryption"
+                  value={flow.newKey}
+                  onChangeText={flow.setNewKey}
+                  secureTextEntry
+                />
+
+                <TextInput
+                  testID="change-password-confirm-key"
+                  label="Confirm new key"
+                  placeholder="Re-enter the new key"
+                  value={flow.confirmKey}
+                  onChangeText={flow.setConfirmKey}
+                  secureTextEntry
+                />
+              </Dialog.Content>
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={onClose} testID="change-password-cancel">
+              Cancel
+            </Button>
+            <Button
+              onPress={flow.submit}
+              testID="change-password-submit"
+              disabled={flow.submitting}
+            >
+              Change
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </KeyboardAvoidingView>
 
       <Dialog
         visible={flow.showConfirmDialog}
@@ -125,8 +139,7 @@ export default function ChangePasswordDialog({
         <Dialog.Title>Confirm password change</Dialog.Title>
         <Dialog.Content>
           <HelperText type="info">
-            A safety backup of the current database will be saved to the configured backup location
-            before changing the password.
+            Proceed with changing the encryption password? A safety backup will be created first.
           </HelperText>
         </Dialog.Content>
         <Dialog.Actions>

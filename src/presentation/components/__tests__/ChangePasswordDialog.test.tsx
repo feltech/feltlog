@@ -260,4 +260,46 @@ describe('ChangePasswordDialog', () => {
     // Valid form → no error snackbar.
     expect(showSnackbar).not.toHaveBeenCalled();
   });
+
+  /** Safety-backup notice appears in the form, not in the confirm dialog. */
+  it('renders the safety-backup notice in the form', () => {
+    const { getByTestId } = renderWithProvider(
+      <ChangePasswordDialog
+        databaseName="test.db"
+        isCurrentlyEncrypted={true}
+        visible={true}
+        onClose={jest.fn()}
+        showSnackbar={jest.fn()}
+      />,
+    );
+
+    const notice = getByTestId('safety-backup-notice');
+    expect(notice).toBeTruthy();
+    expect(notice.props.children).toContain('safety backup');
+  });
+
+  /**
+   * The safety-backup text appears in the form's dedicated HelperText element with a
+   * testID. The confirmation dialog uses a shorter, non-duplicated wording.
+   */
+  it('safety-backup text appears in the form via testID', () => {
+    const { getByTestId, queryByText } = renderWithProvider(
+      <ChangePasswordDialog
+        databaseName="test.db"
+        isCurrentlyEncrypted={true}
+        visible={true}
+        onClose={jest.fn()}
+        showSnackbar={jest.fn()}
+      />,
+    );
+
+    // The form's safety-backup-notice is present.
+    const notice = getByTestId('safety-backup-notice');
+    expect(notice).toBeTruthy();
+    expect(notice.props.children).toContain('safety backup');
+
+    // The confirmation dialog's shorter wording does NOT appear in the
+    // form — it lives in the second Dialog which is hidden by default.
+    expect(queryByText('Proceed with changing the encryption password?')).toBeNull();
+  });
 });
