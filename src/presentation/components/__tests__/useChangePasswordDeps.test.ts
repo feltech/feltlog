@@ -1,6 +1,13 @@
 import { renderHook } from '@testing-library/react-native';
 import { useChangePasswordDeps } from '../useChangePassword';
 
+// Mock DatabaseContext (useDatabaseInfo) — this is the source of truth for DB
+// metadata in the component tree.
+jest.mock('@/src/domain/repositories/DatabaseContext', () => ({
+  useDatabaseInfo: jest.fn(),
+}));
+
+// Mock useDatabase for the initialize function only (state mutator).
 const mockUseDatabase = jest.fn();
 jest.mock('@/src/data/database/database', () => ({
   useDatabase: () => mockUseDatabase(),
@@ -11,6 +18,10 @@ jest.mock('@/src/data/database/database', () => ({
     },
   }),
 }));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mockUseDatabaseInfo = require('@/src/domain/repositories/DatabaseContext')
+  .useDatabaseInfo as jest.Mock;
 
 /**
  * Test suite for the useChangePasswordDeps factory. Verifies that it returns a
@@ -23,12 +34,15 @@ describe('useChangePasswordDeps', () => {
 
   /** Tests that the factory returns all expected dependencies. */
   it('returns a deps object with all required keys', () => {
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+    mockUseDatabaseInfo.mockReturnValue({
       databasePath: '/mock/test.db',
       sqliteDb: {
         closeAsync: jest.fn().mockResolvedValue(undefined),
       },
+      isCurrentlyEncrypted: true,
+    });
+    mockUseDatabase.mockReturnValue({
+      initialize: jest.fn().mockResolvedValue(undefined),
     });
 
     const showSnackbar = jest.fn();
@@ -49,10 +63,13 @@ describe('useChangePasswordDeps', () => {
   /** Tests that closeCurrentConnection calls closeAsync when sqliteDb is present. */
   it('closeCurrentConnection calls closeAsync on the sqliteDb', async () => {
     const closeAsync = jest.fn().mockResolvedValue(undefined);
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+    mockUseDatabaseInfo.mockReturnValue({
       databasePath: '/mock/test.db',
       sqliteDb: { closeAsync },
+      isCurrentlyEncrypted: true,
+    });
+    mockUseDatabase.mockReturnValue({
+      initialize: jest.fn().mockResolvedValue(undefined),
     });
 
     const showSnackbar = jest.fn();
@@ -65,10 +82,13 @@ describe('useChangePasswordDeps', () => {
   /** Tests that closeCurrentConnection swallows close errors. */
   it('closeCurrentConnection swallows close errors', async () => {
     const closeAsync = jest.fn().mockRejectedValue(new Error('close failed'));
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+    mockUseDatabaseInfo.mockReturnValue({
       databasePath: '/mock/test.db',
       sqliteDb: { closeAsync },
+      isCurrentlyEncrypted: true,
+    });
+    mockUseDatabase.mockReturnValue({
+      initialize: jest.fn().mockResolvedValue(undefined),
     });
 
     const showSnackbar = jest.fn();
@@ -78,11 +98,14 @@ describe('useChangePasswordDeps', () => {
   });
 
   /** Tests that getDatabasePath returns the path when databasePath is set. */
-  it('getDatabasePath returns the databasePath from useDatabase', async () => {
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+  it('getDatabasePath returns the databasePath from context', async () => {
+    mockUseDatabaseInfo.mockReturnValue({
       databasePath: '/mock/prod.db',
       sqliteDb: null,
+      isCurrentlyEncrypted: true,
+    });
+    mockUseDatabase.mockReturnValue({
+      initialize: jest.fn().mockResolvedValue(undefined),
     });
 
     const showSnackbar = jest.fn();
@@ -93,10 +116,13 @@ describe('useChangePasswordDeps', () => {
 
   /** Tests that getDatabasePath throws when databasePath is null. */
   it('getDatabasePath throws when databasePath is not available', async () => {
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+    mockUseDatabaseInfo.mockReturnValue({
       databasePath: null,
       sqliteDb: null,
+      isCurrentlyEncrypted: true,
+    });
+    mockUseDatabase.mockReturnValue({
+      initialize: jest.fn().mockResolvedValue(undefined),
     });
 
     const showSnackbar = jest.fn();

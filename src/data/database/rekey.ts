@@ -1,6 +1,7 @@
-import { Kysely } from 'kysely';
-import { CompiledQuery } from 'kysely';
+import { CompiledQuery, Kysely } from 'kysely';
+import { copyAsync, deleteAsync } from 'expo-file-system/legacy';
 import { openKysely, closeSqlite } from './database';
+import { ensureFileUri } from './backup';
 import { Database } from './schema';
 
 export interface RekeyResult {
@@ -9,26 +10,24 @@ export interface RekeyResult {
 }
 
 /**
- * Changes the encryption key of a SQLCipher database using `PRAGMA rekey`.
+ * Changes the encryption key of a SQLCipher database.
  *
- * SQLCipher supports three scenarios via `PRAGMA rekey`:
+ * For the simple case where both the current and new keys are non-empty, `PRAGMA rekey`
+ * is sufficient and efficient.
  *
- * 1. **Add encryption** — open the DB with an empty key (no `PRAGMA key`), then issue
- *    `PRAGMA rekey='<newKey>'`. The database becomes encrypted.
- * 2. **Change encryption** — open the DB with the current key, then issue `PRAGMA
- *    rekey='<newKey>'`. The database is re-encrypted with the new key.
- * 3. **Remove encryption** — open the DB with the current key, then issue `PRAGMA
- *    rekey=''` (empty string). The database becomes unencrypted.
+ * When transitioning between encrypted and plaintext (current key empty or new key
+ * empty), SQLCipher's `PRAGMA rekey` does not support empty keys in this build. The
+ * SQLCipher-recommended workaround is `sqlcipher_export()`:
  *
- * This helper performs the sequence: close any open connection, open with the current
- * key, issue `PRAGMA rekey`, and close the connection. The caller is responsible for
- * re-opening the database with the new key afterwards (via `useDatabase().initialize({
- * encryptionKey: newKey, databaseName })`).
+ * 1. Open the source database with the current key.
+ * 2. Attach a new database file with the desired key.
+ * 3. Run `SELECT sqlcipher_export('alias')` to copy all schema and data.
+ * 4. Detach the new database and close the source connection.
+ * 5. Replace the original file with the newly created one.
  *
  * **Security note:** SQLCipher does not support prepared-parameter binding for PRAGMA
- * statements, so the new key is interpolated directly into the SQL string: `PRAGMA
- * rekey='<newKey>'`. The key is entered by the user in a controlled TextInput and is
- * never logged. No key material is included in error messages or console output.
+ * or ATTACH statements, so keys are interpolated directly into the SQL string. Keys are
+ * user-provided and never logged.
  *
  * @param currentKey - The current encryption key (empty string if the DB is
  *   unencrypted).
@@ -44,19 +43,73 @@ export async function changeDatabaseEncryptionKey(
 ): Promise<RekeyResult> {
   let db: Kysely<Database> | null = null;
   let sqliteDb: import('expo-sqlite').SQLiteDatabase | null = null;
+  let sourcePath: string | null = null;
 
   try {
     const result = await openKysely(currentKey, databaseName);
     db = result.db;
     sqliteDb = result.sqliteDb;
+    sourcePath = sqliteDb.databasePath;
 
-    // Issue PRAGMA rekey. The key is interpolated because SQLCipher does not
-    // support parameter binding for PRAGMA statements. The key is user-provided
-    // from a controlled input and is never logged.
-    await db.executeQuery(CompiledQuery.raw(`PRAGMA rekey='${newKey}'`));
+    // No-op: plaintext to plaintext.
+    if (currentKey === '' && newKey === '') {
+      return { success: true };
+    }
+
+    const needsExport = currentKey === '' || newKey === '';
+    if (!needsExport) {
+      // Simple key rotation: PRAGMA rekey is sufficient.
+      await db.executeQuery(CompiledQuery.raw(`PRAGMA rekey='${newKey}'`));
+      return { success: true };
+    }
+
+    // Transition between encrypted and plaintext requires sqlcipher_export.
+    const tempPath = sourcePath + '.tmp';
+
+    // Clean up any stale temp file from a previous aborted attempt.
+    try {
+      await deleteAsync(ensureFileUri(tempPath));
+    } catch {
+      // ignore — temp file may not exist
+    }
+
+    // Attach a new database at the temp path with the target key.
+    const keyClause = newKey ? `KEY '${newKey}'` : `KEY ''`;
+    await db.executeQuery(CompiledQuery.raw(`ATTACH DATABASE '${tempPath}' AS new ${keyClause}`));
+
+    // Export all schema and data from the current database into the attached one.
+    await db.executeQuery(CompiledQuery.raw(`SELECT sqlcipher_export('new')`));
+
+    // Detach the temporary database.
+    await db.executeQuery(CompiledQuery.raw(`DETACH DATABASE new`));
+
+    // Close the source connection so the file is no longer locked.
+    await closeSqlite(sqliteDb);
+    sqliteDb = null;
+
+    // Replace the original file with the exported one.
+    // copyAsync + deleteAsync is safer than moveAsync because the original
+    // remains intact if the copy fails.
+    await copyAsync({
+      from: ensureFileUri(tempPath),
+      to: ensureFileUri(sourcePath),
+    });
+    try {
+      await deleteAsync(ensureFileUri(tempPath));
+    } catch {
+      // Best-effort cleanup of the temp file.
+    }
 
     return { success: true };
   } catch (error) {
+    // Best-effort cleanup of the temp file on failure.
+    if (sourcePath) {
+      try {
+        await deleteAsync(ensureFileUri(sourcePath + '.tmp'));
+      } catch {
+        // ignore cleanup errors
+      }
+    }
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
   } finally {

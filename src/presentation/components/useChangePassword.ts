@@ -4,6 +4,7 @@ import { changeDatabaseEncryptionKey } from '@/src/data/database/rekey';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
 import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { useDatabase } from '@/src/data/database/database';
+import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
 
 /**
  * Input state owned by the presentation component. The hook reads these values but does
@@ -243,7 +244,14 @@ export function useChangePassword(
 export function useChangePasswordDeps(
   showSnackbar: (message: string, isError: boolean) => void,
 ): UseChangePasswordDeps {
-  const { initialize, sqliteDb, databasePath } = useDatabase();
+  // Read from DatabaseInfoProvider context, NOT from useDatabase(). Only
+  // RootLayoutNav owns the initialized useDatabase state; calling useDatabase
+  // here would create a fresh uninitialized state.
+  const { databasePath, sqliteDb } = useDatabaseInfo();
+  // For `initialize`, we still need to call the useDatabase hook because that
+  // is the only place that mutates the ready/db state. But we read the path
+  // from context.
+  const { initialize } = useDatabase();
 
   return {
     closeCurrentConnection: async () => {

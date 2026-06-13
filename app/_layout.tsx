@@ -77,6 +77,7 @@ function RootLayoutNav() {
     databaseName,
     databasePath,
     isCurrentlyEncrypted,
+    sqliteDb,
   } = useDatabase();
   const colorScheme = useColorScheme();
   const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
@@ -160,7 +161,7 @@ function RootLayoutNav() {
 
   return (
     <PaperProvider>
-      <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted }}>
+      <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted, sqliteDb }}>
         <RepositoryProvider repository={repository}>
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <Stack>

@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+import { SQLiteDatabase } from 'expo-sqlite';
 
 /** Information about the currently active database, shared across the app tree. */
 export interface DatabaseInfo {
@@ -10,12 +11,16 @@ export interface DatabaseInfo {
 
   /** Whether the database is currently encrypted. */
   isCurrentlyEncrypted: boolean;
+
+  /** The underlying SQLite database handle, or null if not initialized. */
+  sqliteDb: SQLiteDatabase | null;
 }
 
 const DatabaseInfoContext = createContext<DatabaseInfo>({
   databaseName: null,
   databasePath: null,
   isCurrentlyEncrypted: true,
+  sqliteDb: null,
 });
 
 export interface DatabaseInfoProviderProps {

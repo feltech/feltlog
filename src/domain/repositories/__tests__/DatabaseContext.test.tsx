@@ -13,7 +13,12 @@ describe('DatabaseContext', () => {
   it('renders children', () => {
     const { getByText } = render(
       <DatabaseInfoProvider
-        value={{ databaseName: 'test.db', databasePath: null, isCurrentlyEncrypted: true }}
+        value={{
+          databaseName: 'test.db',
+          databasePath: null,
+          isCurrentlyEncrypted: true,
+          sqliteDb: null,
+        }}
       >
         <Text>Child content</Text>
       </DatabaseInfoProvider>,
@@ -41,6 +46,7 @@ describe('DatabaseContext', () => {
           databaseName: 'test.db',
           databasePath: '/data/test.db',
           isCurrentlyEncrypted: true,
+          sqliteDb: null,
         }}
       >
         <Harness />
@@ -51,6 +57,7 @@ describe('DatabaseContext', () => {
       databaseName: 'test.db',
       databasePath: '/data/test.db',
       isCurrentlyEncrypted: true,
+      sqliteDb: null,
     });
   });
 
@@ -74,6 +81,7 @@ describe('DatabaseContext', () => {
       databaseName: null,
       databasePath: null,
       isCurrentlyEncrypted: true,
+      sqliteDb: null,
     });
   });
 });
