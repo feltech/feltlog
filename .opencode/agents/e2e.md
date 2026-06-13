@@ -1,7 +1,7 @@
 ---
 description: E2e test writing and execution agent (Maestro, Android emulator)
 mode: all
-model: ollama-cloud/glm-5.1
+model: kimi-for-coding/k2p7
 temperature: 0.0
 permission:
   edit:
@@ -350,7 +350,7 @@ npm run e2e:adb-restart
 npm run e2e:start-device
 ```
 
-3. Set up adb reverse port forwarding so the Expo dev client inside the emulator can reach Metro on
+1. Set up adb reverse port forwarding so the Expo dev client inside the emulator can reach Metro on
    the host. Without this, repeated `clearState` cycles trigger "Cannot connect to Expo CLI. URL:
    10.0.2.2:8081" warnings that escalate into native `libreactnative.so` crashes.
 
@@ -435,6 +435,9 @@ npm run e2e:flow e2e/backup_settings.yaml
 ```
 
 This automatically syncs device time and passes `--test-output-dir`.
+
+When invoking this via the Bash tool, **always pass `timeout: 600000`** (10 minutes) because the
+default 120 s Bash tool timeout is insufficient.
 
 ### MCP for diagnostics only
 

@@ -115,5 +115,5 @@ module.exports = {
       version: 'detect',
     },
   },
-  ignorePatterns: ['node_modules/', 'android/', 'ios/', '*.config.js'],
+  ignorePatterns: ['node_modules/', 'android/', 'ios/', '*.config.js', '**/coverage/**', 'tools/'],
 };

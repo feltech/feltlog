@@ -97,6 +97,8 @@
             jq
             # html parser
             pup
+            # YAML, JSON, INI and XML processor
+            yq
             # GitHub CLI
             gh
 

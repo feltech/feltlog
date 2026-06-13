@@ -14,7 +14,7 @@ import { writeDatabase } from './db-writer.js';
  * Usage: npm run migrate -- [--source <path>] [--output <path>]
  */
 
-const DEFAULT_SOURCE = '/home/dave/workspace/feltlog/memoires_backup/memories.db3';
+const DEFAULT_SOURCE = 'memories.db3';
 
 /**
  * Derive the default output path from the source path.

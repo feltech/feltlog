@@ -1,7 +1,7 @@
 ---
 description: Code review and implementation sanity-check agent
 mode: all
-model: ollama-cloud/deepseek-v4-pro
+model: kimi-for-coding/k2p7
 temperature: 0.2
 permission:
   edit: deny

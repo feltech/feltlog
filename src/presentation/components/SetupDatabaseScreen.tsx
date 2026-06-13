@@ -83,7 +83,7 @@ export default function SetupDatabaseScreen({
         style={{ marginBottom: 8 }}
       />
       <HelperText type="info">
-        The location will be remembered. Leave empty for an unencrypted database.
+        The file name will be remembered. Leave empty for an unencrypted database.
       </HelperText>
 
       {error ? (

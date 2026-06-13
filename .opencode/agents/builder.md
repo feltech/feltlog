@@ -1,7 +1,7 @@
 ---
 description: Primary implementation agent for code changes
 mode: all
-model: ollama-cloud/kimi-k2.6
+model: kimi-for-coding/k2p7
 temperature: 0.0
 permission:
   edit: allow

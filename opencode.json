@@ -4,7 +4,9 @@
   "permission": {
     "bash": {
       "*": "ask",
+      ": *": "allow",
       "ls *": "allow",
+      "xargs ls *": "allow",
       "grep *": "allow",
       "xargs grep *": "allow",
       "cat *": "allow",
@@ -39,8 +41,10 @@
       "cut *": "allow",
       "rg *": "allow",
       "strings *": "allow",
+      "seq *": "allow",
       "file *": "allow",
       "jq *": "allow",
+      "yq *": "allow",
       "pup *": "allow",
       "tee *": "allow",
       "mkdir *": "allow",
@@ -83,6 +87,8 @@
       "git -C * ls-files *": "allow",
       "git check-ignore *": "allow",
       "git -C * check-ignore *": "allow",
+      "git fsck *": "allow",
+      "git -C * fsck *": "allow",
       "node -c *": "allow",
       "node --version *": "allow",
       "node-gyp *": "allow",
@@ -100,6 +106,7 @@
       "npx expo *": "allow",
       "npx tsc *": "allow",
       "npx markdownlint *": "allow",
+      "npx markdownlint-cli2 *": "allow",
       "npx eslint *": "allow",
       "bash -c \"npm run format && npm run lint\"": "allow",
       "bash -c \"npm run format && npm run lint && npm run lint:md\"": "allow",
@@ -108,6 +115,7 @@
       "python -m json.tool *": "allow",
       "python3 -m xml.dom.minidom *": "allow",
       "python -m xml.dom.minidom *": "allow",
+      "rm -rf test_output": "allow",
       "./gradlew *": "allow"
     },
     "describe_image": "allow",
@@ -132,7 +140,7 @@
     [
       ".opencode/lib/image-vision.ts",
       {
-        "vision_model": "ollama-cloud/kimi-k2.6"
+        "vision_model": "kimi-for-coding/k2p7"
       }
     ]
   ]
