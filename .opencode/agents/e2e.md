@@ -350,6 +350,17 @@ npm run e2e:adb-restart
 npm run e2e:start-device
 ```
 
+3. Set up adb reverse port forwarding so the Expo dev client inside the emulator can reach Metro on
+   the host. Without this, repeated `clearState` cycles trigger "Cannot connect to Expo CLI. URL:
+   10.0.2.2:8081" warnings that escalate into native `libreactnative.so` crashes.
+
+```yaml
+- runFlow:
+    commands:
+      - adb: reverse tcp:8081 tcp:8081
+      - adb: reverse --list
+```
+
 ## 2. Build and install
 
 ### 2a. Start the build
@@ -550,6 +561,37 @@ exactly this purpose.
 
 If the failure was a **test bug**, you already fixed it in Rule 5 — briefly note the fix and the
 re-run result instead of a full diagnostic report.
+
+## Common pitfalls
+
+1. `extendedWaitUntil` times out after an async operation (backup, rekey, etc.):
+   - Take a screenshot and look for a red snackbar with an error message.
+   - The app may have caught the error and surfaced it via UI rather than crashing to logcat.
+
+2. App stuck on Android launcher after `launchApp`:
+   - Check `adb logcat` for `F/DEBUG` and `WIN DEATH` (not just Maestro output).
+   - Fix by running `adb reverse tcp:8081 tcp:8081` and adding a conditional relaunch when the
+     expected launch-screen element is `notVisible` after the initial `extendedWaitUntil`.
+
+3. Maestro regex assertions:
+   - Use plain patterns, not slash-wrapped: `assertVisible: 'Database is unencrypted.*'` is
+     correct; `assertVisible: '/Database is unencrypted/'` is wrong (it looks for literal slashes).
+
+4. Paper `RadioButton` selection in Maestro:
+   - Tapping the `Text` label next to a Paper `RadioButton` does NOT fire `onValueChange`. Use
+     `tapOn: { leftOf: { text: '...' } }` to target the `RadioButton` itself.
+
+5. `clearState` + `launchApp` race on Android emulators:
+   - `clearState` kills the app process. `launchApp` returns immediately after sending the intent,
+     but the app may take several seconds to cold-start. ALWAYS add `extendedWaitUntil` on a known
+     element after `clearState` + `launchApp`. Optionally, add a conditional relaunch when the
+     expected launch-screen element is `notVisible` after the initial wait.
+
+6. App state contamination between test runs:
+   - After a failed test run, the app may be left in an unexpected state (e.g., entry editor from a
+     previous test). Always run `clearState` between test runs to ensure a clean baseline.
+
+## Learnings and execution reports
 
 1. **Learnings report:** if you discovered anything during writing or debugging that would be
    useful to add to this agent persona file (new Maestro quirks, better patterns, incorrect

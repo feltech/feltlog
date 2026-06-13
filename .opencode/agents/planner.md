@@ -258,6 +258,11 @@ Example:
 - what to do if tests fail
 - when to re-plan execution
 - when to request additional exploration
+- For features that touch critical data paths (encryption, restore, backup, delete), plan for one
+  extra round-trip: commit app code → e2e finds bugs → fix bugs → commit fix → e2e confirms. The
+  first e2e run commonly finds real app bugs that the unit tests missed, especially around
+  context/hook state and platform-specific behavior (e.g., SQLCipher PRAGMA rekey). Budget for this
+  in the execution sequence, not as an anomaly.
 
 ---
 
@@ -303,3 +308,6 @@ A task is complete only when:
 - formatting and linting pass
 - no unresolved failures remain
 - execution aligns with original plan
+- for any feature touching the database encryption or backup system, all e2e flows pass on the
+  emulator as a hard gate — not merely "an e2e flow exists." Silent failures (errors caught by
+  try/catch and surfaced as red snackbars) are exactly what the e2e is designed to catch.
