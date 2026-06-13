@@ -80,18 +80,21 @@ export async function getPendingMigrationCount(db: Kysely<any>): Promise<number>
 /**
  * Generates a timestamped, version-tagged backup filename. Format:
  * "feltlog-20260528T143000Z-v20260523.db" When dbName is provided:
- * "feltlog-mydb-20260528T143000Z-v20260523.db"
+ * "feltlog-mydb-20260528T143000Z-v20260523.db" When tag is provided:
+ * "feltlog-mydb.before_restore_backup-20260528T143000Z-v20260523.db"
  *
  * @param migrationKey - The migration key to derive the version tag from.
  * @param dbName - Optional database name to include in the filename prefix.
+ * @param tag - Optional tag to insert into the filename (e.g. 'before_restore_backup').
  *
  * @returns The generated backup filename.
  */
-export function buildBackupFileName(migrationKey: string, dbName?: string): string {
+export function buildBackupFileName(migrationKey: string, dbName?: string, tag?: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
   const version = migrationKey.split('_')[0];
   const prefix = dbName ? `feltlog-${dbName}` : 'feltlog';
-  return `${prefix}-${timestamp}-v${version}.db`;
+  const tagPart = tag ? `.${tag}` : '';
+  return `${prefix}${tagPart}-${timestamp}-v${version}.db`;
 }
 
 /**
@@ -225,6 +228,7 @@ let backingUp = false;
  * @param directoryUri - SAF directory URI for backup storage.
  * @param migrationKey - Optional migration version key (for filename tagging).
  * @param dbName - Optional database name to include in the backup filename.
+ * @param tag - Optional tag to insert into the filename.
  *
  * @returns A BackupResult indicating success or failure.
  */
@@ -233,6 +237,7 @@ export async function backupDatabase(
   directoryUri: string,
   migrationKey?: string,
   dbName?: string,
+  tag?: string,
 ): Promise<BackupResult> {
   if (backingUp) {
     return { success: false, error: 'Backup already in progress' };
@@ -241,7 +246,7 @@ export async function backupDatabase(
   backingUp = true;
   try {
     const versionKey = migrationKey ?? getLatestMigrationKey();
-    const fileName = buildBackupFileName(versionKey, dbName);
+    const fileName = buildBackupFileName(versionKey, dbName, tag);
 
     const base64Content = await readAsStringAsync(ensureFileUri(sourcePath), {
       encoding: EncodingType.Base64,

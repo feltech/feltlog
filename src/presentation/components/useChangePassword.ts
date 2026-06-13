@@ -46,6 +46,7 @@ export interface UseChangePasswordDeps {
     directoryUri: string,
     migrationKey: string,
     dbName: string,
+    tag?: string,
   ) => Promise<{ success: boolean; error?: string }>;
   /** Returns the configured backup directory URI. */
   getBackupDirectoryUri: () => Promise<string | null>;
@@ -173,6 +174,7 @@ export function useChangePassword(
         dirUri,
         migrationKey,
         input.databaseName,
+        'before_key_change',
       );
       if (!safetyResult.success) {
         deps.showSnackbar(`Safety backup failed: ${safetyResult.error}`, true);

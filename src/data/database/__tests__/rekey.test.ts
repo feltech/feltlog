@@ -138,8 +138,18 @@ describe('changeDatabaseEncryptionKey', () => {
     const result = await changeDatabaseEncryptionKey('wrong-key', 'new-key', 'test.db');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('file is not a database');
+    expect(result.error).toBe('Current password is incorrect');
     expect(mockCloseSqlite).not.toHaveBeenCalled();
+  });
+
+  /** Tests that 'out of memory' error is wrapped as incorrect password. */
+  it('returns "Current password is incorrect" when the rekey fails with out of memory', async () => {
+    mockOpenKysely.mockRejectedValue(new Error('out of memory'));
+
+    const result = await changeDatabaseEncryptionKey('wrong-key', 'new-key', 'test.db');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Current password is incorrect');
   });
 
   /** Tests that the function does not itself reopen the database. */

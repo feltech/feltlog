@@ -17,6 +17,10 @@ jest.mock('../dbBackupStorage', () => ({
   setBackupMaxCount: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('../migrations', () => ({
+  up: jest.fn().mockResolvedValue(undefined),
+}));
+
 /**
  * Test suite for the useDatabase hook. Covers initialization with and without
  * encryption keys, and error handling.
@@ -239,6 +243,32 @@ describe('useDatabase', () => {
     expect(result.current.error).toBeNull();
     expect(warnSpy).toHaveBeenCalledWith('Pre-migration backup failed:', expect.any(Error));
     warnSpy.mockRestore();
+  });
+
+  /** Tests that initialization closes sqliteDb on error. */
+  it('should close sqliteDb when initialization fails after openKysely succeeds', async () => {
+    // Mock up() (migrations) to throw after the db is opened, forcing the
+    // catch block in initialize() to run while sqliteDb is set.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockRejectedValue(new Error('migration failed'));
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    // The catch block should reset sqliteDb to null.
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.sqliteDb).toBeNull();
+
+    Migrations.up = originalUp;
   });
 
   /** Tests that the previous sqliteDb is closed on re-initialize. */

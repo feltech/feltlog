@@ -132,6 +132,8 @@ export const useDatabase = (): UseDatabaseApi => {
     encryptionKey: string;
     databaseName: string;
   }) => {
+    let sqliteDb: SQLiteDatabase | null = null;
+
     // Close any previously opened database to prevent resource leaks.
     if (state.sqliteDb) {
       try {
@@ -142,7 +144,8 @@ export const useDatabase = (): UseDatabaseApi => {
     }
 
     try {
-      const { db, sqliteDb } = await openKysely(encryptionKey, databaseName);
+      const { db, sqliteDb: newSqliteDb } = await openKysely(encryptionKey, databaseName);
+      sqliteDb = newSqliteDb;
 
       // Check for pending migrations before running them.
       try {
@@ -186,6 +189,13 @@ export const useDatabase = (): UseDatabaseApi => {
         // ignore storage errors
       }
     } catch (error) {
+      if (sqliteDb) {
+        try {
+          await sqliteDb.closeAsync();
+        } catch {
+          // ignore close errors during error handling
+        }
+      }
       setState({
         ready: false,
         db: null,

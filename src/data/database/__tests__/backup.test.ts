@@ -120,6 +120,18 @@ describe('backup', () => {
     );
   });
 
+  /** Tests that buildBackupFileName includes a tag when provided. */
+  it('includes a tag in the filename when provided', () => {
+    const fileName = buildBackupFileName(
+      '20260523_one_create_initial_tables',
+      'mydata.db',
+      'before_restore_backup',
+    );
+    expect(fileName).toMatch(
+      /^feltlog-mydata\.db\.before_restore_backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-v20260523\.db$/,
+    );
+  });
+
   // -------------------------------------------------------------------------
   // extractFileName
   // -------------------------------------------------------------------------

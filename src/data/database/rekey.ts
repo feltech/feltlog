@@ -111,7 +111,12 @@ export async function changeDatabaseEncryptionKey(
       }
     }
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+    const isWrongKey =
+      /out of memory|file is not a database|database disk image is malformed/i.test(message);
+    return {
+      success: false,
+      error: isWrongKey ? 'Current password is incorrect' : message,
+    };
   } finally {
     if (sqliteDb) {
       try {

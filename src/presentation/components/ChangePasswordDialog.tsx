@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { Button, Dialog, HelperText, Portal, TextInput } from 'react-native-paper';
 import {
   useChangePassword,
@@ -69,39 +70,43 @@ export default function ChangePasswordDialog({
     <Portal>
       <Dialog visible={flow.isOpen} onDismiss={onClose} testID="change-password-dialog">
         <Dialog.Title>Change encryption password</Dialog.Title>
-        <Dialog.Content>
-          <TextInput
-            testID="change-password-current-key"
-            label="Current key"
-            placeholder={isCurrentlyEncrypted ? 'Current encryption key' : 'Leave empty'}
-            value={flow.currentKey}
-            onChangeText={flow.setCurrentKey}
-            secureTextEntry
-          />
-          <HelperText type="info">
-            {isCurrentlyEncrypted
-              ? 'Enter your current encryption key.'
-              : 'Database is unencrypted — leave empty.'}
-          </HelperText>
+        <Dialog.ScrollArea>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Dialog.Content>
+              <TextInput
+                testID="change-password-current-key"
+                label="Current key"
+                placeholder={isCurrentlyEncrypted ? 'Current encryption key' : 'Leave empty'}
+                value={flow.currentKey}
+                onChangeText={flow.setCurrentKey}
+                secureTextEntry
+              />
+              <HelperText type="info">
+                {isCurrentlyEncrypted
+                  ? 'Enter your current encryption key.'
+                  : 'Database is unencrypted — leave empty.'}
+              </HelperText>
 
-          <TextInput
-            testID="change-password-new-key"
-            label="New key"
-            placeholder="Leave empty to remove encryption"
-            value={flow.newKey}
-            onChangeText={flow.setNewKey}
-            secureTextEntry
-          />
+              <TextInput
+                testID="change-password-new-key"
+                label="New key"
+                placeholder="Leave empty to remove encryption"
+                value={flow.newKey}
+                onChangeText={flow.setNewKey}
+                secureTextEntry
+              />
 
-          <TextInput
-            testID="change-password-confirm-key"
-            label="Confirm new key"
-            placeholder="Re-enter the new key"
-            value={flow.confirmKey}
-            onChangeText={flow.setConfirmKey}
-            secureTextEntry
-          />
-        </Dialog.Content>
+              <TextInput
+                testID="change-password-confirm-key"
+                label="Confirm new key"
+                placeholder="Re-enter the new key"
+                value={flow.confirmKey}
+                onChangeText={flow.setConfirmKey}
+                secureTextEntry
+              />
+            </Dialog.Content>
+          </ScrollView>
+        </Dialog.ScrollArea>
         <Dialog.Actions>
           <Button onPress={onClose} testID="change-password-cancel">
             Cancel
