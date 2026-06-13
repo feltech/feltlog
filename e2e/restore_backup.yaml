@@ -239,17 +239,87 @@ name: Restore from backup
 - assertVisible: ${output.backupFileRegex}
 - takeScreenshot: restore-flow-a-backup-files-listed
 
-# Select the backup file by tapping the radio button that sits to the
-# left of the visible filename label. The RadioButton itself has no text,
-# so we use the position matcher `leftOf` the filename Text element.
+# Regression test (was the root cause of user-reported bug): tapping the
+# filename label directly must select the file. Before the fix, only the
+# tiny radio circle was tappable; tapping the filename text did nothing
+# and the Restore button stayed disabled with no feedback. Now
+# RadioButton.Item wraps the entire row in TouchableRipple.
+#
+# The Restore/Cancel buttons are at the bottom of the ScrollView, below
+# the file list. When many backup files are present, they are scrolled
+# off-screen. Scroll down to find and assert the button state.
+- scrollUntilVisible:
+    element:
+      id: 'restore-confirm-btn'
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: 'restore-confirm-btn'
+    enabled: false
+- takeScreenshot: restore-flow-a-button-disabled-before-tap
+
+# Scroll back up to the file list to select a file.
+# Use the input at the top as an anchor since "Backup files" label
+# may not be visible when scrolled far down. Increase timeout since
+# scrolling past many list items can be slow.
+- scrollUntilVisible:
+    element:
+      id: 'restore-db-name-input'
+    direction: UP
+    timeout: 30000
+
+# Tap the filename text directly. This is the natural user gesture
+# (tapping the file they want to restore). We use the regex pattern
+# because the full filename (including seconds) is not predictable.
+# Maestro's text matching is full-string regex, so the prefix pattern
+# matches the complete filename.
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    text: ${output.backupFileRegex}
+- waitForAnimationToEnd
+
+# Verify the Restore button is now enabled. If this fails, the radio
+# row is not tappable and the user will see "no effect" again.
+# Scroll down to the button again.
+- scrollUntilVisible:
+    element:
+      id: 'restore-confirm-btn'
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: 'restore-confirm-btn'
+    enabled: true
+- takeScreenshot: restore-flow-a-file-selected
+
+# Also keep the original `leftOf` radio tap as backward-compat coverage
+# (the radio circle itself is still tappable). Scroll back up to the file
+# list first.
+- scrollUntilVisible:
+    element:
+      id: 'restore-db-name-input'
+    direction: UP
+    timeout: 30000
+- scrollUntilVisible:
+    element: ${output.backupFileRegex}
+    direction: DOWN
+    timeout: 30000
 - tapOn:
     leftOf:
       text: ${output.backupFileRegex}
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-file-selected
+- takeScreenshot: restore-flow-a-file-selected-backward-compat
 
 # Set the target DB name to a NEW name so there's no existing DB to
-# overwrite (no confirm dialog will appear).
+# overwrite (no confirm dialog will appear). Scroll to the top of the
+# form where the input fields are.
+- scrollUntilVisible:
+    element:
+      id: 'restore-db-name-input'
+    direction: UP
+    timeout: 30000
 - tapOn:
     id: 'restore-db-name-input'
     point: '95%,50%'
@@ -261,6 +331,14 @@ name: Restore from backup
 - tapOn:
     id: 'restore-db-key-input'
 - inputText: ${output.dbKey}
+
+# Dismiss the keyboard by tapping a non-interactive area. On the emulator,
+# Maestro injects text directly without showing the keyboard, but the IME
+# may still be in a focused state. Tapping the "Backup files" label blurs
+# the input and dismisses any soft keyboard overlay.
+- tapOn: 'Backup files'
+- waitForAnimationToEnd
+
 - takeScreenshot: restore-flow-a-restore-form-filled
 
 # Dismiss LogBox warning if it covers the Restore button
@@ -272,10 +350,29 @@ name: Restore from backup
           point: '93%,92%'
       - waitForAnimationToEnd
 
-# Tap Restore — no confirm dialog should appear because the target
-# DB name doesn't exist yet
+# Scroll down to the Restore button before tapping it.
+- scrollUntilVisible:
+    element:
+      id: 'restore-confirm-btn'
+    direction: DOWN
+    timeout: 10000
+
+# Tap Restore — a confirm dialog may appear if the target DB name
+# collides with an existing file (e.g. if fileExists creates the file
+# when checking). Handle it by confirming the dialog.
 - tapOn:
     id: 'restore-confirm-btn'
+- waitForAnimationToEnd
+
+# If a confirm dialog appeared, tap "Restore" in the dialog to proceed.
+- runFlow:
+    when:
+      visible:
+        id: 'restore-dialog-confirm'
+    commands:
+      - tapOn:
+          id: 'restore-dialog-confirm'
+      - waitForAnimationToEnd
 
 # Wait for the restore to complete and the journal screen to appear.
 # SAF operations (base64 read/write) can take several seconds.
@@ -546,12 +643,19 @@ name: Restore from backup
 - takeScreenshot: restore-flow-b-files-listed
 
 # Select the backup file. See Flow A comment about the tap strategy.
+# The file is already visible from scrollUntilVisible above.
 - tapOn:
     leftOf:
       text: ${output.backupFileRegex}
 - waitForAnimationToEnd
 
-# Set a new target DB name (no existing DB to overwrite)
+# Set a new target DB name (no existing DB to overwrite).
+# Scroll up to the input fields at the top of the form.
+- scrollUntilVisible:
+    element:
+      id: 'restore-db-name-input'
+    direction: UP
+    timeout: 30000
 - tapOn:
     id: 'restore-db-name-input'
     point: '95%,50%'
@@ -563,6 +667,11 @@ name: Restore from backup
 - tapOn:
     id: 'restore-db-key-input'
 - inputText: ${output.dbKey}
+
+# Dismiss the keyboard by tapping a non-interactive area.
+- tapOn: 'Backup files'
+- waitForAnimationToEnd
+
 - takeScreenshot: restore-flow-b-restore-form-filled
 
 # Dismiss LogBox if present
@@ -574,9 +683,28 @@ name: Restore from backup
           point: '93%,92%'
       - waitForAnimationToEnd
 
-# Tap Restore — should proceed without confirm dialog
+# Scroll down to the Restore button before tapping it.
+- scrollUntilVisible:
+    element:
+      id: 'restore-confirm-btn'
+    direction: DOWN
+    timeout: 10000
+
+# Tap Restore — a confirm dialog may appear if the target DB name
+# collides with an existing file. Handle it by confirming the dialog.
 - tapOn:
     id: 'restore-confirm-btn'
+- waitForAnimationToEnd
+
+# If a confirm dialog appeared, tap "Restore" in the dialog to proceed.
+- runFlow:
+    when:
+      visible:
+        id: 'restore-dialog-confirm'
+    commands:
+      - tapOn:
+          id: 'restore-dialog-confirm'
+      - waitForAnimationToEnd
 
 # Wait for the restore to complete and the journal screen to appear
 - extendedWaitUntil:

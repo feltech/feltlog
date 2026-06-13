@@ -140,6 +140,31 @@ describe('RestoreFromBackupScreen', () => {
     expect(warn).toBeTruthy();
   });
 
+  /**
+   * Tests that tapping the filename label (not just the radio circle) selects the file
+   * and enables the Restore button.
+   */
+  it('selects the file when tapping the filename label (not just the radio circle)', async () => {
+    mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([
+      'content://mock-dir/memoires.db',
+    ]);
+
+    const { findByTestId, getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen lastDatabaseName="memoires.db" onCancel={jest.fn()} />,
+    );
+
+    await findByTestId('restore-source-item-memoires.db');
+    // Tap the filename LABEL, not the radio circle. RadioButton.Item wraps the
+    // entire row in a TouchableRipple, so the press should select the file.
+    fireEvent.press(getByTestId('restore-source-item-memoires.db'));
+
+    const confirmBtn = getByTestId('restore-confirm-btn');
+    expect(confirmBtn.props.accessibilityState?.disabled).toBe(false);
+  });
+
   /** Tests that the file list shows files from the configured directory. */
   it('lists .db files from the configured directory on mount', async () => {
     mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');

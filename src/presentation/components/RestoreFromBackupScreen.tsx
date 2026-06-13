@@ -142,13 +142,14 @@ export default function RestoreFromBackupScreen({
             {backupFiles.map(uri => {
               const fileName = extractFileName(uri);
               return (
-                <View key={uri} style={styles.radioItem}>
-                  {/* testID makes the radio press target addressable in tests. */}
-                  <RadioButton value={uri} testID={`restore-radio-${fileName}`} />
-                  <Text style={styles.radioLabel} testID={`restore-source-item-${fileName}`}>
-                    {fileName}
-                  </Text>
-                </View>
+                <RadioButton.Item
+                  key={uri}
+                  value={uri}
+                  label={fileName}
+                  testID={`restore-source-item-${fileName}`}
+                  position="leading"
+                  style={styles.radioItem}
+                />
               );
             })}
           </View>
@@ -237,12 +238,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   radioItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginVertical: 4,
-  },
-  radioLabel: {
-    flex: 1,
   },
   button: {
     marginTop: 12,

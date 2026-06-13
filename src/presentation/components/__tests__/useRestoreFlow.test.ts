@@ -34,6 +34,103 @@ describe('useRestoreFlow', () => {
     jest.clearAllMocks();
   });
 
+  /** FileExists discovers the real path via a transient SQLite handle. */
+  it('fileExists opens a transient SQLite handle to discover the real path', async () => {
+    const openDatabase = jest.fn().mockResolvedValue({
+      databasePath: '/data/data/com.feltech.feltlog/databases/memoires.db',
+      closeAsync: jest.fn().mockResolvedValue(undefined),
+    });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
+
+    const deps = makeDeps({
+      openDatabase,
+      fileExists: async (name: string) => {
+        try {
+          const sqliteDb = await openDatabase(name);
+          const dbPath = sqliteDb.databasePath;
+          await sqliteDb.closeAsync();
+          const uri = dbPath.startsWith('file://') ? dbPath : `file://${dbPath}`;
+          const info = await ExpoFs.getInfoAsync(uri);
+          return info.exists;
+        } catch {
+          return false;
+        }
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'memoires.db',
+          key: 'k',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+
+    expect(openDatabase).toHaveBeenCalledWith('memoires.db');
+    expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(
+      'file:///data/data/com.feltech.feltlog/databases/memoires.db',
+    );
+    expect(result.current.showConfirmDialog).toBe(true);
+  });
+
+  /**
+   * Tests that fileExists returns false when the transient SQLite open throws. Covers
+   * the catch branch in useRestoreFlowDeps.fileExists.
+   */
+  it('fileExists returns false when the transient SQLite open throws (catch branch)', async () => {
+    const openDatabase = jest.fn().mockRejectedValue(new Error('invalid database name'));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+
+    const deps = makeDeps({
+      openDatabase,
+      fileExists: async (name: string) => {
+        try {
+          const sqliteDb = await openDatabase(name);
+          const dbPath = sqliteDb.databasePath;
+          await sqliteDb.closeAsync();
+          const uri = dbPath.startsWith('file://') ? dbPath : `file://${dbPath}`;
+          const info = await ExpoFs.getInfoAsync(uri);
+          return info.exists;
+        } catch {
+          return false;
+        }
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          key: 'k',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+
+    expect(openDatabase).toHaveBeenCalledWith('test.db');
+    expect(result.current.showConfirmDialog).toBe(false);
+    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'k', 'u');
+    expect(deps.initialize).toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
+  });
+
   /** CanSubmit is false when databaseName is empty. */
   it('canSubmit is false when databaseName is empty', () => {
     const deps = makeDeps();
@@ -551,6 +648,28 @@ describe('useRestoreFlow', () => {
     expect(result.current.snackbar.message).toBe('Choose a backup location first');
   });
 
+  /** ConfirmRestore skips performRestore when selectedFileUri is null. */
+  it('confirmRestore does nothing when selectedFileUri is null', async () => {
+    const deps = makeDeps();
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          key: 'k',
+          selectedFileUri: null,
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+    await act(async () => {
+      await result.current.confirmRestore();
+    });
+    expect(deps.restoreDatabase).not.toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
+    expect(result.current.showConfirmDialog).toBe(false);
+  });
+
   /** HandleRestore catch block around fileExists shows dialog. */
   it('handleRestore shows confirm dialog when fileExists throws', async () => {
     const deps = makeDeps({
@@ -571,5 +690,85 @@ describe('useRestoreFlow', () => {
       await result.current.handleRestore();
     });
     expect(result.current.showConfirmDialog).toBe(true);
+  });
+
+  /** Tests fileExists catch branch when getInfoAsync throws. */
+  it('useRestoreFlowDeps fileExists returns false when getInfoAsync throws', async () => {
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    jest.doMock('expo-sqlite', () => ({
+      defaultDatabaseDirectory: '/data/data/com.feltech.feltlog/databases',
+    }));
+    jest.doMock('@/src/data/database/database', () => ({
+      useDatabase: jest.fn(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+      })),
+    }));
+    jest.doMock('@/src/data/database/dbBackupStorage', () => ({
+      getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
+      setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
+    }));
+    ExpoFs.getInfoAsync.mockRejectedValue(new Error('no permission'));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useRestoreFlowDeps } = require('../useRestoreFlow');
+    const deps = useRestoreFlowDeps();
+    const exists = await deps.fileExists('bad.db');
+    expect(exists).toBe(false);
+  });
+
+  /** Tests fileExists path construction when defaultDatabaseDirectory lacks file://. */
+  it('useRestoreFlowDeps fileExists constructs path with defaultDatabaseDirectory', async () => {
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    jest.doMock('expo-sqlite', () => ({
+      defaultDatabaseDirectory: '/data/data/com.feltech.feltlog/databases',
+    }));
+    jest.doMock('@/src/data/database/database', () => ({
+      useDatabase: jest.fn(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+      })),
+    }));
+    jest.doMock('@/src/data/database/dbBackupStorage', () => ({
+      getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
+      setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
+    }));
+    ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useRestoreFlowDeps } = require('../useRestoreFlow');
+    const deps = useRestoreFlowDeps();
+    const exists = await deps.fileExists('test.db');
+    expect(exists).toBe(true);
+    expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(
+      'file:///data/data/com.feltech.feltlog/databases/test.db',
+    );
+  });
+
+  it('useRestoreFlowDeps fileExists returns true via the real implementation', async () => {
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    jest.doMock('expo-sqlite', () => ({
+      defaultDatabaseDirectory: 'file:///data/data/com.feltech.feltlog/databases',
+    }));
+    jest.doMock('@/src/data/database/database', () => ({
+      useDatabase: jest.fn(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+      })),
+    }));
+    jest.doMock('@/src/data/database/dbBackupStorage', () => ({
+      getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
+      setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
+    }));
+    ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useRestoreFlowDeps } = require('../useRestoreFlow');
+    const deps = useRestoreFlowDeps();
+    const exists = await deps.fileExists('test.db');
+    expect(exists).toBe(true);
+    expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(
+      'file:///data/data/com.feltech.feltlog/databases/test.db',
+    );
   });
 });

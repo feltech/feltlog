@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { StorageAccessFramework, getInfoAsync } from 'expo-file-system/legacy';
-import { openDatabaseAsync } from 'expo-sqlite';
+import { defaultDatabaseDirectory, openDatabaseAsync } from 'expo-sqlite';
 import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
 import { restoreDatabase } from '@/src/data/database/restore';
@@ -343,9 +343,18 @@ export function useRestoreFlowDeps(): UseRestoreFlowDeps {
     setBackupDirectoryUri,
     requestDirectoryPermissions: () => StorageAccessFramework.requestDirectoryPermissionsAsync(),
     readDirectory: uri => StorageAccessFramework.readDirectoryAsync(uri),
-    fileExists: async path => {
-      const info = await getInfoAsync(`file://${path}`);
-      return info.exists;
+    fileExists: async name => {
+      try {
+        // Construct the path synchronously using defaultDatabaseDirectory to
+        // avoid creating the file by calling openDatabaseAsync. The default
+        // directory is the app's internal databases directory on Android/iOS.
+        const dbPath = `${defaultDatabaseDirectory.replace(/\/*$/, '')}/${name.replace(/^\/+/, '')}`;
+        const uri = dbPath.startsWith('file://') ? dbPath : `file://${dbPath}`;
+        const info = await getInfoAsync(uri);
+        return info.exists;
+      } catch {
+        return false;
+      }
     },
     restoreDatabase,
     backupDatabase,
