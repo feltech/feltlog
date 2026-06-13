@@ -8,6 +8,7 @@ import { getBackupDirectoryUri } from './dbBackupStorage';
 import { CompiledQuery, Kysely } from 'kysely';
 import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite';
 import { ExpoDialect } from 'kysely-expo';
+import { SQLCIPHER_WRONG_KEY_ERROR_RE } from './errors';
 
 export interface UseDatabaseState {
   ready: boolean;
@@ -196,10 +197,19 @@ export const useDatabase = (): UseDatabaseApi => {
           // ignore close errors during error handling
         }
       }
+      // Transform misleading SQLCipher errors (caused by wrong encryption key
+      // or corrupted database) into user-friendly messages. The raw messages
+      // like "out of memory" or "file is not a database" are SQLCipher quirks
+      // that result from key derivation producing a valid-looking but wrong
+      // key. The user should not see "out of memory" when they typed the
+      // wrong password.
+      const message = error instanceof Error ? error.message : String(error);
+      const isWrongKey = SQLCIPHER_WRONG_KEY_ERROR_RE.test(message);
+      const friendlyError = isWrongKey ? 'Current password is incorrect' : message;
       setState({
         ready: false,
         db: null,
-        error,
+        error: friendlyError,
         databaseName: null,
         sqliteDb: null,
         databasePath: null,

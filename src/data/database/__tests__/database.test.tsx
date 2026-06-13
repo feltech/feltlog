@@ -135,6 +135,138 @@ describe('useDatabase', () => {
     process.env.EXPO_SQLITE_MOCK = originalEnv;
   });
 
+  /**
+   * Tests that "out of memory" (a misleading SQLCipher error for a wrong key) is
+   * transformed to a user-friendly message.
+   */
+  it('should transform "out of memory" error to "Current password is incorrect"', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockRejectedValue(new Error('out of memory'));
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBe('Current password is incorrect');
+    expect(result.current.db).toBeNull();
+
+    Migrations.up = originalUp;
+  });
+
+  /**
+   * Tests that "file is not a database" (a misleading SQLCipher error for a wrong key)
+   * is transformed to a user-friendly message.
+   */
+  it('should transform "file is not a database" error to "Current password is incorrect"', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockRejectedValue(new Error('file is not a database'));
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBe('Current password is incorrect');
+    expect(result.current.db).toBeNull();
+
+    Migrations.up = originalUp;
+  });
+
+  /**
+   * Tests that "database disk image is malformed" (a misleading SQLCipher error for a
+   * wrong key) is transformed to a user-friendly message.
+   */
+  it('should transform "database disk image is malformed" error to "Current password is incorrect"', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockRejectedValue(new Error('database disk image is malformed'));
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBe('Current password is incorrect');
+    expect(result.current.db).toBeNull();
+
+    Migrations.up = originalUp;
+  });
+
+  /**
+   * Tests that errors not matching the SQLCipher wrong-key pattern pass through
+   * unchanged.
+   */
+  it('should pass through non-SQLCipher errors unchanged', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockRejectedValue(new Error('permission denied'));
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBe('permission denied');
+    expect(result.current.db).toBeNull();
+
+    Migrations.up = originalUp;
+  });
+
+  /**
+   * Tests that non-Error thrown values (e.g. plain strings) are handled gracefully by
+   * converting them via String().
+   */
+  it('should handle non-Error thrown values gracefully', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Migrations = require('../migrations');
+    const originalUp = Migrations.up;
+    Migrations.up = jest.fn().mockImplementation(() => {
+      throw 'plain string error';
+    });
+
+    const { result } = renderHook(() => useDatabase());
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: makeDbName(),
+      });
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBe('plain string error');
+    expect(result.current.db).toBeNull();
+
+    Migrations.up = originalUp;
+  });
+
   /** Tests that the lastDatabaseName effect is cancelled on unmount. */
   it('should cancel the lastDatabaseName effect on unmount', async () => {
     const { unmount } = renderHook(() => useDatabase());

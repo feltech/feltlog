@@ -3,6 +3,7 @@ import { copyAsync, deleteAsync } from 'expo-file-system/legacy';
 import { openKysely, closeSqlite } from './database';
 import { ensureFileUri } from './backup';
 import { Database } from './schema';
+import { SQLCIPHER_WRONG_KEY_ERROR_RE } from './errors';
 
 export interface RekeyResult {
   success: boolean;
@@ -111,8 +112,7 @@ export async function changeDatabaseEncryptionKey(
       }
     }
     const message = error instanceof Error ? error.message : String(error);
-    const isWrongKey =
-      /out of memory|file is not a database|database disk image is malformed/i.test(message);
+    const isWrongKey = SQLCIPHER_WRONG_KEY_ERROR_RE.test(message);
     return {
       success: false,
       error: isWrongKey ? 'Current password is incorrect' : message,
