@@ -108,6 +108,7 @@ export default function JournalEntryModal() {
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
   const { actions } = useJournalViewModel();
+  const navigation = useNavigation();
 
   // The entry loaded from the repository by ID. Decoupled from the ViewModel's
   // paginated `entries` array so that entries beyond the first page (loaded via
@@ -227,18 +228,37 @@ export default function JournalEntryModal() {
       return;
     }
     let cancelled = false;
-    actions.getEntryById(resolvedEntryId).then(entry => {
-      if (!cancelled) {
-        setLoadedEntry(entry);
-      }
-    });
+    actions
+      .getEntryById(resolvedEntryId)
+      .then(entry => {
+        if (!cancelled) {
+          setLoadedEntry(entry);
+          if (!entry) {
+            // Entry not found (deleted or DB error). Show an error and
+            // navigate back so the user doesn't accidentally create a
+            // duplicate entry in what looks like "New Entry" mode.
+            setState(draft => {
+              draft.error = 'Entry not found. It may have been deleted.';
+            });
+            setTimeout(() => navigation.goBack(), 100);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setState(draft => {
+            draft.error = 'Failed to load entry.';
+          });
+          setTimeout(() => navigation.goBack(), 100);
+        }
+      });
     return () => {
       cancelled = true;
     };
     // Only re-run when the entryId changes. The actions object is stable
     // (useCallback-backed) so getEntryById won't change between renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedEntryId]);
+  }, [resolvedEntryId, navigation, setState]);
 
   const existingEntry = loadedEntry;
   const isEditing = !!existingEntry;
@@ -879,7 +899,6 @@ export default function JournalEntryModal() {
    * through.
    */
   const isLeavingRef = useRef(false);
-  const navigation = useNavigation();
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

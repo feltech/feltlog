@@ -46,8 +46,10 @@ let beforeRemoveHandler:
   | ((e: { preventDefault: () => void; data: { action: unknown } }) => void)
   | null = null;
 const mockDispatch = jest.fn();
+const mockGoBack = jest.fn();
 const mockNavigation = {
   dispatch: mockDispatch,
+  goBack: mockGoBack,
   addListener: jest.fn((event: string, handler: (e: never) => void) => {
     if (event === 'beforeRemove') {
       beforeRemoveHandler = handler as typeof beforeRemoveHandler;
@@ -2437,17 +2439,27 @@ describe('JournalEntryModal', () => {
   // Race condition: edit mode with initially-empty ViewModel
   // -------------------------------------------------------------------------
 
-  describe('race condition — edit mode with initially-empty ViewModel', () => {
+  describe('edit mode with initially-empty ViewModel', () => {
     it('does not request location permission when ViewModel starts with empty entries', async () => {
-      // Simulate the race condition: navigate to edit an entry but the ViewModel
-      // initially returns entries: [] (still loading). The location permission
-      // dialog must NOT appear in this transient state.
+      // With getEntryById, the editor loads the entry directly from the
+      // repository regardless of the ViewModel's entries array. The
+      // ViewModel's entries may still be empty (still loading for the
+      // journal list), but getEntryById resolves the entry independently.
+      const editEntry = {
+        id: 'edit-1',
+        content: 'hello',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [] as string[],
+        location: { latitude: 40.7, longitude: -74, elevation: 10 },
+      };
+      actions.getEntryById.mockResolvedValue(editEntry);
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: { ...DEFAULT_STATE, entries: [] },
         actions,
       });
 
-      // entryId is set, but entries haven't loaded yet.
       (useLocalSearchParams as jest.Mock).mockReturnValue({ entryId: 'edit-1' });
 
       // Reset location mocks so we can verify they were NOT called.
@@ -2521,7 +2533,17 @@ describe('JournalEntryModal', () => {
 
     it('does not call getCurrentPositionAsync when ViewModel starts with empty entries', async () => {
       // Even getCurrentPositionAsync should not be called when the entryId
-      // is present but the entry hasn't loaded.
+      // is present — the entry is loaded via getEntryById, not via location.
+      const editEntry = {
+        id: 'edit-1',
+        content: 'hello',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [] as string[],
+        location: { latitude: 40.7, longitude: -74, elevation: 10 },
+      };
+      actions.getEntryById.mockResolvedValue(editEntry);
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: { ...DEFAULT_STATE, entries: [] },
         actions,
@@ -2554,7 +2576,20 @@ describe('JournalEntryModal', () => {
 
     it('does not set isFetchingLocation when entryId present but entry not loaded', async () => {
       // Verify that the component does not set isFetchingLocation to true
-      // (which would show the "Loading map…" spinner) during the race window.
+      // (which would show the "Loading map…" spinner) when an entryId is
+      // present. The entry is loaded via getEntryById (which returns the
+      // entry), so isEditing becomes true immediately and the location
+      // fetch is skipped.
+      const editEntry = {
+        id: 'edit-1',
+        content: 'hello',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [] as string[],
+        location: { latitude: 40.7, longitude: -74, elevation: 10 },
+      };
+      actions.getEntryById.mockResolvedValue(editEntry);
       (useJournalViewModel as jest.Mock).mockReturnValue({
         state: { ...DEFAULT_STATE, entries: [] },
         actions,
@@ -2580,6 +2615,56 @@ describe('JournalEntryModal', () => {
       expect(result.queryByText('Loading map…')).toBeNull();
 
       result.unmount();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Entry not found (getEntryById returns null)
+  // -------------------------------------------------------------------------
+
+  describe('entry not found', () => {
+    it('shows error and navigates back when getEntryById returns null', async () => {
+      jest.useFakeTimers();
+      // getEntryById returns null — entry was deleted or DB error.
+      actions.getEntryById.mockResolvedValue(null);
+
+      const result = await renderModal('deleted-entry');
+      await flushEffects();
+
+      // The error snackbar should show.
+      await waitFor(() => {
+        expect(result.queryByText('Entry not found. It may have been deleted.')).toBeTruthy();
+      });
+
+      // Advance past the setTimeout that triggers goBack.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(mockGoBack).toHaveBeenCalled();
+
+      jest.useRealTimers();
+    });
+
+    it('shows error and navigates back when getEntryById rejects', async () => {
+      jest.useFakeTimers();
+      actions.getEntryById.mockRejectedValue(new Error('DB error'));
+
+      const result = await renderModal('error-entry');
+      await flushEffects();
+
+      await waitFor(() => {
+        expect(result.queryByText('Failed to load entry.')).toBeTruthy();
+      });
+
+      // Advance past the setTimeout that triggers goBack.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(mockGoBack).toHaveBeenCalled();
+
+      jest.useRealTimers();
     });
   });
 
