@@ -393,18 +393,18 @@ export class JournalRepositoryImpl implements JournalRepository {
    * @returns The domain-level journal entry.
    */
   private mapDbEntryToDomain(dbEntry: JournalEntriesTable, tags: Tag[] = []): JournalEntry {
-    // SQLite returns null for missing columns. We must ensure all required
-    // numeric fields are non-null before constructing the location object.
-    const hasLocation =
-      dbEntry.location_latitude != null &&
-      dbEntry.location_longitude != null &&
-      dbEntry.location_elevation != null;
+    // SQLite returns null for missing columns. Latitude and longitude are the
+    // minimum required fields to consider a location present. Elevation may be
+    // null for migrated entries (Memoires export has no elevation data) — we
+    // default it to 0 so the Location object can still be constructed.
+    const hasLocation = dbEntry.location_latitude != null && dbEntry.location_longitude != null;
 
     const location: Location | undefined = hasLocation
       ? {
           latitude: dbEntry.location_latitude as number,
           longitude: dbEntry.location_longitude as number,
-          elevation: dbEntry.location_elevation as number,
+          // Elevation is optional — default to 0 when null (e.g. migrated entries).
+          elevation: (dbEntry.location_elevation as number) ?? 0,
           // These optional fields may still be null; only include if not null.
           accuracy: dbEntry.location_accuracy ?? undefined,
           address: dbEntry.location_address ?? undefined,

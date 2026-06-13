@@ -1,7 +1,9 @@
 import { SQLiteDatabase } from 'expo-sqlite';
+import { Kysely } from 'kysely';
 import { JournalRepositoryImpl } from '../JournalRepositoryImpl';
 import { up } from '../../database/migrations';
 import { closeSqlite, openKysely } from '@/src/data/database/database';
+import type { Database } from '../../database/schema';
 
 /**
  * Test suite for JournalRepositoryImpl. Covers CRUD operations, tag management, search,
@@ -9,6 +11,7 @@ import { closeSqlite, openKysely } from '@/src/data/database/database';
  */
 describe('JournalRepositoryImpl', () => {
   let repository: JournalRepositoryImpl;
+  let db: Kysely<Database>;
 
   let sqliteDb: SQLiteDatabase | null;
 
@@ -17,6 +20,7 @@ describe('JournalRepositoryImpl', () => {
     const result = await openKysely(undefined, testDbName);
     await up(result.db);
     sqliteDb = result.sqliteDb;
+    db = result.db;
     repository = new JournalRepositoryImpl(result.db);
   });
 
@@ -550,16 +554,15 @@ describe('JournalRepositoryImpl', () => {
       expect(tags).toHaveLength(0);
     });
 
-    it('should handle entry with location that has null elevation (hasLocation=false)', async () => {
-      // Insert directly with null elevation to test the hasLocation branch.
+    it('should handle entry with elevation of zero (valid number)', async () => {
       const entry = await repository.createEntry({
-        content: 'Test null elevation',
+        content: 'Test zero elevation',
         datetime: new Date(),
         tags: [],
         location: {
           latitude: 10,
           longitude: 20,
-          elevation: 0, // 0 is a valid number, not null
+          elevation: 0,
         },
       });
 
@@ -582,6 +585,115 @@ describe('JournalRepositoryImpl', () => {
       // Tags should remain unchanged.
       expect(updated.tags).toEqual(['original-tag']);
       expect(updated.content).toBe('Updated content');
+    });
+
+    it('should map entry with lat+lng present but null elevation to a defined location', async () => {
+      // Insert directly with null elevation to simulate migrated Memoires entries.
+      const id = 'test-null-elev';
+      const now = new Date().toISOString();
+      await db
+        .insertInto('journal_entries')
+        .values({
+          id,
+          content: 'Migrated entry',
+          datetime: now,
+          created_at: now,
+          modified_at: now,
+          location_latitude: 40.7128,
+          location_longitude: -74.006,
+          location_elevation: null as unknown as undefined,
+          location_accuracy: null as unknown as undefined,
+          location_address: null as unknown as undefined,
+        })
+        .execute();
+
+      const entry = await repository.getEntry(id);
+      expect(entry).not.toBeNull();
+      // Location must be defined even though elevation is null.
+      expect(entry!.location).toBeDefined();
+      expect(entry!.location?.latitude).toBe(40.7128);
+      expect(entry!.location?.longitude).toBe(-74.006);
+      // Elevation defaults to 0 when null.
+      expect(entry!.location?.elevation).toBe(0);
+      expect(entry!.location?.accuracy).toBeUndefined();
+      expect(entry!.location?.address).toBeUndefined();
+    });
+
+    it('should map entry with only latitude present (longitude null) to undefined location', async () => {
+      const id = 'test-only-lat';
+      const now = new Date().toISOString();
+      await db
+        .insertInto('journal_entries')
+        .values({
+          id,
+          content: 'Partial location',
+          datetime: now,
+          created_at: now,
+          modified_at: now,
+          location_latitude: 40.7128,
+          location_longitude: null as unknown as undefined,
+          location_elevation: 10,
+          location_accuracy: null as unknown as undefined,
+          location_address: null as unknown as undefined,
+        })
+        .execute();
+
+      const entry = await repository.getEntry(id);
+      expect(entry).not.toBeNull();
+      expect(entry!.location).toBeUndefined();
+    });
+
+    it('should map entry with only longitude present (latitude null) to undefined location', async () => {
+      const id = 'test-only-lng';
+      const now = new Date().toISOString();
+      await db
+        .insertInto('journal_entries')
+        .values({
+          id,
+          content: 'Partial location',
+          datetime: now,
+          created_at: now,
+          modified_at: now,
+          location_latitude: null as unknown as undefined,
+          location_longitude: -74.006,
+          location_elevation: 10,
+          location_accuracy: null as unknown as undefined,
+          location_address: null as unknown as undefined,
+        })
+        .execute();
+
+      const entry = await repository.getEntry(id);
+      expect(entry).not.toBeNull();
+      expect(entry!.location).toBeUndefined();
+    });
+
+    it('should map entry with all four location fields present to a complete location', async () => {
+      const id = 'test-full-loc';
+      const now = new Date().toISOString();
+      await db
+        .insertInto('journal_entries')
+        .values({
+          id,
+          content: 'Full location',
+          datetime: now,
+          created_at: now,
+          modified_at: now,
+          location_latitude: 51.5074,
+          location_longitude: -0.1278,
+          location_elevation: 11,
+          location_accuracy: 5,
+          location_address: 'London, UK',
+        })
+        .execute();
+
+      const entry = await repository.getEntry(id);
+      expect(entry).not.toBeNull();
+      expect(entry!.location).toBeDefined();
+      expect(entry!.location?.latitude).toBe(51.5074);
+      expect(entry!.location?.longitude).toBe(-0.1278);
+      expect(entry!.location?.elevation).toBe(11);
+      expect(entry!.location?.accuracy).toBe(5);
+      expect(entry!.location?.address).toBe('London, UK');
     });
   });
 });
