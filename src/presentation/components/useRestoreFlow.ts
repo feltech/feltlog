@@ -4,7 +4,6 @@ import { defaultDatabaseDirectory, openDatabaseAsync } from 'expo-sqlite';
 import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
 import { restoreDatabase } from '@/src/data/database/restore';
-import { useDatabase } from '@/src/data/database/database';
 
 /**
  * Input state owned by the presentation component. The hook reads these values but does
@@ -13,8 +12,6 @@ import { useDatabase } from '@/src/data/database/database';
 export interface UseRestoreFlowInput {
   /** The current target database name (from the form). */
   databaseName: string;
-  /** The current encryption key (from the form). */
-  key: string;
   /** The currently selected backup file URI (from the radio group). */
   selectedFileUri: string | null;
   /** The configured SAF backup directory URI, or null if not yet configured. */
@@ -42,7 +39,6 @@ export interface UseRestoreFlowDeps {
   /** Performs the file-level restore. */
   restoreDatabase: (
     targetDbName: string,
-    targetKey: string,
     sourceFileUri: string,
   ) => Promise<{ success: boolean; error?: string }>;
   /** Performs a safety backup of an existing database. */
@@ -51,7 +47,10 @@ export interface UseRestoreFlowDeps {
     directoryUri: string,
     migrationKey: string,
     dbName: string,
+    tag?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  /** Called after a successful restore so the UI returns to the setup screen. */
+  onSuccess: () => void;
   /** Returns the current migration key for the database schema. */
   getLatestMigrationKey: () => string;
   /** Opens a database handle (used to discover its file path). */
@@ -59,8 +58,6 @@ export interface UseRestoreFlowDeps {
     databasePath: string;
     closeAsync: () => Promise<void>;
   }>;
-  /** Reopens the database via the existing useDatabase flow. */
-  initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
 }
 
 /** The public API returned by {@link useRestoreFlow}. */
@@ -185,12 +182,15 @@ export function useRestoreFlow(
   /**
    * Performs the actual restore after any confirmation dialogs have been acknowledged.
    *
+   * This is a pure file copy: the caller is returned to the setup/login screen after
+   * success, where they can open the restored database with the appropriate encryption
+   * key (if any). We intentionally do not rekey or initialize the database here.
+   *
    * @param targetName - The target database name.
-   * @param targetKey - The encryption key for the target database.
    * @param sourceUri - The SAF URI of the backup file to restore from.
    */
   const performRestore = useCallback(
-    async (targetName: string, targetKey: string, sourceUri: string): Promise<void> => {
+    async (targetName: string, sourceUri: string): Promise<void> => {
       // If a safety backup was required, perform it before overwriting.
       if (safetyBackupRequired) {
         const dirUri = input.backupDirUri ?? (await chooseBackupDirectory());
@@ -210,6 +210,7 @@ export function useRestoreFlow(
             dirUri,
             migrationKey,
             targetName,
+            'before_restore_backup',
           );
           if (!safetyResult.success) {
             showSnackbar(`Safety backup failed: ${safetyResult.error}`, true);
@@ -222,22 +223,13 @@ export function useRestoreFlow(
         }
       }
 
-      const result = await deps.restoreDatabase(targetName, targetKey, sourceUri);
+      const result = await deps.restoreDatabase(targetName, sourceUri);
       if (!result.success) {
         showSnackbar(`Restore failed: ${result.error}`, true);
         return;
       }
 
-      // Reopen the database so the app proceeds to the tabs layout.
-      try {
-        await deps.initialize({
-          encryptionKey: targetKey,
-          databaseName: targetName,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        showSnackbar(`Failed to open restored database: ${message}`, true);
-      }
+      deps.onSuccess();
     },
     [safetyBackupRequired, input.backupDirUri, deps, showSnackbar, chooseBackupDirectory],
   );
@@ -255,7 +247,6 @@ export function useRestoreFlow(
       return;
     }
 
-    const trimmedKey = input.key.trim();
     const targetName = input.databaseName.trim();
 
     // Refresh file list if the directory changed (best-effort).
@@ -283,12 +274,11 @@ export function useRestoreFlow(
     }
 
     // No existing DB — proceed directly.
-    await performRestore(targetName, trimmedKey, input.selectedFileUri);
+    await performRestore(targetName, input.selectedFileUri);
     setSubmitting(false);
   }, [
     input.selectedFileUri,
     input.backupDirUri,
-    input.key,
     input.databaseName,
     deps,
     showSnackbar,
@@ -300,13 +290,12 @@ export function useRestoreFlow(
   const confirmRestore = useCallback(async () => {
     setShowConfirmDialog(false);
     setSubmitting(true);
-    const trimmedKey = input.key.trim();
     const targetName = input.databaseName.trim();
     if (input.selectedFileUri) {
-      await performRestore(targetName, trimmedKey, input.selectedFileUri);
+      await performRestore(targetName, input.selectedFileUri);
     }
     setSubmitting(false);
-  }, [input.key, input.databaseName, input.selectedFileUri, performRestore]);
+  }, [input.databaseName, input.selectedFileUri, performRestore]);
 
   /** Dismisses the confirm dialog without restoring. */
   const cancelRestore = useCallback(() => {
@@ -334,10 +323,11 @@ export function useRestoreFlow(
  * data-layer implementations. The component calls this once and passes the result into
  * {@link useRestoreFlow}.
  *
+ * @param onSuccess - Callback invoked after a successful restore.
+ *
  * @returns Production dependencies for the restore flow hook.
  */
-export function useRestoreFlowDeps(): UseRestoreFlowDeps {
-  const { initialize } = useDatabase();
+export function useRestoreFlowDeps(onSuccess: () => void): UseRestoreFlowDeps {
   return {
     getBackupDirectoryUri,
     setBackupDirectoryUri,
@@ -358,8 +348,8 @@ export function useRestoreFlowDeps(): UseRestoreFlowDeps {
     },
     restoreDatabase,
     backupDatabase,
+    onSuccess,
     getLatestMigrationKey,
     openDatabase: openDatabaseAsync,
-    initialize,
   };
 }

@@ -24,7 +24,7 @@ function makeDeps(overrides: Partial<UseRestoreFlowDeps> = {}): UseRestoreFlowDe
       databasePath: '/mock/target.db',
       closeAsync: jest.fn().mockResolvedValue(undefined),
     }),
-    initialize: jest.fn().mockResolvedValue(undefined),
+    onSuccess: jest.fn(),
     ...overrides,
   };
 }
@@ -64,7 +64,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'memoires.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -112,7 +111,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -126,8 +124,8 @@ describe('useRestoreFlow', () => {
 
     expect(openDatabase).toHaveBeenCalledWith('test.db');
     expect(result.current.showConfirmDialog).toBe(false);
-    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'k', 'u');
-    expect(deps.initialize).toHaveBeenCalled();
+    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'u');
+    expect(deps.onSuccess).toHaveBeenCalled();
     expect(result.current.submitting).toBe(false);
   });
 
@@ -135,29 +133,9 @@ describe('useRestoreFlow', () => {
   it('canSubmit is false when databaseName is empty', () => {
     const deps = makeDeps();
     const { result } = renderHook(() =>
-      useRestoreFlow(
-        { databaseName: '', key: 'k', selectedFileUri: 'u', backupDirUri: 'd' },
-        deps,
-      ),
+      useRestoreFlow({ databaseName: '', selectedFileUri: 'u', backupDirUri: 'd' }, deps),
     );
     expect(result.current.canSubmit).toBe(false);
-  });
-
-  /** CanSubmit is true when databaseName is set and a file is selected. */
-  it('canSubmit is true when databaseName is set and a file is selected', () => {
-    const deps = makeDeps();
-    const { result } = renderHook(() =>
-      useRestoreFlow(
-        {
-          databaseName: 'test.db',
-          key: 'k',
-          selectedFileUri: 'u',
-          backupDirUri: 'd',
-        },
-        deps,
-      ),
-    );
-    expect(result.current.canSubmit).toBe(true);
   });
 
   /** CanSubmit is false when submitting is in progress. */
@@ -171,7 +149,55 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+
+    // Start restore but let it pause on fileExists.
+    act(() => {
+      result.current.handleRestore();
+    });
+
+    // Immediately after the synchronous part, submitting should be true.
+    expect(result.current.submitting).toBe(true);
+    expect(result.current.canSubmit).toBe(false);
+
+    // Let the async work finish so the hook doesn't leak between tests.
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+  });
+
+  /** CanSubmit is true when databaseName is set and a file is selected. */
+  it('canSubmit is true when databaseName is set and a file is selected', () => {
+    const deps = makeDeps();
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+    expect(result.current.canSubmit).toBe(true);
+  });
+
+  /** Submitting state disables canSubmit while restore is in progress. */
+  it('canSubmit becomes false while restore is in progress', async () => {
+    const deps = makeDeps({
+      fileExists: jest
+        .fn()
+        .mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(true), 10))),
+    });
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -201,7 +227,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: null,
           backupDirUri: 'd',
         },
@@ -215,6 +240,27 @@ describe('useRestoreFlow', () => {
     expect(result.current.submitting).toBe(false);
   });
 
+  /** HandleRestore catch block around fileExists shows dialog. */
+  it('handleRestore shows confirm dialog when fileExists throws', async () => {
+    const deps = makeDeps({
+      fileExists: jest.fn().mockRejectedValue(new Error('check failed')),
+    });
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+    expect(result.current.showConfirmDialog).toBe(true);
+  });
+
   /** HandleRestore shows snackbar when no backup dir. */
   it("handleRestore shows 'Choose a backup location first' snackbar when no backup dir", async () => {
     const deps = makeDeps({
@@ -225,7 +271,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -248,7 +293,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -258,8 +302,8 @@ describe('useRestoreFlow', () => {
     await act(async () => {
       await result.current.handleRestore();
     });
-    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'k', 'u');
-    expect(deps.initialize).toHaveBeenCalled();
+    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'u');
+    expect(deps.onSuccess).toHaveBeenCalled();
     expect(result.current.submitting).toBe(false);
   });
 
@@ -272,7 +316,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -295,7 +338,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -313,8 +355,8 @@ describe('useRestoreFlow', () => {
       await result.current.confirmRestore();
     });
     expect(deps.backupDatabase).toHaveBeenCalled();
-    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'k', 'u');
-    expect(deps.initialize).toHaveBeenCalled();
+    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'u');
+    expect(deps.onSuccess).toHaveBeenCalled();
     expect(result.current.showConfirmDialog).toBe(false);
     expect(result.current.submitting).toBe(false);
   });
@@ -329,7 +371,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -357,7 +398,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -385,7 +425,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -402,52 +441,6 @@ describe('useRestoreFlow', () => {
     expect(result.current.snackbar.message).toContain('cannot open');
   });
 
-  /** RestoreDatabase returns success=false → snackbar shown. */
-  it('shows a snackbar when restoreDatabase returns failure', async () => {
-    const deps = makeDeps({
-      restoreDatabase: jest.fn().mockResolvedValue({ success: false, error: 'disk is sad' }),
-    });
-    const { result } = renderHook(() =>
-      useRestoreFlow(
-        {
-          databaseName: 'test.db',
-          key: 'k',
-          selectedFileUri: 'u',
-          backupDirUri: 'd',
-        },
-        deps,
-      ),
-    );
-    await act(async () => {
-      await result.current.handleRestore();
-    });
-    expect(result.current.snackbar.visible).toBe(true);
-    expect(result.current.snackbar.message).toContain('disk is sad');
-  });
-
-  /** Initialize throws → snackbar shown. */
-  it('shows a snackbar when initialize throws', async () => {
-    const deps = makeDeps({
-      initialize: jest.fn().mockRejectedValue(new Error('cannot open')),
-    });
-    const { result } = renderHook(() =>
-      useRestoreFlow(
-        {
-          databaseName: 'test.db',
-          key: 'k',
-          selectedFileUri: 'u',
-          backupDirUri: 'd',
-        },
-        deps,
-      ),
-    );
-    await act(async () => {
-      await result.current.handleRestore();
-    });
-    expect(result.current.snackbar.visible).toBe(true);
-    expect(result.current.snackbar.message).toContain('cannot open');
-  });
-
   /** ChooseBackupDirectory returns the new URI and persists it. */
   it('chooseBackupDirectory returns the new URI and persists it', async () => {
     const deps = makeDeps();
@@ -455,7 +448,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -479,7 +471,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -503,7 +494,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -534,7 +524,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -555,7 +544,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -576,7 +564,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -599,7 +586,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: 'd',
         },
@@ -629,7 +615,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: 'u',
           backupDirUri: null,
         },
@@ -655,7 +640,6 @@ describe('useRestoreFlow', () => {
       useRestoreFlow(
         {
           databaseName: 'test.db',
-          key: 'k',
           selectedFileUri: null,
           backupDirUri: 'd',
         },
@@ -670,28 +654,6 @@ describe('useRestoreFlow', () => {
     expect(result.current.showConfirmDialog).toBe(false);
   });
 
-  /** HandleRestore catch block around fileExists shows dialog. */
-  it('handleRestore shows confirm dialog when fileExists throws', async () => {
-    const deps = makeDeps({
-      fileExists: jest.fn().mockRejectedValue(new Error('check failed')),
-    });
-    const { result } = renderHook(() =>
-      useRestoreFlow(
-        {
-          databaseName: 'test.db',
-          key: 'k',
-          selectedFileUri: 'u',
-          backupDirUri: 'd',
-        },
-        deps,
-      ),
-    );
-    await act(async () => {
-      await result.current.handleRestore();
-    });
-    expect(result.current.showConfirmDialog).toBe(true);
-  });
-
   /** Tests fileExists catch branch when getInfoAsync throws. */
   it('useRestoreFlowDeps fileExists returns false when getInfoAsync throws', async () => {
     jest.resetModules();
@@ -700,11 +662,6 @@ describe('useRestoreFlow', () => {
     jest.doMock('expo-sqlite', () => ({
       defaultDatabaseDirectory: '/data/data/com.feltech.feltlog/databases',
     }));
-    jest.doMock('@/src/data/database/database', () => ({
-      useDatabase: jest.fn(() => ({
-        initialize: jest.fn().mockResolvedValue(undefined),
-      })),
-    }));
     jest.doMock('@/src/data/database/dbBackupStorage', () => ({
       getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
       setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
@@ -712,7 +669,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockRejectedValue(new Error('no permission'));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps();
+    const deps = useRestoreFlowDeps(jest.fn());
     const exists = await deps.fileExists('bad.db');
     expect(exists).toBe(false);
   });
@@ -725,11 +682,6 @@ describe('useRestoreFlow', () => {
     jest.doMock('expo-sqlite', () => ({
       defaultDatabaseDirectory: '/data/data/com.feltech.feltlog/databases',
     }));
-    jest.doMock('@/src/data/database/database', () => ({
-      useDatabase: jest.fn(() => ({
-        initialize: jest.fn().mockResolvedValue(undefined),
-      })),
-    }));
     jest.doMock('@/src/data/database/dbBackupStorage', () => ({
       getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
       setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
@@ -737,7 +689,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps();
+    const deps = useRestoreFlowDeps(jest.fn());
     const exists = await deps.fileExists('test.db');
     expect(exists).toBe(true);
     expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(
@@ -752,11 +704,6 @@ describe('useRestoreFlow', () => {
     jest.doMock('expo-sqlite', () => ({
       defaultDatabaseDirectory: 'file:///data/data/com.feltech.feltlog/databases',
     }));
-    jest.doMock('@/src/data/database/database', () => ({
-      useDatabase: jest.fn(() => ({
-        initialize: jest.fn().mockResolvedValue(undefined),
-      })),
-    }));
     jest.doMock('@/src/data/database/dbBackupStorage', () => ({
       getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
       setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
@@ -764,7 +711,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps();
+    const deps = useRestoreFlowDeps(jest.fn());
     const exists = await deps.fileExists('test.db');
     expect(exists).toBe(true);
     expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(

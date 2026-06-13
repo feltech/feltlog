@@ -26,17 +26,12 @@ export interface RestoreResult {
  * across the JavaScript bridge and the SAF content provider boundary.
  *
  * @param targetDbName - The name of the database file to overwrite.
- * @param targetKey - The encryption key for the target database. Present for API
- *   symmetry with the caller's subsequent `useDatabase().initialize()` call; this
- *   function does not use the key itself.
  * @param sourceFileUri - The SAF file URI of the backup to restore from.
  *
  * @returns A RestoreResult indicating success or failure.
  */
 export async function restoreDatabase(
   targetDbName: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  targetKey: string,
   sourceFileUri: string,
 ): Promise<RestoreResult> {
   try {

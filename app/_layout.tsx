@@ -144,6 +144,7 @@ function RootLayoutNav() {
           <RestoreFromBackupScreen
             lastDatabaseName={lastDatabaseName}
             onCancel={() => setRestoreMode(false)}
+            onSuccess={() => setRestoreMode(false)}
           />
         ) : (
           <SetupDatabaseScreen

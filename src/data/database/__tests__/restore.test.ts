@@ -45,7 +45,7 @@ describe('restoreDatabase', () => {
       closeAsync: jest.fn().mockResolvedValue(undefined),
     });
 
-    const result = await restoreDatabase(targetDbName, 'any-key', sourceUri);
+    const result = await restoreDatabase(targetDbName, sourceUri);
 
     expect(result.success).toBe(true);
     expect(mockOpenDatabaseAsync).toHaveBeenCalledWith(targetDbName);
@@ -65,7 +65,7 @@ describe('restoreDatabase', () => {
       closeAsync: jest.fn().mockResolvedValue(undefined),
     });
 
-    const result = await restoreDatabase(targetDbName, 'any-key', sourceUri);
+    const result = await restoreDatabase(targetDbName, sourceUri);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Mock file not found');
@@ -90,7 +90,7 @@ describe('restoreDatabase', () => {
     // Force writeAsStringAsync to throw.
     (ExpoFileSystem.writeAsStringAsync as jest.Mock).mockRejectedValueOnce(new Error('Disk full'));
 
-    const result = await restoreDatabase(targetDbName, 'any-key', sourceUri);
+    const result = await restoreDatabase(targetDbName, sourceUri);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Disk full');
@@ -116,7 +116,7 @@ describe('restoreDatabase', () => {
       closeAsync,
     });
 
-    await restoreDatabase(targetDbName, 'any-key', sourceUri);
+    await restoreDatabase(targetDbName, sourceUri);
 
     // openDatabaseAsync is called only to discover the path, not to keep the
     // connection open.
@@ -145,7 +145,7 @@ describe('restoreDatabase', () => {
     // Force readAsStringAsync to throw a non-Error value.
     (ExpoFileSystem.readAsStringAsync as jest.Mock).mockRejectedValueOnce('disk is sad');
 
-    const result = await restoreDatabase(targetDbName, 'any-key', sourceUri);
+    const result = await restoreDatabase(targetDbName, sourceUri);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('disk is sad');

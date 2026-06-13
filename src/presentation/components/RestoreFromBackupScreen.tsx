@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Button,
   Dialog,
@@ -19,13 +20,14 @@ import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
  *
  * Flow:
  *
- * 1. Collect target database name and encryption key.
+ * 1. Collect target database name.
  * 2. Show a "Select backup file" button that lists `.db` files from the configured SAF
  *    backup directory.
  * 3. If a DB already exists at the target name, show a confirmation dialog: a safety
  *    backup of the current database will be saved before overwriting.
- * 4. Call `restoreDatabase` to overwrite the target file, then re-open the DB via
- *    `useDatabase().initialize()` so the app transitions to the tabs layout.
+ * 4. Call `restoreDatabase` to copy the backup file as-is to the target name. The user
+ *    then returns to the setup/login screen and enters the key (if any) to open the
+ *    restored database.
  * 5. Errors are surfaced through a snackbar matching the Settings pattern.
  *
  * Because the setup screen is rendered outside the Stack navigator, this screen is
@@ -37,6 +39,8 @@ export interface RestoreFromBackupScreenProps {
   lastDatabaseName: string | null;
   /** Callback to return to the setup screen. */
   onCancel: () => void;
+  /** Callback invoked after a successful restore to return to the setup screen. */
+  onSuccess: () => void;
 }
 
 /**
@@ -45,21 +49,23 @@ export interface RestoreFromBackupScreenProps {
  * @param props - The component props.
  * @param props.lastDatabaseName - The last used database name.
  * @param props.onCancel - Callback invoked when the user taps "Cancel".
+ * @param props.onSuccess - Callback invoked after a successful restore.
  *
  * @returns The rendered restore screen.
  */
 export default function RestoreFromBackupScreen({
   lastDatabaseName,
   onCancel,
+  onSuccess,
 }: RestoreFromBackupScreenProps) {
+  const insets = useSafeAreaInsets();
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
-  const [key, setKey] = useState('');
   const [backupDirUri, setBackupDirUri] = useState<string | null>(null);
   const [backupFiles, setBackupFiles] = useState<string[]>([]);
   const [selectedFileUri, setSelectedFileUri] = useState<string | null>(null);
 
-  const deps = useRestoreFlowDeps();
-  const flow = useRestoreFlow({ databaseName, key, selectedFileUri, backupDirUri }, deps);
+  const deps = useRestoreFlowDeps(onSuccess);
+  const flow = useRestoreFlow({ databaseName, selectedFileUri, backupDirUri }, deps);
 
   // Load the configured backup directory on mount.
   useEffect(() => {
@@ -76,7 +82,9 @@ export default function RestoreFromBackupScreen({
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+      >
         <Title style={styles.title}>Restore from backup</Title>
 
         <TextInput
@@ -89,18 +97,10 @@ export default function RestoreFromBackupScreen({
           autoCorrect={false}
           style={styles.input}
         />
-
-        <TextInput
-          testID="restore-db-key-input"
-          accessibilityLabel="Encryption key input"
-          label="Encryption key (leave empty for unencrypted)"
-          value={key}
-          onChangeText={setKey}
-          secureTextEntry
-          style={styles.input}
-        />
-        <HelperText type="info">
-          The location will be remembered. Leave empty for an unencrypted database.
+        <HelperText type="info" testID="restore-db-name-helper">
+          The restored database will be saved with this name. After restore, you&apos;ll be
+          returned to the login screen where you can enter the encryption key (if any) for the
+          restored database.
         </HelperText>
 
         {!backupDirUri && (
