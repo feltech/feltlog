@@ -107,7 +107,12 @@ function formatAddress(geocode: ExpoLocation.LocationGeocodedAddress): string | 
 export default function JournalEntryModal() {
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
-  const { state: vmState, actions } = useJournalViewModel();
+  const { actions } = useJournalViewModel();
+
+  // The entry loaded from the repository by ID. Decoupled from the ViewModel's
+  // paginated `entries` array so that entries beyond the first page (loaded via
+  // infinite scroll) can still be opened in edit mode.
+  const [loadedEntry, setLoadedEntry] = useState<JournalEntry | null>(null);
 
   const [state, setState] = useImmer<ModalState>({
     content: '',
@@ -212,9 +217,30 @@ export default function JournalEntryModal() {
     setCanRedo(false);
   }, []);
 
-  const existingEntry = resolvedEntryId
-    ? vmState.entries.find(e => e.id === resolvedEntryId)
-    : null;
+  // Load the entry by ID directly from the repository when an entryId is
+  // present. This decouples edit detection from the ViewModel's paginated
+  // entries array so entries beyond the first page (infinite scroll) can be
+  // opened correctly.
+  useEffect(() => {
+    if (!resolvedEntryId) {
+      setLoadedEntry(null);
+      return;
+    }
+    let cancelled = false;
+    actions.getEntryById(resolvedEntryId).then(entry => {
+      if (!cancelled) {
+        setLoadedEntry(entry);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only re-run when the entryId changes. The actions object is stable
+    // (useCallback-backed) so getEntryById won't change between renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedEntryId]);
+
+  const existingEntry = loadedEntry;
   const isEditing = !!existingEntry;
 
   useEffect(() => {

@@ -709,4 +709,71 @@ describe('JournalViewModel', () => {
 
     repo.getAllTags = originalGetAllTags;
   });
+
+  /** Tests that getEntryById returns the entry from the repository. */
+  it('returns an entry by ID via getEntryById', async () => {
+    const repo = new MockRepo();
+    const mockEntry = {
+      id: 'specific-id',
+      content: 'found it',
+      datetime: new Date(),
+      created_at: new Date(),
+      modified_at: new Date(),
+      tags: [] as string[],
+    };
+    (repo.getEntry as jest.Mock).mockResolvedValue(mockEntry);
+    const apiRef = await renderViewModel(repo);
+
+    let result: JournalEntry | null = null;
+    await act(async () => {
+      result = await apiRef.current!.actions.getEntryById('specific-id');
+    });
+
+    expect(result).toEqual(mockEntry);
+    expect(repo.getEntry).toHaveBeenCalledWith('specific-id');
+  });
+
+  /** Tests that getEntryById returns null when the entry is not found. */
+  it('returns null from getEntryById when entry does not exist', async () => {
+    const repo = new MockRepo();
+    (repo.getEntry as jest.Mock).mockResolvedValue(null);
+    const apiRef = await renderViewModel(repo);
+
+    let result: JournalEntry | null = undefined as unknown as JournalEntry;
+    await act(async () => {
+      result = await apiRef.current!.actions.getEntryById('non-existent');
+    });
+
+    expect(result).toBeNull();
+  });
+
+  /** Tests that getEntryById handles errors from the repository. */
+  it('handles errors from getEntryById', async () => {
+    const repo = new MockRepo();
+    (repo.getEntry as jest.Mock).mockRejectedValue(new Error('Lookup failed'));
+    const apiRef = await renderViewModel(repo);
+
+    let result: JournalEntry | null = undefined as unknown as JournalEntry;
+    await act(async () => {
+      result = await apiRef.current!.actions.getEntryById('fail-id');
+    });
+
+    expect(result).toBeNull();
+    expect(apiRef.current!.state.error).toBe('Lookup failed');
+  });
+
+  /** Tests that getEntryById handles non-Error exceptions. */
+  it('handles non-Error exceptions from getEntryById', async () => {
+    const repo = new MockRepo();
+    (repo.getEntry as jest.Mock).mockRejectedValue('string error');
+    const apiRef = await renderViewModel(repo);
+
+    let result: JournalEntry | null = undefined as unknown as JournalEntry;
+    await act(async () => {
+      result = await apiRef.current!.actions.getEntryById('fail-id');
+    });
+
+    expect(result).toBeNull();
+    expect(apiRef.current!.state.error).toBe('Failed to load entry');
+  });
 });

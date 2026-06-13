@@ -365,6 +365,30 @@ export const useJournalViewModel = () => {
     void refreshDataRef.current();
   }, [refreshDataRef]);
 
+  /**
+   * Loads a single journal entry by its ID directly from the repository.
+   *
+   * This is used by screens that need to open a specific entry regardless of the
+   * current pagination state (e.g. the entry editor when navigated to via deep link or
+   * after infinite scroll). Unlike searching through the in-memory `entries` array,
+   * this always resolves the entry from the database.
+   *
+   * @param id - The unique identifier of the entry to load.
+   *
+   * @returns The journal entry if found, otherwise null.
+   */
+  const getEntryById = useCallback(
+    async (id: string): Promise<JournalEntry | null> => {
+      try {
+        return await repository.getEntry(id);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Failed to load entry');
+        return null;
+      }
+    },
+    [setError, repository],
+  );
+
   return {
     state,
     actions: {
@@ -377,6 +401,7 @@ export const useJournalViewModel = () => {
       clearFilters,
       refreshData,
       setError,
+      getEntryById,
     },
   };
 };

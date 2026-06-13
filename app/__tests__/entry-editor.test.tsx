@@ -146,6 +146,7 @@ function stubActions(): Record<string, jest.Mock> {
     filterByTags: jest.fn(),
     clearFilters: jest.fn(),
     setError: jest.fn(),
+    getEntryById: jest.fn().mockResolvedValue(null),
   };
 }
 
@@ -162,6 +163,18 @@ function stubActions(): Record<string, jest.Mock> {
  */
 async function renderModal(entryId?: string): Promise<ReturnType<typeof render>> {
   (useLocalSearchParams as jest.Mock).mockReturnValue(entryId ? { entryId } : {});
+  // If an entryId is requested, automatically configure the current mock's
+  // getEntryById to return the matching entry from the ViewModel's entries
+  // array. This mirrors the real ViewModel behaviour and lets existing
+  // edit-mode tests work without manually wiring getEntryById on every test.
+  if (entryId) {
+    const vmReturn = (useJournalViewModel as jest.Mock)();
+    const entries = vmReturn?.state?.entries ?? [];
+    const match = entries.find((e: { id: string }) => e.id === entryId);
+    if (match && vmReturn?.actions?.getEntryById) {
+      vmReturn.actions.getEntryById.mockResolvedValue(match);
+    }
+  }
   const result = render(
     <SafeAreaProvider>
       <PaperProvider>
