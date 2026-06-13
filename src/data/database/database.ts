@@ -16,6 +16,7 @@ export interface UseDatabaseState {
   databaseName: string | null;
   sqliteDb: SQLiteDatabase | null;
   databasePath: string | null;
+  isCurrentlyEncrypted: boolean;
 }
 
 export interface OpenDatabaseResult {
@@ -96,6 +97,7 @@ export const useDatabase = (): UseDatabaseApi => {
     databaseName: null,
     sqliteDb: null,
     databasePath: null,
+    isCurrentlyEncrypted: true,
   });
 
   const [lastDatabaseName, setLastDatabaseNameState] = useState<string | null>(null);
@@ -175,6 +177,7 @@ export const useDatabase = (): UseDatabaseApi => {
         databaseName: databaseName || 'feltlog.db',
         sqliteDb,
         databasePath: sqliteDb.databasePath,
+        isCurrentlyEncrypted: encryptionKey.trim().length > 0,
       });
       try {
         if (databaseName) await setLastDatabaseName(databaseName);
@@ -190,6 +193,7 @@ export const useDatabase = (): UseDatabaseApi => {
         databaseName: null,
         sqliteDb: null,
         databasePath: null,
+        isCurrentlyEncrypted: true,
       });
     }
   };

@@ -11,6 +11,7 @@ import {
   getBackupMaxCount,
 } from '@/src/data/database/dbBackupStorage';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
+import ChangePasswordDialog from '@/src/presentation/components/ChangePasswordDialog';
 
 /**
  * Extracts a human-readable directory path from a SAF content URI.
@@ -48,12 +49,13 @@ export function parseSafLocation(uri: string): string {
  * @returns The rendered settings screen.
  */
 export default function SettingsScreen() {
-  const { databaseName, databasePath } = useDatabaseInfo();
+  const { databaseName, databasePath, isCurrentlyEncrypted } = useDatabaseInfo();
 
   const [backupDirUri, setBackupDirUriState] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [maxBackups, setMaxBackups] = useState<number>(5);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     visible: boolean;
     message: string;
@@ -259,12 +261,20 @@ export default function SettingsScreen() {
             </Text>
             <Text style={styles.row}>
               <Text style={styles.label}>Encryption: </Text>
-              Enabled
+              {isCurrentlyEncrypted ? 'Enabled' : 'Disabled'}
             </Text>
             <Text style={styles.row}>
               <Text style={styles.label}>Rolling backups kept: </Text>
               {maxBackups}
             </Text>
+            <Button
+              mode="outlined"
+              onPress={() => setShowChangePassword(true)}
+              style={styles.button}
+              testID="change-password-btn"
+            >
+              Change password
+            </Button>
           </Card.Content>
         </Card>
 
@@ -281,6 +291,14 @@ export default function SettingsScreen() {
           </Card.Content>
         </Card>
       </ScrollView>
+
+      <ChangePasswordDialog
+        databaseName={databaseName ?? 'feltlog.db'}
+        isCurrentlyEncrypted={isCurrentlyEncrypted}
+        visible={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        showSnackbar={(message, isError) => setSnackbar({ visible: true, message, isError })}
+      />
 
       <Snackbar
         visible={snackbar.visible}

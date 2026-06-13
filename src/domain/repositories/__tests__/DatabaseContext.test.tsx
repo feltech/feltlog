@@ -12,7 +12,9 @@ describe('DatabaseContext', () => {
   /** Tests that the DatabaseInfoProvider renders its children. */
   it('renders children', () => {
     const { getByText } = render(
-      <DatabaseInfoProvider value={{ databaseName: 'test.db', databasePath: null }}>
+      <DatabaseInfoProvider
+        value={{ databaseName: 'test.db', databasePath: null, isCurrentlyEncrypted: true }}
+      >
         <Text>Child content</Text>
       </DatabaseInfoProvider>,
     );
@@ -34,12 +36,22 @@ describe('DatabaseContext', () => {
     }
 
     render(
-      <DatabaseInfoProvider value={{ databaseName: 'test.db', databasePath: '/data/test.db' }}>
+      <DatabaseInfoProvider
+        value={{
+          databaseName: 'test.db',
+          databasePath: '/data/test.db',
+          isCurrentlyEncrypted: true,
+        }}
+      >
         <Harness />
       </DatabaseInfoProvider>,
     );
 
-    expect(receivedInfo).toEqual({ databaseName: 'test.db', databasePath: '/data/test.db' });
+    expect(receivedInfo).toEqual({
+      databaseName: 'test.db',
+      databasePath: '/data/test.db',
+      isCurrentlyEncrypted: true,
+    });
   });
 
   /** Tests that useDatabaseInfo returns default null values with no provider. */
@@ -58,6 +70,10 @@ describe('DatabaseContext', () => {
 
     render(<Harness />);
 
-    expect(receivedInfo).toEqual({ databaseName: null, databasePath: null });
+    expect(receivedInfo).toEqual({
+      databaseName: null,
+      databasePath: null,
+      isCurrentlyEncrypted: true,
+    });
   });
 });

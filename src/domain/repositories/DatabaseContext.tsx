@@ -7,11 +7,15 @@ export interface DatabaseInfo {
 
   /** Filesystem path to the SQLite database, or null if not initialized. */
   databasePath: string | null;
+
+  /** Whether the database is currently encrypted. */
+  isCurrentlyEncrypted: boolean;
 }
 
 const DatabaseInfoContext = createContext<DatabaseInfo>({
   databaseName: null,
   databasePath: null,
+  isCurrentlyEncrypted: true,
 });
 
 export interface DatabaseInfoProviderProps {

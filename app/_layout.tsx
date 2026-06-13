@@ -68,8 +68,16 @@ export default function RootLayout() {
  * @returns The rendered navigation tree or the setup database screen.
  */
 function RootLayoutNav() {
-  const { ready, db, initialize, lastDatabaseName, error, databaseName, databasePath } =
-    useDatabase();
+  const {
+    ready,
+    db,
+    initialize,
+    lastDatabaseName,
+    error,
+    databaseName,
+    databasePath,
+    isCurrentlyEncrypted,
+  } = useDatabase();
   const colorScheme = useColorScheme();
   const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
   const [restoreMode, setRestoreMode] = useState(false);
@@ -152,7 +160,7 @@ function RootLayoutNav() {
 
   return (
     <PaperProvider>
-      <DatabaseInfoProvider value={{ databaseName, databasePath }}>
+      <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted }}>
         <RepositoryProvider repository={repository}>
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <Stack>
