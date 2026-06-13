@@ -6,6 +6,9 @@ FeltLog is an Android diary/journal application built with React Native (Expo) a
 following domain-driven design principles at the high level and data-oriented design at the lower
 level.
 
+Code is in constant flux, frequently refactored wih sweeping changes for code quality and
+testability in line with common best practices.
+
 ## Development Environment
 
 ### Core Tools
@@ -21,8 +24,8 @@ level.
 - Nix Flake for reproducible development environment in `build_env/` directory
 - Minimal system dependencies, focused on Android development needs
 - The shell is auto-activated via Direnv, so commands run directly without any prefix.
-- Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `python3`, `create-avd`
-  helper
+- Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `yq`, `pup`, `python3`.
+  sqlite.
 
 ### Agent restriction on `build_env/` changes
 
@@ -211,6 +214,12 @@ formatting-only lint failures — Prettier enforces the 99-character line limit 
   tests — don't exclude the file from coverage. A coverage report that hides a 463-line component
   with real logic at "excluded" gives a false sense of completeness; future maintainers will not
   know the file is untested.
+- If code is hard to test (e.g., branches in unreachable state paths, Portal-rendered children that
+  aren't addressable via testID), prefer refactoring for testability over adding coverage ignores
+  or skipping tests. Extract imperative async logic into custom hooks that can be unit-tested in
+  isolation with `renderHook`. Keep components as thin presentation layers; move state machines and
+  side-effect orchestration into hooks. A component that can't be tested is often a signal that
+  it's doing too much.
 - Tests must run on both:
   - Node.js environment (unit tests)
   - Android Emulator (integration tests)
@@ -265,6 +274,12 @@ that hide real timing issues.
 - All non-trivial functions must have docstrings.
 - All classes and interfaces must have docstrings.
 - Avoid the use of singletons, prefer dependency injection or contexts.
+- Use the available CLI tools for parsing files instead of writing custom scripts. The development
+  shell provides `jq` for JSON, `yq` for YAML/JSON/INI/XML, `pup` for HTML, and `python3` for
+  everything else. Reach for `jq` before writing a Python one-liner to extract a JSON field; reach
+  for `yq` before parsing a YAML file; reach for `pup` before writing BeautifulSoup code to extract
+  an HTML attribute. Custom scripts are appropriate only when no shell tool fits the job (e.g.,
+  multi-step pipelines, complex text transformations, or anything that needs proper control flow).
 
 ## E2E Testability Constraints
 
