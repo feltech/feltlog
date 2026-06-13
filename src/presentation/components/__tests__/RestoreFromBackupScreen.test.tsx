@@ -337,4 +337,41 @@ describe('RestoreFromBackupScreen', () => {
     );
     expect(getByTestId('restore-db-name-input').props.value).toBe('feltlog.db');
   });
+
+  /** The safety-backup notice should appear in the form. */
+  it('renders the safety-backup notice in the form', () => {
+    const { getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen
+        lastDatabaseName={null}
+        onCancel={jest.fn()}
+        onSuccess={jest.fn()}
+      />,
+    );
+
+    const notice = getByTestId('safety-backup-notice');
+    expect(notice).toBeTruthy();
+    expect(notice.props.children).toContain('safety backup');
+  });
+
+  /**
+   * The old safety-backup text should no longer appear in the confirmation dialog
+   * content.
+   */
+  it('confirmation dialog does not contain the full safety-backup wording', () => {
+    const { queryByText } = renderWithProvider(
+      <RestoreFromBackupScreen
+        lastDatabaseName={null}
+        onCancel={jest.fn()}
+        onSuccess={jest.fn()}
+      />,
+    );
+
+    // The original long form is removed from the confirmation dialog.
+    expect(
+      queryByText(
+        'A safety backup of the current database will be saved to the configured backup' +
+          ' location before restoring. Continue?',
+      ),
+    ).toBeNull();
+  });
 });

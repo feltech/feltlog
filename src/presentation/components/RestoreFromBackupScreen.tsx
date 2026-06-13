@@ -87,6 +87,11 @@ export default function RestoreFromBackupScreen({
       >
         <Title style={styles.title}>Restore from backup</Title>
 
+        <HelperText type="info" testID="safety-backup-notice">
+          A safety backup of the current database will be saved to the configured backup location
+          before restoring.
+        </HelperText>
+
         <TextInput
           testID="restore-db-name-input"
           accessibilityLabel="Database file name input"
@@ -190,8 +195,7 @@ export default function RestoreFromBackupScreen({
           <Dialog.Title>Confirm restore</Dialog.Title>
           <Dialog.Content>
             <Text>
-              A safety backup of the current database will be saved to the configured backup
-              location before restoring. Continue?
+              Proceed with restoring the selected backup? A safety backup will be created first.
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
