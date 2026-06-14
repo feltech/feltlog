@@ -1,4 +1,4 @@
-import { Text, TextProps } from './Themed';
+import { Text, type TextProps } from 'react-native';
 
 /**
  * Text component that uses the SpaceMono font.

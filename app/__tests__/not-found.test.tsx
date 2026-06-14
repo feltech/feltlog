@@ -9,6 +9,17 @@ jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+/** Mock useTheme from react-native-paper to provide a stable theme object. */
+jest.mock('react-native-paper', () => {
+  const actual = jest.requireActual('react-native-paper');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { lightTheme } = require('@/src/presentation/theme/appTheme');
+  return {
+    ...actual,
+    useTheme: jest.fn(() => lightTheme),
+  };
+});
+
 import NotFoundScreen from '@/app/+not-found';
 
 /**

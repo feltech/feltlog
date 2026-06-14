@@ -1,11 +1,46 @@
 import React from 'react';
+import { Text as RNText } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import Markdown from 'react-native-markdown-renderer';
+import { Text as PaperText } from 'react-native-paper';
 import { JournalEntryCard } from '../JournalEntryCard';
 import { JournalEntry } from '@/src/domain/entities/JournalEntry';
+import { darkTheme, lightTheme } from '@/src/presentation/theme/appTheme';
+
+let mockCapturedMarkdownStyle: Record<string, unknown> | undefined;
+
+jest.mock('react-native-paper', () => {
+  const actual = jest.requireActual('react-native-paper');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { lightTheme } = require('@/src/presentation/theme/appTheme');
+  return {
+    ...actual,
+    useTheme: jest.fn(() => lightTheme),
+  };
+});
+
+jest.mock('react-native-markdown-renderer', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require('react-native');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: jest.fn(
+      ({ children, style }: { children: React.ReactNode; style?: Record<string, unknown> }) => {
+        mockCapturedMarkdownStyle = style;
+        return React.createElement(RN.Text, null, children);
+      },
+    ),
+  };
+});
+
+import { useTheme } from 'react-native-paper';
 
 /**
  * Test suite for the JournalEntryCard component. Covers rendering, markdown content,
- * long content truncation, location display, tags display, and modified indicator.
+ * long content truncation, location display, tags display, modified indicator, and
+ * theme-aware colors.
  */
 describe('JournalEntryCard', () => {
   const sampleEntry: JournalEntry = {
@@ -16,6 +51,18 @@ describe('JournalEntryCard', () => {
     modified_at: new Date('2024-01-01T00:00:00Z'),
     tags: ['tag1'],
   };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCapturedMarkdownStyle = undefined;
+    (useTheme as jest.Mock).mockReturnValue(lightTheme);
+    (Markdown as jest.Mock).mockImplementation(
+      ({ children, style }: { children: React.ReactNode; style?: Record<string, unknown> }) => {
+        mockCapturedMarkdownStyle = style;
+        return <RNText>{children}</RNText>;
+      },
+    );
+  });
 
   /** Tests that the card renders with testID and responds to press events. */
   it('renders with testID and responds to onPress', () => {
@@ -126,5 +173,88 @@ describe('JournalEntryCard', () => {
   it('renders without onPress callback', () => {
     const { toJSON } = render(<JournalEntryCard entry={sampleEntry} />);
     expect(toJSON()).toBeTruthy();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Theme-aware colors
+  // ---------------------------------------------------------------------------
+
+  describe('theme colors', () => {
+    /** Tests that markdown colors use the light Paper theme. */
+    it('uses light theme colors for markdown styles', () => {
+      render(<JournalEntryCard entry={sampleEntry} />);
+
+      expect(mockCapturedMarkdownStyle).toBeDefined();
+      expect(
+        (mockCapturedMarkdownStyle?.blockquote as Record<string, string>)?.borderLeftColor,
+      ).toBe(lightTheme.colors.outline);
+      expect((mockCapturedMarkdownStyle?.code as Record<string, string>)?.backgroundColor).toBe(
+        lightTheme.colors.surfaceVariant,
+      );
+      expect((mockCapturedMarkdownStyle?.link as Record<string, string>)?.color).toBe(
+        lightTheme.colors.primary,
+      );
+    });
+
+    /** Tests that markdown colors use the dark Paper theme. */
+    it('uses dark theme colors for markdown styles', () => {
+      (useTheme as jest.Mock).mockReturnValue(darkTheme);
+      render(<JournalEntryCard entry={sampleEntry} />);
+
+      expect(mockCapturedMarkdownStyle).toBeDefined();
+      expect(
+        (mockCapturedMarkdownStyle?.blockquote as Record<string, string>)?.borderLeftColor,
+      ).toBe(darkTheme.colors.outline);
+      expect((mockCapturedMarkdownStyle?.code as Record<string, string>)?.backgroundColor).toBe(
+        darkTheme.colors.surfaceVariant,
+      );
+      expect((mockCapturedMarkdownStyle?.link as Record<string, string>)?.color).toBe(
+        darkTheme.colors.primary,
+      );
+    });
+
+    /** Tests that location text uses a lower-emphasis theme color. */
+    it('uses onSurfaceVariant for location text', () => {
+      const entryWithLocation: JournalEntry = {
+        ...sampleEntry,
+        location: {
+          latitude: 40.7128,
+          longitude: -74.006,
+          elevation: 10,
+          address: 'New York, NY',
+        },
+      };
+      const { getByText, UNSAFE_root } = render(<JournalEntryCard entry={entryWithLocation} />);
+      expect(getByText(/New York, NY/)).toBeTruthy();
+
+      const textNodes = UNSAFE_root.findAllByType(PaperText);
+      const locationNode = textNodes.find(node =>
+        String(node.props.children).includes('New York, NY'),
+      );
+      const flatStyle = Array.isArray(locationNode?.props.style)
+        ? Object.assign({}, ...locationNode.props.style.filter(Boolean))
+        : locationNode?.props.style;
+      expect(flatStyle?.color).toBe(lightTheme.colors.onSurfaceVariant);
+    });
+
+    /** Tests that modified text uses a lower-emphasis theme color. */
+    it('uses onSurfaceVariant for modified text', () => {
+      const modifiedEntry: JournalEntry = {
+        ...sampleEntry,
+        created_at: new Date('2024-01-01T00:00:00Z'),
+        modified_at: new Date('2024-01-02T00:00:00Z'),
+      };
+      const { getByText, UNSAFE_root } = render(<JournalEntryCard entry={modifiedEntry} />);
+      expect(getByText(/Modified:/)).toBeTruthy();
+
+      const textNodes = UNSAFE_root.findAllByType(PaperText);
+      const modifiedNode = textNodes.find(node =>
+        String(node.props.children).includes('Modified:'),
+      );
+      const flatStyle = Array.isArray(modifiedNode?.props.style)
+        ? Object.assign({}, ...modifiedNode.props.style.filter(Boolean))
+        : modifiedNode?.props.style;
+      expect(flatStyle?.color).toBe(lightTheme.colors.onSurfaceVariant);
+    });
   });
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlatList, RefreshControl, StyleSheet } from 'react-native';
-import { ActivityIndicator, Text } from 'react-native-paper';
+import { ActivityIndicator, Text, useTheme } from 'react-native-paper';
 import { JournalEntry } from '../../domain/entities/JournalEntry';
 import { JournalEntryCard } from './JournalEntryCard';
 
@@ -41,6 +41,7 @@ export const JournalList: React.FC<JournalListProps> = ({
   onRefresh,
   onEntryPress,
 }) => {
+  const theme = useTheme();
   /**
    * Renders a single journal entry card.
    *
@@ -73,7 +74,9 @@ export const JournalList: React.FC<JournalListProps> = ({
     if (loading) return null;
 
     return (
-      <Text style={styles.emptyText}>No journal entries found. Create your first entry!</Text>
+      <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
+        No journal entries found. Create your first entry!
+      </Text>
     );
   };
 
@@ -111,7 +114,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#666',
     textAlign: 'center',
     margin: 32,
   },

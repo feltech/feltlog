@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { FAB, Snackbar } from 'react-native-paper';
+import { FAB, Snackbar, useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 
@@ -14,6 +14,7 @@ import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
  * @returns The rendered journal screen.
  */
 export default function JournalScreen() {
+  const theme = useTheme();
   const router = useRouter();
   const { state, actions } = useJournalViewModel();
 
@@ -53,7 +54,7 @@ export default function JournalScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <JournalList
         entries={state.entries}
         loading={state.loading}
@@ -89,7 +90,6 @@ export default function JournalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   fab: {
     position: 'absolute',

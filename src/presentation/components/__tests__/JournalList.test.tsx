@@ -2,6 +2,17 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { JournalList } from '../JournalList';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
+import { lightTheme } from '@/src/presentation/theme/appTheme';
+
+jest.mock('react-native-paper', () => {
+  const actual = jest.requireActual('react-native-paper');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { lightTheme } = require('@/src/presentation/theme/appTheme');
+  return {
+    ...actual,
+    useTheme: jest.fn(() => lightTheme),
+  };
+});
 
 /**
  * Structural type for the test instances returned by RNTL's UNSAFE_root queries.
@@ -69,6 +80,42 @@ describe('JournalList', () => {
   it('does not show empty state while loading', () => {
     const { queryByText } = render(<JournalList {...defaultProps} loading={true} />);
     expect(queryByText(/No journal entries found/)).toBeNull();
+  });
+
+  /**
+   * Tests that the empty state text uses the theme's onSurfaceVariant color instead of
+   * a hard-coded value.
+   */
+  it('uses theme onSurfaceVariant color for empty state text', () => {
+    const { getByText } = render(<JournalList {...defaultProps} />);
+    const emptyText = getByText(/No journal entries found/);
+
+    /**
+     * React Native text styles can be nested arrays; flatten them so we can assert on
+     * the color introduced by the component.
+     *
+     * @param style - A React Native style or array of styles.
+     *
+     * @returns A flat array of style objects.
+     */
+    function flattenStyle(
+      style: Record<string, unknown> | Array<Record<string, unknown> | unknown> | unknown,
+    ): Record<string, unknown>[] {
+      if (Array.isArray(style)) {
+        return style.flatMap(flattenStyle);
+      }
+      if (style !== null && typeof style === 'object') {
+        return [style as Record<string, unknown>];
+      }
+      return [];
+    }
+
+    const flattened = flattenStyle(emptyText.props.style);
+    expect(flattened).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ color: lightTheme.colors.onSurfaceVariant }),
+      ]),
+    );
   });
 
   /** Tests that journal entries are rendered in the list. */

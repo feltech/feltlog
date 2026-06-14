@@ -1,7 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -15,13 +14,16 @@ import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScre
 import RestoreFromBackupScreen from '@/src/presentation/components/RestoreFromBackupScreen';
 import { performLifecycleBackup, getLatestMigrationKey } from '@/src/data/database/backup';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
-
 import { useColorScheme } from '@/src/presentation/components/useColorScheme';
 import {
   ThemePreferenceProvider,
   useThemePreference,
 } from '@/src/presentation/theme/ThemePreferenceContext';
+import { getAppTheme } from '@/src/presentation/theme/appTheme';
 import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
+
+/** Navigation theme type inferred from expo-router's ThemeProvider. */
+type NavigationTheme = NonNullable<React.ComponentProps<typeof ThemeProvider>['value']>;
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -94,6 +96,7 @@ function RootLayoutNav() {
 
   // Resolve effective scheme: 'auto' follows system, else explicit.
   const effectiveScheme = themeMode === 'auto' ? colorScheme : themeMode;
+  const appTheme = getAppTheme(effectiveScheme);
 
   // Lifecycle-triggered backup: attempt on background, confirm/retry on resume.
   useEffect(() => {
@@ -151,21 +154,23 @@ function RootLayoutNav() {
 
   if (!ready || !db) {
     return (
-      <PaperProvider>
-        {restoreMode ? (
-          <RestoreFromBackupScreen
-            lastDatabaseName={lastDatabaseName}
-            onCancel={() => setRestoreMode(false)}
-            onSuccess={() => setRestoreMode(false)}
-          />
-        ) : (
-          <SetupDatabaseScreen
-            initialize={initialize}
-            lastDatabaseName={lastDatabaseName}
-            error={error}
-            onRestore={() => setRestoreMode(true)}
-          />
-        )}
+      <PaperProvider theme={appTheme}>
+        <ThemeProvider value={appTheme as unknown as NavigationTheme}>
+          {restoreMode ? (
+            <RestoreFromBackupScreen
+              lastDatabaseName={lastDatabaseName}
+              onCancel={() => setRestoreMode(false)}
+              onSuccess={() => setRestoreMode(false)}
+            />
+          ) : (
+            <SetupDatabaseScreen
+              initialize={initialize}
+              lastDatabaseName={lastDatabaseName}
+              error={error}
+              onRestore={() => setRestoreMode(true)}
+            />
+          )}
+        </ThemeProvider>
       </PaperProvider>
     );
   }
@@ -173,10 +178,10 @@ function RootLayoutNav() {
   const repository = new JournalRepositoryImpl(db);
 
   return (
-    <PaperProvider>
+    <PaperProvider theme={appTheme}>
       <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted, sqliteDb }}>
         <RepositoryProvider repository={repository}>
-          <ThemeProvider value={effectiveScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <ThemeProvider value={appTheme as unknown as NavigationTheme}>
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen

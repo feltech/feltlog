@@ -1,24 +1,41 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 
+import { darkTheme, lightTheme } from '@/src/presentation/theme/appTheme';
+
 // ---------------------------------------------------------------------------
 // Mocks — hoisted before any imports below.
 // ---------------------------------------------------------------------------
 
-/** Mock the color scheme hook to return 'light' by default. */
-jest.mock('@/src/presentation/components/useColorScheme', () => ({
-  useColorScheme: jest.fn().mockReturnValue('light'),
-}));
+/** Capture screenOptions passed to the mocked Tabs navigator. */
+let lastScreenOptions: Record<string, unknown> | null = null;
+
+/** Capture icon props passed to the mocked FontAwesome icons. */
+const iconProps: Array<Record<string, unknown>> = [];
 
 /** Mock useClientOnlyValue to return the client value. */
 jest.mock('@/src/presentation/components/useClientOnlyValue', () => ({
   useClientOnlyValue: jest.fn((_server: unknown, client: unknown) => client),
 }));
 
-/** Mock FontAwesome to avoid vector icon native issues. */
+/** Mock useTheme to return the light theme by default. */
+jest.mock('react-native-paper', () => {
+  const actual = jest.requireActual('react-native-paper');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { lightTheme } = require('@/src/presentation/theme/appTheme');
+  return {
+    ...actual,
+    useTheme: jest.fn(() => lightTheme),
+  };
+});
+
+/** Mock FontAwesome to avoid vector icon native issues and capture props. */
 jest.mock('@expo/vector-icons/FontAwesome', () => ({
   __esModule: true,
-  default: jest.fn(({ name }: { name: string }) => <>{`Icon:${name}`}</>),
+  default: jest.fn((props: { name: string; color?: string }) => {
+    iconProps.push(props);
+    return <>{`Icon:${props.name}`}</>;
+  }),
 }));
 
 /** Mock expo-router Tabs and Link. */
@@ -31,10 +48,20 @@ jest.mock('expo-router', () => {
    *
    * @param props - Component props.
    * @param props.children - Child screen components.
+   * @param props.screenOptions - Options applied to all screens.
    *
    * @returns The rendered mock tabs.
    */
-  const MockTabs = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+  const MockTabs = ({
+    children,
+    screenOptions,
+  }: {
+    children: React.ReactNode;
+    screenOptions?: Record<string, unknown>;
+  }) => {
+    lastScreenOptions = screenOptions ?? null;
+    return <>{children}</>;
+  };
   MockTabs.displayName = 'Tabs';
 
   /**
@@ -66,7 +93,7 @@ jest.mock('expo-router', () => {
   };
 });
 
-import { useColorScheme } from '@/src/presentation/components/useColorScheme';
+import { useTheme } from 'react-native-paper';
 import TabLayout from '@/app/(tabs)/_layout';
 
 // ---------------------------------------------------------------------------
@@ -80,7 +107,9 @@ import TabLayout from '@/app/(tabs)/_layout';
 describe('TabLayout', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (useColorScheme as jest.Mock).mockReturnValue('light');
+    lastScreenOptions = null;
+    iconProps.length = 0;
+    (useTheme as jest.Mock).mockReturnValue(lightTheme);
   });
 
   /** Tests that the tab navigator renders without crashing. */
@@ -120,11 +149,27 @@ describe('TabLayout', () => {
     expect(json).toContain('Icon:cog');
   });
 
-  /** Tests that the tab layout uses the correct active tint color from the theme. */
-  it('uses the correct theme tint color', () => {
-    (useColorScheme as jest.Mock).mockReturnValue('dark');
-    const { toJSON } = render(<TabLayout />);
-    expect(toJSON()).toBeTruthy();
+  /** Tests that the tab layout uses the active tint color from the Paper theme. */
+  it('uses the Paper primary color for tabBarActiveTintColor', () => {
+    render(<TabLayout />);
+    expect(lastScreenOptions?.tabBarActiveTintColor).toBe(lightTheme.colors.primary);
+  });
+
+  /** Tests that the plus icon uses the onBackground color from the Paper theme. */
+  it('uses the Paper onBackground color for the plus icon', () => {
+    render(<TabLayout />);
+    const plusIcon = iconProps.find(props => props.name === 'plus');
+    expect(plusIcon).toBeDefined();
+    expect(plusIcon?.color).toBe(lightTheme.colors.onBackground);
+  });
+
+  /** Tests that the plus icon uses dark theme onBackground in dark mode. */
+  it('uses dark theme colors when the Paper theme is dark', () => {
+    (useTheme as jest.Mock).mockReturnValue(darkTheme);
+    render(<TabLayout />);
+    expect(lastScreenOptions?.tabBarActiveTintColor).toBe(darkTheme.colors.primary);
+    const plusIcon = iconProps.find(props => props.name === 'plus');
+    expect(plusIcon?.color).toBe(darkTheme.colors.onBackground);
   });
 
   /** Tests that the header right plus button is rendered inside a Pressable. */
@@ -138,22 +183,5 @@ describe('TabLayout', () => {
       focusable: true,
     });
     expect(pressable).toBeTruthy();
-  });
-
-  /** Tests that the tab layout falls back to light theme when color scheme is null. */
-  it('falls back to light theme when color scheme is null', () => {
-    (useColorScheme as jest.Mock).mockReturnValue(null);
-    const { toJSON } = render(<TabLayout />);
-    expect(toJSON()).toBeTruthy();
-  });
-
-  /**
-   * Tests that the tab layout falls back to light theme when color scheme is
-   * 'unspecified' (added in React Native 0.85).
-   */
-  it('falls back to light theme when color scheme is unspecified', () => {
-    (useColorScheme as jest.Mock).mockReturnValue('unspecified');
-    const { toJSON } = render(<TabLayout />);
-    expect(toJSON()).toBeTruthy();
   });
 });

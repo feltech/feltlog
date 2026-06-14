@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Card, Chip, Text } from 'react-native-paper';
+import { Card, Chip, Text, useTheme } from 'react-native-paper';
 import Markdown from 'react-native-markdown-renderer';
 import { JournalEntry } from '../../domain/entities/JournalEntry';
+import type { AppTheme } from '../theme/appTheme';
 
 /** Props for the JournalEntryCard component. */
 export interface JournalEntryCardProps {
@@ -12,27 +13,40 @@ export interface JournalEntryCardProps {
   onPress?: () => void;
 }
 
-const markdownStyles = StyleSheet.create({
-  heading1: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
-  heading2: { fontSize: 20, fontWeight: 'bold', marginBottom: 6 },
-  heading3: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
-  paragraph: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
-  strong: { fontWeight: 'bold' },
-  em: { fontStyle: 'italic' },
-  blockquote: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#ccc',
-    paddingLeft: 8,
-    marginVertical: 4,
-  },
-  code: {
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 4,
-    fontFamily: 'monospace',
-    fontSize: 12,
-  },
-  link: { color: '#007bff' },
-});
+/**
+ * Creates markdown renderer styles derived from the current Paper theme.
+ *
+ * Keeping this as a plain object (instead of StyleSheet.create) makes the resulting
+ * style tree easy to inspect in tests and guarantees that dynamic theme colors are
+ * applied without flattening StyleSheet references.
+ *
+ * @param theme - The current app theme.
+ *
+ * @returns Markdown style object for react-native-markdown-renderer.
+ */
+function createMarkdownStyles(theme: AppTheme) {
+  return {
+    heading1: { fontSize: 24, fontWeight: 'bold' as const, marginBottom: 8 },
+    heading2: { fontSize: 20, fontWeight: 'bold' as const, marginBottom: 6 },
+    heading3: { fontSize: 18, fontWeight: 'bold' as const, marginBottom: 4 },
+    paragraph: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
+    strong: { fontWeight: 'bold' as const },
+    em: { fontStyle: 'italic' as const },
+    blockquote: {
+      borderLeftWidth: 3,
+      borderLeftColor: theme.colors.outline,
+      paddingLeft: 8,
+      marginVertical: 4,
+    },
+    code: {
+      backgroundColor: theme.colors.surfaceVariant,
+      paddingHorizontal: 4,
+      fontFamily: 'monospace',
+      fontSize: 12,
+    },
+    link: { color: theme.colors.primary },
+  };
+}
 
 /**
  * Component for rendering a single journal entry as a card.
@@ -44,6 +58,9 @@ const markdownStyles = StyleSheet.create({
  * @returns The rendered journal entry card.
  */
 export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPress }) => {
+  const theme = useTheme();
+  const markdownStyles = useMemo(() => createMarkdownStyles(theme as AppTheme), [theme]);
+
   /**
    * Formats a date object into a localized string.
    *
@@ -94,7 +111,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPre
 
         {entry.location && (
           <View style={styles.locationContainer}>
-            <Text style={styles.locationText}>
+            <Text style={[styles.locationText, { color: theme.colors.onSurfaceVariant }]}>
               📍{' '}
               {entry.location.address ||
                 `${entry.location.latitude.toFixed(4)}, ${entry.location.longitude.toFixed(4)}`}
@@ -113,7 +130,9 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ entry, onPre
         )}
 
         {entry.created_at !== entry.modified_at && (
-          <Text style={styles.modifiedText}>Modified: {formatDate(entry.modified_at)}</Text>
+          <Text style={[styles.modifiedText, { color: theme.colors.onSurfaceVariant }]}>
+            Modified: {formatDate(entry.modified_at)}
+          </Text>
         )}
       </Card.Content>
     </Card>
@@ -139,7 +158,6 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 12,
-    color: '#666',
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -157,7 +175,6 @@ const styles = StyleSheet.create({
   },
   modifiedText: {
     fontSize: 10,
-    color: '#999',
     marginTop: 4,
   },
 });
