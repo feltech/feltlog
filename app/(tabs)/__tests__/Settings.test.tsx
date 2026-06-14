@@ -41,7 +41,16 @@ jest.mock('@/src/presentation/components/ChangePasswordDialog', () => ({
   default: jest.fn(() => null),
 }));
 
+/** Mock the theme preference hook. */
+jest.mock('@/src/presentation/theme/ThemePreferenceContext', () => ({
+  useThemePreference: jest.fn().mockReturnValue({
+    themeMode: 'auto',
+    setThemeMode: jest.fn(),
+  }),
+}));
+
 import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
+import { useThemePreference } from '@/src/presentation/theme/ThemePreferenceContext';
 import { StorageAccessFramework } from 'expo-file-system/legacy';
 import {
   getBackupDirectoryUri,
@@ -126,11 +135,12 @@ describe('SettingsScreen', () => {
   // Rendering
   // -------------------------------------------------------------------------
 
-  /** Tests that all three sections are rendered. */
-  it('renders all three sections', async () => {
+  /** Tests that all four sections are rendered. */
+  it('renders all four sections', async () => {
     const { getByText } = renderScreen();
 
     await waitFor(() => {
+      expect(getByText('Theme')).toBeTruthy();
       expect(getByText('Backup')).toBeTruthy();
       expect(getByText('Database')).toBeTruthy();
       expect(getByText('About')).toBeTruthy();
@@ -411,6 +421,70 @@ describe('SettingsScreen', () => {
     // but the internal state of SettingsScreen is updated.
     await waitFor(() => {
       expect(getByTestId('change-password-btn')).toBeTruthy();
+    });
+  });
+});
+
+describe('SettingsScreen - Theme Selector', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (backupDatabase as jest.Mock).mockReset();
+    setupDatabaseMock();
+    setupBackupStorageMocks();
+    (StorageAccessFramework.readDirectoryAsync as jest.Mock).mockResolvedValue([]);
+    (useThemePreference as jest.Mock).mockReturnValue({
+      themeMode: 'auto',
+      setThemeMode: jest.fn(),
+    });
+  });
+
+  /** Tests that the theme selector card is rendered with three segments. */
+  it('renders theme selector card with three segments', async () => {
+    const { getByText, getByTestId } = renderScreen();
+
+    await waitFor(() => {
+      expect(getByText('Theme')).toBeTruthy();
+      expect(getByTestId('theme-card')).toBeTruthy();
+      expect(getByTestId('theme-selector-auto')).toBeTruthy();
+      expect(getByTestId('theme-selector-light')).toBeTruthy();
+      expect(getByTestId('theme-selector-dark')).toBeTruthy();
+    });
+  });
+
+  /** Tests that tapping a segment calls setThemeMode. */
+  it('calls setThemeMode when a segment is tapped', async () => {
+    const mockSetThemeMode = jest.fn();
+    (useThemePreference as jest.Mock).mockReturnValue({
+      themeMode: 'auto',
+      setThemeMode: mockSetThemeMode,
+    });
+
+    const { getByTestId } = renderScreen();
+
+    await waitFor(() => {
+      expect(getByTestId('theme-selector-auto')).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId('theme-selector-dark'));
+
+    await waitFor(() => {
+      expect(mockSetThemeMode).toHaveBeenCalledWith('dark');
+    });
+  });
+
+  /** Tests that the theme selector reflects the current themeMode. */
+  it('reflects current themeMode in the selector', async () => {
+    (useThemePreference as jest.Mock).mockReturnValue({
+      themeMode: 'dark',
+      setThemeMode: jest.fn(),
+    });
+
+    const { getByTestId } = renderScreen();
+
+    await waitFor(() => {
+      // The SegmentedButtons value should be 'dark'
+      const selector = getByTestId('theme-selector-dark');
+      expect(selector).toBeTruthy();
     });
   });
 });

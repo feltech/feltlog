@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Card, Button, Text, Snackbar, ActivityIndicator, Title } from 'react-native-paper';
+import {
+  Card,
+  Button,
+  Text,
+  Snackbar,
+  ActivityIndicator,
+  Title,
+  SegmentedButtons,
+} from 'react-native-paper';
 import { StorageAccessFramework } from 'expo-file-system/legacy';
 import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
 import {
@@ -12,6 +20,7 @@ import {
 } from '@/src/data/database/dbBackupStorage';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
 import ChangePasswordDialog from '@/src/presentation/components/ChangePasswordDialog';
+import { useThemePreference } from '@/src/presentation/theme/ThemePreferenceContext';
 
 /**
  * Extracts a human-readable directory path from a SAF content URI.
@@ -50,6 +59,7 @@ export function parseSafLocation(uri: string): string {
  */
 export default function SettingsScreen() {
   const { databaseName, databasePath, isCurrentlyEncrypted } = useDatabaseInfo();
+  const { themeMode, setThemeMode } = useThemePreference();
 
   const [backupDirUri, setBackupDirUriState] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
@@ -208,6 +218,22 @@ export default function SettingsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Theme Section */}
+        <Card style={styles.card} testID="theme-card">
+          <Card.Content>
+            <Title>Theme</Title>
+            <SegmentedButtons
+              value={themeMode}
+              onValueChange={setThemeMode}
+              buttons={[
+                { value: 'auto', label: 'Auto', testID: 'theme-selector-auto' },
+                { value: 'light', label: 'Light', testID: 'theme-selector-light' },
+                { value: 'dark', label: 'Dark', testID: 'theme-selector-dark' },
+              ]}
+            />
+          </Card.Content>
+        </Card>
+
         {/* Backup Section */}
         <Card style={styles.card}>
           <Card.Content>

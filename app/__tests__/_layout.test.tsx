@@ -87,6 +87,15 @@ jest.mock('@/src/presentation/components/useColorScheme', () => ({
   useColorScheme: jest.fn().mockReturnValue('light'),
 }));
 
+/** Mock the theme preference hook to return 'auto' by default. */
+jest.mock('@/src/presentation/theme/ThemePreferenceContext', () => ({
+  useThemePreference: jest.fn().mockReturnValue({
+    themeMode: 'auto',
+    setThemeMode: jest.fn(),
+  }),
+  ThemePreferenceProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 /** Mock FontAwesome to avoid vector icon native issues. */
 jest.mock('@expo/vector-icons/FontAwesome', () => ({
   __esModule: true,
@@ -94,7 +103,10 @@ jest.mock('@expo/vector-icons/FontAwesome', () => ({
   font: { fontFamily: 'FontAwesome' },
 }));
 
-/** Mock expo-router Stack and ErrorBoundary export. */
+// Module-level variable to capture the last theme value passed to ThemeProvider.
+let capturedThemeValue: unknown = null;
+
+// Mock expo-router's ThemeProvider to capture the theme value.
 jest.mock('expo-router', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
@@ -105,30 +117,52 @@ jest.mock('expo-router', () => {
    * @param props - Component props.
    * @param props.children - Child components.
    *
-   * @returns The rendered mock stack.
+   * @returns The rendered children.
    */
   const MockStack = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   MockStack.displayName = 'Stack';
   MockStack.Screen = jest.fn(() => null);
 
-  // Re-export the real theme values so ThemeProvider works in tests.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const realModule = jest.requireActual('expo-router');
+
+  /**
+   * Mock ThemeProvider that captures the theme value passed to it.
+   *
+   * @param props - Component props.
+   * @param props.value - The theme value to capture.
+   * @param props.children - Child components.
+   *
+   * @returns The rendered children.
+   */
+  const MockThemeProvider = ({
+    value,
+    children,
+  }: {
+    value: unknown;
+    children: React.ReactNode;
+  }) => {
+    capturedThemeValue = value;
+    return <>{children}</>;
+  };
+  MockThemeProvider.displayName = 'ThemeProvider';
 
   return {
     Stack: MockStack,
     ErrorBoundary: jest.fn(() => null),
     DarkTheme: realModule.DarkTheme,
     DefaultTheme: realModule.DefaultTheme,
-    ThemeProvider: realModule.ThemeProvider,
+    ThemeProvider: MockThemeProvider,
   };
 });
 
 import { useFonts } from 'expo-font';
+import { DarkTheme, DefaultTheme } from 'expo-router';
 import { AppState } from 'react-native';
 import { useDatabase } from '@/src/data/database/database';
 import { performLifecycleBackup } from '@/src/data/database/backup';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
+import { useThemePreference } from '@/src/presentation/theme/ThemePreferenceContext';
 import RootLayout from '../_layout';
 
 // ---------------------------------------------------------------------------
@@ -375,6 +409,62 @@ describe('RootLayout', () => {
         '20260523_one_create_initial_tables',
         'test.db',
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Theme provider
+  // -------------------------------------------------------------------------
+
+  describe('theme provider', () => {
+    beforeEach(() => {
+      capturedThemeValue = null;
+    });
+
+    /**
+     * Tests that ThemeProvider receives DefaultTheme when themeMode is 'auto' and
+     * colorScheme is 'light'.
+     */
+    it('passes DefaultTheme to ThemeProvider when themeMode is auto and colorScheme is light', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'auto',
+        setThemeMode: jest.fn(),
+      });
+
+      await renderLayout(true, true);
+
+      // The mocked ThemeProvider captures the last value passed to it.
+      expect(capturedThemeValue).toBeDefined();
+      // DefaultTheme is the light theme.
+      expect(capturedThemeValue).not.toBe(DarkTheme);
+    });
+
+    /** Tests that ThemeProvider receives DarkTheme when themeMode is 'dark'. */
+    it('passes DarkTheme to ThemeProvider when themeMode is dark', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'dark',
+        setThemeMode: jest.fn(),
+      });
+
+      await renderLayout(true, true);
+
+      expect(capturedThemeValue).toBeDefined();
+      // Should be DarkTheme when themeMode is explicitly 'dark'.
+      expect(capturedThemeValue).toBe(DarkTheme);
+    });
+
+    /** Tests that ThemeProvider receives DefaultTheme when themeMode is 'light'. */
+    it('passes DefaultTheme to ThemeProvider when themeMode is light', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'light',
+        setThemeMode: jest.fn(),
+      });
+
+      await renderLayout(true, true);
+
+      expect(capturedThemeValue).toBeDefined();
+      // Should be DefaultTheme when themeMode is explicitly 'light'.
+      expect(capturedThemeValue).toBe(DefaultTheme);
     });
   });
 });

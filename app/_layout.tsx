@@ -17,6 +17,10 @@ import { performLifecycleBackup, getLatestMigrationKey } from '@/src/data/databa
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 
 import { useColorScheme } from '@/src/presentation/components/useColorScheme';
+import {
+  ThemePreferenceProvider,
+  useThemePreference,
+} from '@/src/presentation/theme/ThemePreferenceContext';
 import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
 
 export {
@@ -58,7 +62,11 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <ThemePreferenceProvider>
+      <RootLayoutNav />
+    </ThemePreferenceProvider>
+  );
 }
 
 /**
@@ -80,8 +88,12 @@ function RootLayoutNav() {
     sqliteDb,
   } = useDatabase();
   const colorScheme = useColorScheme();
+  const { themeMode } = useThemePreference();
   const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
   const [restoreMode, setRestoreMode] = useState(false);
+
+  // Resolve effective scheme: 'auto' follows system, else explicit.
+  const effectiveScheme = themeMode === 'auto' ? colorScheme : themeMode;
 
   // Lifecycle-triggered backup: attempt on background, confirm/retry on resume.
   useEffect(() => {
@@ -164,7 +176,7 @@ function RootLayoutNav() {
     <PaperProvider>
       <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted, sqliteDb }}>
         <RepositoryProvider repository={repository}>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <ThemeProvider value={effectiveScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen
