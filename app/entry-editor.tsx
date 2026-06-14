@@ -1300,7 +1300,7 @@ const styles = StyleSheet.create({
   },
   contentInput: {
     marginBottom: 16,
-    minHeight: 200,
+    minHeight: 400,
   },
   tagsSection: {
     padding: 16,
