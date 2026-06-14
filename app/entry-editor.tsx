@@ -3,8 +3,11 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform, ScrollView, StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
 import {
   Appbar,
+  Button,
   Chip,
+  Dialog,
   IconButton,
+  Portal,
   Snackbar,
   Surface,
   Text,
@@ -181,6 +184,8 @@ export default function JournalEntryModal() {
   // Tracks whether the user is touching the map area, so the outer
   // ScrollView can disable its scroll to let map gestures through.
   const [isMapTouched, setIsMapTouched] = useState(false);
+  // Controls visibility of the delete confirmation dialog.
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   // Timer ref for the debounce that re-enables ScrollView scrolling after
   // the last user-driven map region change. Cleared on unmount.
   const mapInteractionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -899,11 +904,15 @@ export default function JournalEntryModal() {
    * through.
    */
   const isLeavingRef = useRef(false);
+  // Short-circuit the beforeRemove save-flush when the user explicitly deletes the
+  // entry. Deleting already removes the row from the database; attempting to save
+  // afterwards would recreate it or race against the deletion.
+  const isDeletingRef = useRef(false);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
-      if (isLeavingRef.current) return;
+      if (isLeavingRef.current || isDeletingRef.current) return;
       e.preventDefault();
       isLeavingRef.current = true;
       /** Flush save and then dispatch the original back navigation action. */
@@ -1028,6 +1037,39 @@ export default function JournalEntryModal() {
     clearTimeout(contentUndoTimerRef.current);
   }, [state, setState]);
 
+  /**
+   * Opens the delete confirmation dialog.
+   *
+   * The actual deletion is deferred until the user confirms, preventing accidental data
+   * loss from an accidental tap on the destructive header action.
+   */
+  const handleDeletePress = useCallback(() => {
+    setDeleteDialogVisible(true);
+  }, []);
+
+  /** Closes the delete confirmation dialog without deleting the entry. */
+  const handleCancelDelete = useCallback(() => {
+    setDeleteDialogVisible(false);
+  }, []);
+
+  /**
+   * Confirms deletion of the current entry.
+   *
+   * Sets a guard ref before navigating back so the shared `beforeRemove` listener does
+   * not attempt to flush a pending autosave after the entry has been deleted. If
+   * deletion fails, the dialog closes and the existing snackbar surfaces the ViewModel
+   * error.
+   */
+  const handleConfirmDelete = useCallback(async () => {
+    if (!resolvedEntryId) return;
+    const success = await actions.deleteEntry(resolvedEntryId);
+    setDeleteDialogVisible(false);
+    if (success) {
+      isDeletingRef.current = true;
+      navigation.goBack();
+    }
+  }, [resolvedEntryId, actions, navigation]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       <Appbar.Header statusBarHeight={0} testID="appbar-header">
@@ -1047,6 +1089,14 @@ export default function JournalEntryModal() {
           onPress={handleRedo}
           disabled={!canRedo}
         />
+        {isEditing && (
+          <Appbar.Action
+            icon="trash-can"
+            testID="delete-entry-button"
+            accessibilityLabel="Delete entry"
+            onPress={handleDeletePress}
+          />
+        )}
       </Appbar.Header>
 
       {state.isUpdatingLocation && (
@@ -1283,6 +1333,35 @@ export default function JournalEntryModal() {
       >
         {state.error}
       </Snackbar>
+
+      <Portal>
+        <Dialog
+          visible={deleteDialogVisible}
+          onDismiss={handleCancelDelete}
+          testID="delete-entry-dialog"
+        >
+          <Dialog.Title>Delete entry?</Dialog.Title>
+          <Dialog.Content>
+            <Text>This action cannot be undone.</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button
+              onPress={handleCancelDelete}
+              testID="delete-entry-cancel-button"
+              accessibilityLabel="Cancel delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              onPress={handleConfirmDelete}
+              testID="delete-entry-confirm-button"
+              accessibilityLabel="Confirm delete"
+            >
+              Delete
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
 
       <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
     </SafeAreaView>

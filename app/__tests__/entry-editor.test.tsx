@@ -1534,6 +1534,232 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Delete entry
+  // -------------------------------------------------------------------------
+
+  describe('delete entry', () => {
+    it('shows the delete button in edit mode and hides it in create mode', async () => {
+      const createResult = await renderModal();
+      await flushEffects();
+      expect(createResult.queryByTestId('delete-entry-button')).toBeNull();
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const editResult = await renderModal('edit-1');
+      await flushEffects();
+      expect(editResult.getByTestId('delete-entry-button')).toBeTruthy();
+    });
+
+    it('opens the delete confirmation dialog when the delete button is pressed', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
+
+      const deleteBtn = result.getByTestId('delete-entry-button');
+      await act(async () => {
+        fireEvent.press(deleteBtn);
+      });
+
+      expect(result.getByTestId('delete-entry-dialog')).toBeTruthy();
+    });
+
+    it('dismisses the dialog without deleting when cancel is pressed', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const deleteBtn = result.getByTestId('delete-entry-button');
+      await act(async () => {
+        fireEvent.press(deleteBtn);
+      });
+
+      const cancelBtn = result.getByTestId('delete-entry-cancel-button');
+      await act(async () => {
+        fireEvent.press(cancelBtn);
+      });
+
+      await waitFor(() => {
+        expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
+      });
+      expect(actions.deleteEntry).not.toHaveBeenCalled();
+    });
+
+    it('calls deleteEntry and navigates back when deletion is confirmed', async () => {
+      actions.deleteEntry.mockResolvedValue(true);
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const deleteBtn = result.getByTestId('delete-entry-button');
+      await act(async () => {
+        fireEvent.press(deleteBtn);
+      });
+
+      const confirmBtn = result.getByTestId('delete-entry-confirm-button');
+      await act(async () => {
+        fireEvent.press(confirmBtn);
+        await Promise.resolve();
+      });
+
+      expect(actions.deleteEntry).toHaveBeenCalledWith('edit-1');
+      expect(mockGoBack).toHaveBeenCalled();
+    });
+
+    it('closes the dialog and stays on screen when deletion fails', async () => {
+      actions.deleteEntry.mockResolvedValue(false);
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const deleteBtn = result.getByTestId('delete-entry-button');
+      await act(async () => {
+        fireEvent.press(deleteBtn);
+      });
+
+      const confirmBtn = result.getByTestId('delete-entry-confirm-button');
+      await act(async () => {
+        fireEvent.press(confirmBtn);
+        await Promise.resolve();
+      });
+
+      expect(actions.deleteEntry).toHaveBeenCalledWith('edit-1');
+      await waitFor(() => {
+        expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
+      });
+      expect(mockGoBack).not.toHaveBeenCalled();
+    });
+
+    it('does not flush autosave when navigating back after a successful delete', async () => {
+      actions.deleteEntry.mockResolvedValue(true);
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original',
+              datetime: new Date('2025-01-15T12:00:00Z'),
+              created_at: new Date('2025-01-15T12:00:00Z'),
+              modified_at: new Date('2025-01-15T12:00:00Z'),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // Make a content change that would normally be flushed on back.
+      const contentInput = result.getByTestId('entry-content-input');
+      fireEvent.changeText(contentInput, 'modified content');
+
+      // Confirm deletion.
+      const deleteBtn = result.getByTestId('delete-entry-button');
+      await act(async () => {
+        fireEvent.press(deleteBtn);
+      });
+
+      const confirmBtn = result.getByTestId('delete-entry-confirm-button');
+      await act(async () => {
+        fireEvent.press(confirmBtn);
+        await Promise.resolve();
+      });
+
+      expect(actions.deleteEntry).toHaveBeenCalledWith('edit-1');
+      // updateEntry should NOT have been called — the beforeRemove flush was
+      // short-circuited by the delete guard ref.
+      expect(actions.updateEntry).not.toHaveBeenCalled();
+      expect(mockGoBack).toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Keystroke coalescing
   // -------------------------------------------------------------------------
 
