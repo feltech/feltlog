@@ -83,6 +83,8 @@ jest.mock('react-native-safe-area-context', () => {
 
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import { useLocalSearchParams } from 'expo-router';
+import type { MD3Theme } from 'react-native-paper';
+import { lightTheme, darkTheme } from '@/src/presentation/theme/appTheme';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 import JournalEntryModal from '../entry-editor';
 
@@ -160,10 +162,14 @@ function stubActions(): Record<string, jest.Mock> {
  * in act()" warnings.
  *
  * @param entryId - Optional entry ID to pass as a search param (edit mode).
+ * @param theme - Optional Paper theme to wrap the component with.
  *
  * @returns Promise resolving to the render result from testing-library.
  */
-async function renderModal(entryId?: string): Promise<ReturnType<typeof render>> {
+async function renderModal(
+  entryId?: string,
+  theme?: MD3Theme,
+): Promise<ReturnType<typeof render>> {
   (useLocalSearchParams as jest.Mock).mockReturnValue(entryId ? { entryId } : {});
   // If an entryId is requested, automatically configure the current mock's
   // getEntryById to return the matching entry from the ViewModel's entries
@@ -179,7 +185,7 @@ async function renderModal(entryId?: string): Promise<ReturnType<typeof render>>
   }
   const result = render(
     <SafeAreaProvider>
-      <PaperProvider>
+      <PaperProvider theme={theme}>
         <JournalEntryModal />
       </PaperProvider>
     </SafeAreaProvider>,
@@ -3820,15 +3826,204 @@ describe('JournalEntryModal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Platform-specific status bar
+  // Theming
   // -------------------------------------------------------------------------
 
-  describe('status bar', () => {
-    it('renders StatusBar with auto style on android', async () => {
-      const result = await renderModal();
+  describe('theming', () => {
+    /**
+     * Checks whether a nested React Native style value contains the expected color.
+     *
+     * @param style - The style prop from a rendered element.
+     * @param color - The color string to look for.
+     *
+     * @returns True if the color appears anywhere in the serialized style.
+     */
+    function styleContainsColor(style: unknown, color: string): boolean {
+      return JSON.stringify(style).includes(color);
+    }
+
+    it('uses the theme background color on the root container in light mode', async () => {
+      const result = await renderModal(undefined, lightTheme);
       await flushEffects();
-      // The component renders without crashing — StatusBar is included.
-      expect(result.toJSON()).toBeTruthy();
+
+      const root = result.getByTestId('entry-editor-root');
+      expect(root.props.style).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ backgroundColor: lightTheme.colors.background }),
+        ]),
+      );
+    });
+
+    it('uses the theme background color on the root container in dark mode', async () => {
+      const result = await renderModal(undefined, darkTheme);
+      await flushEffects();
+
+      const root = result.getByTestId('entry-editor-root');
+      expect(root.props.style).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ backgroundColor: darkTheme.colors.background }),
+        ]),
+      );
+    });
+
+    it('uses onSurfaceVariant for the date text in light mode', async () => {
+      const result = await renderModal(undefined, lightTheme);
+      await flushEffects();
+
+      const dateText = result.getByTestId('entry-date-text');
+      expect(styleContainsColor(dateText.props.style, lightTheme.colors.onSurfaceVariant)).toBe(
+        true,
+      );
+    });
+
+    it('uses onSurfaceVariant for the date text in dark mode', async () => {
+      const result = await renderModal(undefined, darkTheme);
+      await flushEffects();
+
+      const dateText = result.getByTestId('entry-date-text');
+      expect(styleContainsColor(dateText.props.style, darkTheme.colors.onSurfaceVariant)).toBe(
+        true,
+      );
+    });
+
+    it('uses onSurfaceVariant for the saved indicator', async () => {
+      jest.useFakeTimers();
+      actions.updateEntry.mockResolvedValue({
+        id: 'edit-1',
+        content: 'changed',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [] as string[],
+      });
+
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1', darkTheme);
+      await flushEffects();
+
+      const contentInput = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(contentInput, 'changed');
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+
+      await waitFor(() => {
+        expect(result.queryByTestId('saved-indicator')).toBeTruthy();
+      });
+
+      const savedIndicator = result.getByTestId('saved-indicator');
+      expect(
+        styleContainsColor(savedIndicator.props.style, darkTheme.colors.onSurfaceVariant),
+      ).toBe(true);
+
+      jest.useRealTimers();
+    });
+
+    it('uses onSurfaceVariant for location address text', async () => {
+      (ExpoLocation.reverseGeocodeAsync as jest.Mock).mockResolvedValue([
+        {
+          name: 'Golden Gate',
+          street: '',
+          city: 'San Francisco',
+          region: 'CA',
+          postalCode: '94129',
+          country: 'US',
+        },
+      ]);
+
+      const result = await renderModal(undefined, darkTheme);
+      await flushEffects();
+      await waitForMap(result);
+
+      await waitFor(() => {
+        expect(result.queryByTestId('location-address-text')).toBeTruthy();
+      });
+
+      const addressText = result.getByTestId('location-address-text');
+      expect(styleContainsColor(addressText.props.style, darkTheme.colors.onSurfaceVariant)).toBe(
+        true,
+      );
+    });
+
+    it('uses onSurfaceVariant for location hints', async () => {
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'hello',
+              datetime: new Date(),
+              created_at: new Date(),
+              modified_at: new Date(),
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1', darkTheme);
+      await flushEffects();
+
+      const hint = result.getByText('No location was recorded for this entry.');
+      expect(styleContainsColor(hint.props.style, darkTheme.colors.onSurfaceVariant)).toBe(true);
+    });
+
+    it('uses theme.colors.error for location error text in light mode', async () => {
+      (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockRejectedValue(
+        new Error('GPS unavailable'),
+      );
+
+      const result = await renderModal(undefined, lightTheme);
+      await flushEffects();
+
+      await waitFor(() => {
+        expect(result.queryByTestId('location-error-text')).toBeTruthy();
+      });
+
+      const errorText = result.getByTestId('location-error-text');
+      expect(styleContainsColor(errorText.props.style, lightTheme.colors.error)).toBe(true);
+    });
+
+    it('uses theme.colors.error for location error text in dark mode', async () => {
+      (ExpoLocation.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({
+        status: 'granted',
+      });
+      (ExpoLocation.getCurrentPositionAsync as jest.Mock).mockRejectedValue(
+        new Error('GPS unavailable'),
+      );
+
+      const result = await renderModal(undefined, darkTheme);
+      await flushEffects();
+
+      await waitFor(() => {
+        expect(result.queryByTestId('location-error-text')).toBeTruthy();
+      });
+
+      const errorText = result.getByTestId('location-error-text');
+      expect(styleContainsColor(errorText.props.style, darkTheme.colors.error)).toBe(true);
     });
   });
 

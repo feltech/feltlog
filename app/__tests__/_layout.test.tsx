@@ -22,6 +22,11 @@ jest.mock('react-native-reanimated', () => ({
   default: () => null,
 }));
 
+/** Mock expo-status-bar so tests can assert the global style prop. */
+jest.mock('expo-status-bar', () => ({
+  StatusBar: jest.fn(() => null),
+}));
+
 /** Mock the database hook so we can control DB readiness. */
 jest.mock('@/src/data/database/database', () => ({
   useDatabase: jest.fn(),
@@ -152,6 +157,7 @@ jest.mock('expo-router', () => {
 });
 
 import { useFonts } from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import { AppState } from 'react-native';
 import { useDatabase } from '@/src/data/database/database';
 import { performLifecycleBackup } from '@/src/data/database/backup';
@@ -414,6 +420,7 @@ describe('RootLayout', () => {
   describe('theme provider', () => {
     beforeEach(() => {
       capturedThemeValue = null;
+      (StatusBar as unknown as jest.Mock).mockClear();
     });
 
     /**
@@ -459,6 +466,36 @@ describe('RootLayout', () => {
       expect(capturedThemeValue).toBeDefined();
       // Should be lightTheme when themeMode is explicitly 'light'.
       expect(capturedThemeValue).toBe(lightTheme);
+    });
+
+    /** Tests that the global StatusBar uses a dark style in light mode. */
+    it('renders StatusBar with dark style in light mode', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'light',
+        setThemeMode: jest.fn(),
+      });
+
+      await renderLayout(true, true);
+
+      expect(StatusBar as unknown as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ style: 'dark' }),
+        undefined,
+      );
+    });
+
+    /** Tests that the global StatusBar uses a light style in dark mode. */
+    it('renders StatusBar with light style in dark mode', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'dark',
+        setThemeMode: jest.fn(),
+      });
+
+      await renderLayout(true, true);
+
+      expect(StatusBar as unknown as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ style: 'light' }),
+        undefined,
+      );
     });
   });
 });

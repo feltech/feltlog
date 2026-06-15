@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import 'react-native-reanimated';
@@ -182,6 +183,7 @@ function RootLayoutNav() {
       <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted, sqliteDb }}>
         <RepositoryProvider repository={repository}>
           <ThemeProvider value={appTheme as unknown as NavigationTheme}>
+            <StatusBar style={appTheme.dark ? 'light' : 'dark'} />
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen

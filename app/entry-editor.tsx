@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { Platform, ScrollView, StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
+import { ScrollView, StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
 import {
   Appbar,
   Button,
@@ -13,6 +12,7 @@ import {
   Text,
   TextInput,
   ActivityIndicator,
+  useTheme,
 } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
 import { useNavigation } from 'expo-router';
@@ -112,6 +112,7 @@ export default function JournalEntryModal() {
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
   const { actions } = useJournalViewModel();
   const navigation = useNavigation();
+  const theme = useTheme();
 
   // The entry loaded from the repository by ID. Decoupled from the ViewModel's
   // paginated `entries` array so that entries beyond the first page (loaded via
@@ -1071,7 +1072,11 @@ export default function JournalEntryModal() {
   }, [resolvedEntryId, actions, navigation]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+    <SafeAreaView
+      testID="entry-editor-root"
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top', 'bottom', 'left', 'right']}
+    >
       <Appbar.Header statusBarHeight={0} testID="appbar-header">
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title={isEditing ? 'Edit Entry' : 'New Entry'} />
@@ -1100,7 +1105,11 @@ export default function JournalEntryModal() {
       </Appbar.Header>
 
       {state.isUpdatingLocation && (
-        <Text variant="bodySmall" style={styles.locationUpdatingHint}>
+        <Text
+          testID="location-updating-hint"
+          variant="bodySmall"
+          style={[styles.locationUpdatingHint, { color: theme.colors.onSurfaceVariant }]}
+        >
           Looking up address, please wait…
         </Text>
       )}
@@ -1169,7 +1178,11 @@ export default function JournalEntryModal() {
           </ScrollView>
         </Surface>
 
-        <Text variant="bodySmall" style={styles.dateText}>
+        <Text
+          testID="entry-date-text"
+          variant="bodySmall"
+          style={[styles.dateText, { color: theme.colors.onSurfaceVariant }]}
+        >
           {state.datetime.toLocaleDateString()}{' '}
           {state.datetime.toLocaleTimeString([], {
             hour: '2-digit',
@@ -1192,19 +1205,29 @@ export default function JournalEntryModal() {
             />
           </View>
           {isEditing && !existingEntry?.location && !state.editLocation && (
-            <Text variant="bodySmall" style={styles.locationHint}>
+            <Text
+              variant="bodySmall"
+              style={[styles.locationHint, { color: theme.colors.onSurfaceVariant }]}
+            >
               No location was recorded for this entry.
             </Text>
           )}
 
           {!isEditing && state.locDenied && (
-            <Text variant="bodySmall" style={styles.locationHint}>
+            <Text
+              variant="bodySmall"
+              style={[styles.locationHint, { color: theme.colors.onSurfaceVariant }]}
+            >
               Location permission not granted. You can still save the entry without a location.
             </Text>
           )}
 
           {state.locError && (
-            <Text variant="bodySmall" style={styles.locationHint}>
+            <Text
+              variant="bodySmall"
+              testID="location-error-text"
+              style={[styles.locationHint, { color: theme.colors.error }]}
+            >
               {state.locError}
             </Text>
           )}
@@ -1215,7 +1238,10 @@ export default function JournalEntryModal() {
           {!mapCenter && state.isFetchingLocation && !state.locDenied && (
             <View style={styles.mapLoading}>
               <ActivityIndicator animating={true} />
-              <Text variant="bodySmall" style={styles.locationHint}>
+              <Text
+                variant="bodySmall"
+                style={[styles.locationHint, { color: theme.colors.onSurfaceVariant }]}
+              >
                 Loading map…
               </Text>
             </View>
@@ -1240,7 +1266,7 @@ export default function JournalEntryModal() {
                 <Text
                   variant="bodySmall"
                   testID="location-address-placeholder"
-                  style={styles.locationAddressText}
+                  style={[styles.locationAddressText, { color: theme.colors.onSurfaceVariant }]}
                 >
                   Getting address…
                 </Text>
@@ -1248,7 +1274,7 @@ export default function JournalEntryModal() {
                 <Text
                   variant="bodySmall"
                   testID="location-address-text"
-                  style={styles.locationAddressText}
+                  style={[styles.locationAddressText, { color: theme.colors.onSurfaceVariant }]}
                 >
                   {mapLocation.address}
                 </Text>
@@ -1256,7 +1282,7 @@ export default function JournalEntryModal() {
                 <Text
                   variant="bodySmall"
                   testID="location-coordinates-text"
-                  style={styles.locationAddressText}
+                  style={[styles.locationAddressText, { color: theme.colors.onSurfaceVariant }]}
                 >
                   {mapLocation.latitude.toFixed(4)}, {mapLocation.longitude.toFixed(4)}
                 </Text>
@@ -1291,7 +1317,11 @@ export default function JournalEntryModal() {
           {state.isUpdatingLocation && (
             <View style={styles.locationUpdating}>
               <ActivityIndicator animating={true} size={16} />
-              <Text variant="bodySmall" style={styles.locationUpdatingText}>
+              <Text
+                testID="location-updating-text"
+                variant="bodySmall"
+                style={[styles.locationUpdatingText, { color: theme.colors.onSurfaceVariant }]}
+              >
                 Updating location…
               </Text>
             </View>
@@ -1300,7 +1330,11 @@ export default function JournalEntryModal() {
       </ScrollView>
 
       {state.autoSaving && (
-        <Text variant="bodySmall" style={styles.autoSaveText}>
+        <Text
+          testID="autosave-indicator"
+          variant="bodySmall"
+          style={[styles.autoSaveText, { color: theme.colors.onSurfaceVariant }]}
+        >
           Auto-saving...
         </Text>
       )}
@@ -1309,7 +1343,7 @@ export default function JournalEntryModal() {
           variant="bodySmall"
           testID="saved-indicator"
           accessibilityLabel="Saved"
-          style={styles.autoSaveText}
+          style={[styles.autoSaveText, { color: theme.colors.onSurfaceVariant }]}
         >
           Saved {state.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
@@ -1362,8 +1396,6 @@ export default function JournalEntryModal() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-
-      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
     </SafeAreaView>
   );
 }
@@ -1371,7 +1403,6 @@ export default function JournalEntryModal() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   content: {
     flex: 1,
@@ -1405,11 +1436,9 @@ const styles = StyleSheet.create({
   },
   dateText: {
     textAlign: 'center',
-    color: '#666',
   },
   autoSaveText: {
     textAlign: 'center',
-    color: '#999',
     marginTop: 4,
   },
   locationSection: {
@@ -1424,7 +1453,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   locationHint: {
-    color: '#666',
     marginBottom: 8,
   },
   mapContainer: {
@@ -1460,16 +1488,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   locationUpdatingText: {
-    color: '#666',
     marginLeft: 8,
   },
   locationUpdatingHint: {
     textAlign: 'center',
-    color: '#999',
     paddingVertical: 2,
   },
   locationAddressText: {
-    color: '#555',
     marginBottom: 4,
     textAlign: 'center',
   },
