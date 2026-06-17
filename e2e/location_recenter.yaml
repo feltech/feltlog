@@ -149,16 +149,71 @@ name: Location re-center and no-location state
 # - "No location was recorded for this entry" is visible
 # - No loading spinner / map is shown
 # - The re-center button is present
+#
+# TODO(workaround): work around an upstream React Native Scheduler
+# use-after-free that crashes the new process with a SEGV_ACCERR in
+# MountingCoordinator::pullTransaction when the app is killed
+# mid-mount-transaction. Triggered here by setPermissions killing the
+# active app process while a Fabric mount transaction is in flight.
+#
+# Fixed in RN 0.86.0 via
+# https://github.com/facebook/react-native/pull/56680
+# (commit aadbe96579, "Guard Scheduler deferred lambdas against
+# delegate teardown"). The fix is gated behind the
+# enableSchedulerDelegateInvalidation feature flag — verify the flag
+# is enabled in the upgraded version before removing this block.
+#
+# When bumping RN past 0.85.3, re-test Tests 2 and 3 and consider
+# removing the stopApp + clearState + stabilization + retry block
+# below.
+- stopApp
+- clearState
+
 - setPermissions:
     permissions:
       location: deny
 
-# Clear app state and set up a fresh database with location denied.
-- clearState
+# Stabilization window: let Android release the old process before
+# cold-starting.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-stabilization-wait'
+    timeout: 10000
+    optional: true
+
+# Set up a fresh database with location denied.
 - launchApp:
     permissions:
       location: deny
 - waitForAnimationToEnd
+
+# Wait for the setup screen to be ready.
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 15000
+    optional: true
+
+# If the setup screen never appeared, the app likely crashed during
+# launch after the permission toggle. Retry the launch once.
+- runFlow:
+    when:
+      notVisible:
+        id: 'db-name-input'
+    commands:
+      - stopApp
+      - launchApp:
+          permissions:
+            location: deny
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          visible:
+            id: 'db-name-input'
+          timeout: 15000
+
+# Final guard: the setup screen must be visible before entering credentials.
+- assertVisible:
+    id: 'db-name-input'
 
 # Set up a fresh database
 - evalScript: ${output.dbName2 = "noloc_" + Date.now().toString() + ".db"}
@@ -295,22 +350,53 @@ name: Location re-center and no-location state
 # Re-open the no-location entry, grant location permission, tap re-center,
 # and verify the map and address appear.
 #
-# Re-grant location permission. This may kill the app. Relaunch and
-# re-open the database.
+# TODO(workaround): work around an upstream React Native Scheduler
+# use-after-free that crashes the new process with a SEGV_ACCERR in
+# MountingCoordinator::pullTransaction when the app is killed
+# mid-mount-transaction. Triggered here by setPermissions killing the
+# active app process while a Fabric mount transaction is in flight.
+#
+# Fixed in RN 0.86.0 via
+# https://github.com/facebook/react-native/pull/56680
+# (commit aadbe96579, "Guard Scheduler deferred lambdas against
+# delegate teardown"). The fix is gated behind the
+# enableSchedulerDelegateInvalidation feature flag — verify the flag
+# is enabled in the upgraded version before removing this block.
+#
+# When bumping RN past 0.85.3, re-test Tests 2 and 3 and consider
+# removing the stopApp + clearState + stabilization + retry block
+# below.
+- stopApp
+
 - setPermissions:
     permissions:
       location: allow
+
+# Stabilization window: give Android time to tear down the process and
+# drain any pending Fabric work before relaunching.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-stabilization-wait'
+    timeout: 10000
+    optional: true
 
 - setLocation:
     latitude: 35.6762
     longitude: 139.6503
 
-- waitForAnimationToEnd
-
 - launchApp:
     permissions:
       location: allow
 - waitForAnimationToEnd
+
+# Give the app time to reach either the setup screen or the journal
+# list. The optional timeout is silently ignored if the element is not
+# found, which lets us detect a crash and retry below.
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 15000
+    optional: true
 
 # If the app restarted at the setup screen, re-enter credentials.
 - runFlow:
@@ -329,6 +415,52 @@ name: Location re-center and no-location state
       - tapOn:
           id: 'db-open-btn'
       - assertVisible: 'Create entry'
+
+# Wait for the journal list to be ready.
+- extendedWaitUntil:
+    visible: 'Create entry'
+    timeout: 15000
+    optional: true
+
+# If the journal list never appeared, the app likely crashed during
+# launch after the permission toggle. Retry the launch once.
+- runFlow:
+    when:
+      notVisible: 'Create entry'
+    commands:
+      - stopApp
+      - launchApp:
+          permissions:
+            location: allow
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          visible:
+            id: 'db-name-input'
+          timeout: 15000
+          optional: true
+      - runFlow:
+          when:
+            visible:
+              id: 'db-name-input'
+          commands:
+            - tapOn:
+                id: 'db-name-input'
+                point: '95%,50%'
+            - eraseText
+            - inputText: ${output.dbName2}
+            - tapOn:
+                id: 'db-key-input'
+            - inputText: ${output.dbKey2}
+            - tapOn:
+                id: 'db-open-btn'
+            - assertVisible: 'Create entry'
+      - extendedWaitUntil:
+          visible: 'Create entry'
+          timeout: 15000
+
+# Final guard: the journal list must be visible before we interact
+# with any entry card.
+- assertVisible: 'Create entry'
 
 # Dismiss LogBox warning banner if present
 - runFlow:
