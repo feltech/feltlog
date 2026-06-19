@@ -46,7 +46,8 @@
       ]
     },
     "setupFilesAfterEnv": [
-      "expo-sqlite-mock/src/setup.ts"
+      "expo-sqlite-mock/src/setup.ts",
+      "./jest.warn.setup.js"
     ],
     "testTimeout": 30000,
     "transformIgnorePatterns": [

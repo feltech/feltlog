@@ -353,32 +353,38 @@ export default function JournalEntryModal() {
         try {
           pos = await Promise.race([positionPromise, positionTimeout]);
         } catch (err) {
-          // Log the error to aid diagnostics if location fetch fails in the emulator.
-          console.warn('[EntryEditor] Initial location fetch failed:', err);
+          // Log the error to aid diagnostics if location fetch fails in the
+          // emulator. Suppressed in tests to keep output clean (mocked
+          // location APIs reject during unit tests).
+          if (process.env.NODE_ENV !== 'test') {
+            console.warn('[EntryEditor] Initial location fetch failed:', err);
+          }
           // getCurrentPositionAsync failed or timed out — try the cached
           // last-known position as a fallback. This is useful when a fresh
           // GPS fix isn't available (e.g. indoors, emulator without mock GPS,
-          // or weak signal).
+          // or weak signal). The fallback runs unconditionally (including in
+          // tests) so the balanced-accuracy path is exercised; only the
+          // warning output is silenced.
           try {
-            if (process.env.NODE_ENV !== 'test') {
-              // Fallback 1: Try a Balanced accuracy fetch first.
-              // Balanced accuracy (network/Wi-Fi positioning) is much faster and
-              // more reliable on emulators/indoor devices than High accuracy
-              // (GPS-only) when satellite locks are missing.
-              try {
-                const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
-                  accuracy: ExpoLocation.Accuracy.Balanced,
-                });
-                let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
-                const positionTimeoutBalanced = new Promise<never>((_, reject) => {
-                  positionTimeoutIdBalanced = setTimeout(
-                    () => reject(new Error('position_timeout_balanced')),
-                    5000,
-                  );
-                });
-                pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
-                clearTimeout(positionTimeoutIdBalanced!);
-              } catch (balancedErr) {
+            // Fallback 1: Try a Balanced accuracy fetch first.
+            // Balanced accuracy (network/Wi-Fi positioning) is much faster and
+            // more reliable on emulators/indoor devices than High accuracy
+            // (GPS-only) when satellite locks are missing.
+            try {
+              const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
+                accuracy: ExpoLocation.Accuracy.Balanced,
+              });
+              let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
+              const positionTimeoutBalanced = new Promise<never>((_, reject) => {
+                positionTimeoutIdBalanced = setTimeout(
+                  () => reject(new Error('position_timeout_balanced')),
+                  5000,
+                );
+              });
+              pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
+              clearTimeout(positionTimeoutIdBalanced!);
+            } catch (balancedErr) {
+              if (process.env.NODE_ENV !== 'test') {
                 console.warn('[EntryEditor] Balanced accuracy fallback also failed:', balancedErr);
               }
             }
@@ -658,32 +664,38 @@ export default function JournalEntryModal() {
       try {
         pos = await Promise.race([positionPromise, positionTimeout]);
       } catch (err) {
-        // Log the error to aid diagnostics if re-center fails in the emulator.
-        console.warn('[EntryEditor] Re-center location fetch failed:', err);
+        // Log the error to aid diagnostics if re-center fails in the
+        // emulator. Suppressed in tests to keep output clean (mocked
+        // location APIs reject during unit tests).
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn('[EntryEditor] Re-center location fetch failed:', err);
+        }
         // getCurrentPositionAsync failed or timed out — try the cached
         // last-known position as a fallback. This is useful when a fresh
         // GPS fix isn't available (e.g. indoors, emulator without mock GPS,
-        // or weak signal).
+        // or weak signal). The fallback runs unconditionally (including in
+        // tests) so the balanced-accuracy path is exercised; only the
+        // warning output is silenced.
         try {
-          if (process.env.NODE_ENV !== 'test') {
-            // Fallback 1: Try a Balanced accuracy fetch first.
-            // Balanced accuracy (network/Wi-Fi positioning) is much faster and
-            // more reliable on emulators/indoor devices than High accuracy
-            // (GPS-only) when satellite locks are missing.
-            try {
-              const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
-                accuracy: ExpoLocation.Accuracy.Balanced,
-              });
-              let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
-              const positionTimeoutBalanced = new Promise<never>((_, reject) => {
-                positionTimeoutIdBalanced = setTimeout(
-                  () => reject(new Error('position_timeout_balanced')),
-                  5000,
-                );
-              });
-              pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
-              clearTimeout(positionTimeoutIdBalanced!);
-            } catch (balancedErr) {
+          // Fallback 1: Try a Balanced accuracy fetch first.
+          // Balanced accuracy (network/Wi-Fi positioning) is much faster and
+          // more reliable on emulators/indoor devices than High accuracy
+          // (GPS-only) when satellite locks are missing.
+          try {
+            const positionPromiseBalanced = ExpoLocation.getCurrentPositionAsync({
+              accuracy: ExpoLocation.Accuracy.Balanced,
+            });
+            let positionTimeoutIdBalanced: ReturnType<typeof setTimeout>;
+            const positionTimeoutBalanced = new Promise<never>((_, reject) => {
+              positionTimeoutIdBalanced = setTimeout(
+                () => reject(new Error('position_timeout_balanced')),
+                5000,
+              );
+            });
+            pos = await Promise.race([positionPromiseBalanced, positionTimeoutBalanced]);
+            clearTimeout(positionTimeoutIdBalanced!);
+          } catch (balancedErr) {
+            if (process.env.NODE_ENV !== 'test') {
               console.warn(
                 '[EntryEditor] Balanced accuracy fallback also failed on re-center:',
                 balancedErr,

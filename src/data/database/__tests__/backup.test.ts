@@ -32,13 +32,16 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Kysely } from 'kysely';
 
-// Mock console.warn to keep test output clean.
-const originalWarn = console.warn;
+// Suppress console.warn during backup tests (some paths log expected warnings).
+// Use a targeted spy so this test file's noisy warnings are silenced and the
+// global jest.warn.setup.js mechanism sees `console.warn !== globalWarnSpy`
+// and skips its unexpected-warning check.
+let warnSpy: jest.SpyInstance;
 beforeAll(() => {
-  console.warn = jest.fn();
+  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterAll(() => {
-  console.warn = originalWarn;
+  warnSpy.mockRestore();
 });
 
 /**

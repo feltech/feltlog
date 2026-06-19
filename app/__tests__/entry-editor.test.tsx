@@ -9,6 +9,11 @@ import * as ExpoLocation from 'expo-location';
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
 const POSITION_TIMEOUT_MS = 15000;
+// The balanced-accuracy fallback uses a 5 s timeout (see app/entry-editor.tsx).
+// Tests that exercise the timeout path must advance past both the primary
+// position timeout and this fallback timeout, since the fallback now runs in
+// tests (only its console.warn output is silenced).
+const BALANCED_TIMEOUT_MS = 5000;
 const INITIAL_GEOCODE_TIMEOUT_MS = 15000;
 const CONTENT_UNDO_COALESCE_MS = 500;
 const MAP_INTERACTION_LOCK_MS = 300;
@@ -2471,9 +2476,17 @@ describe('JournalEntryModal', () => {
       const result = await renderModal();
       await flushEffects();
 
-      // Advance past the position timeout (10 s).
+      // Advance past the position timeout (10 s) so the first fetch fails and
+      // the balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout (5 s). Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs (fake timers do not flush
+      // microtasks mid-advance, so a single advance cannot fire both).
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // Should show the timeout error message.
@@ -2572,9 +2585,16 @@ describe('JournalEntryModal', () => {
       const result = await renderModal();
       await flushEffects();
 
-      // Advance past the position timeout (10 s) so the fallback triggers.
+      // Advance past the position timeout (10 s) so the first fetch fails and
+      // the balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout (5 s). Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // The map should appear using the last-known position — no error.
@@ -2607,9 +2627,16 @@ describe('JournalEntryModal', () => {
       const result = await renderModal();
       await flushEffects();
 
-      // Advance past the position timeout.
+      // Advance past the position timeout so the first fetch fails and the
+      // balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout. Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // Should show the error message because both sources failed.
@@ -2680,9 +2707,16 @@ describe('JournalEntryModal', () => {
         fireEvent.press(recenterBtn);
       });
 
-      // Advance past the position timeout.
+      // Advance past the position timeout so the first fetch fails and the
+      // balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout. Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // No locError should be shown — the fallback succeeded.
@@ -2712,9 +2746,16 @@ describe('JournalEntryModal', () => {
         fireEvent.press(recenterBtn);
       });
 
-      // Advance past the position timeout.
+      // Advance past the position timeout so the first fetch fails and the
+      // balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout. Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // Should show the error message.
@@ -2748,9 +2789,16 @@ describe('JournalEntryModal', () => {
         fireEvent.press(recenterBtn);
       });
 
-      // Advance past the position timeout.
+      // Advance past the position timeout so the first fetch fails and the
+      // balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout. Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       // Should show the error message because both sources failed.
@@ -3213,9 +3261,16 @@ describe('JournalEntryModal', () => {
         fireEvent.press(recenterBtn);
       });
 
-      // Advance past the position timeout.
+      // Advance past the position timeout so the first fetch fails and the
+      // balanced-accuracy fallback is scheduled.
       await act(async () => {
         jest.advanceTimersByTime(POSITION_TIMEOUT_MS + 500);
+      });
+      // Then advance past the balanced-accuracy fallback timeout. Two
+      // separate advances are required because the balanced timeout is only
+      // scheduled once the first catch block runs.
+      await act(async () => {
+        jest.advanceTimersByTime(BALANCED_TIMEOUT_MS + 500);
       });
 
       await waitFor(() => {

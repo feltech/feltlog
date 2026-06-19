@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { PaperProvider } from 'react-native-paper';
 
 /**
@@ -141,7 +141,7 @@ describe('ChangePasswordDialog', () => {
    * resets the form. We verify the reset by reopening the dialog afterwards. This
    * exercises the else-if branch in the visibility sync effect.
    */
-  it('resets form when visible prop changes from true to false and back to true', () => {
+  it('resets form when visible prop changes from true to false and back to true', async () => {
     const screen = renderWithProvider(
       <ChangePasswordDialog
         databaseName="test.db"
@@ -155,31 +155,38 @@ describe('ChangePasswordDialog', () => {
     fireEvent.changeText(screen.getByTestId('change-password-current-key'), 'oldkey');
     expect(screen.getByTestId('change-password-current-key').props.value).toBe('oldkey');
 
-    // Close the dialog by toggling visible to false.
-    screen.rerender(
-      <PaperProvider>
-        <ChangePasswordDialog
-          databaseName="test.db"
-          isCurrentlyEncrypted={true}
-          visible={false}
-          onClose={jest.fn()}
-          showSnackbar={jest.fn()}
-        />
-      </PaperProvider>,
-    );
+    // Close the dialog by toggling visible to false. Wrapped in async act()
+    // because react-native-paper's Modal runs a closing animation that fires a
+    // setVisibleInternal state update from an Animated callback after the
+    // rerender returns — the async act flushes that deferred update.
+    await act(async () => {
+      screen.rerender(
+        <PaperProvider>
+          <ChangePasswordDialog
+            databaseName="test.db"
+            isCurrentlyEncrypted={true}
+            visible={false}
+            onClose={jest.fn()}
+            showSnackbar={jest.fn()}
+          />
+        </PaperProvider>,
+      );
+    });
 
     // Re-open the dialog — the form should be reset because close() cleared it.
-    screen.rerender(
-      <PaperProvider>
-        <ChangePasswordDialog
-          databaseName="test.db"
-          isCurrentlyEncrypted={true}
-          visible={true}
-          onClose={jest.fn()}
-          showSnackbar={jest.fn()}
-        />
-      </PaperProvider>,
-    );
+    await act(async () => {
+      screen.rerender(
+        <PaperProvider>
+          <ChangePasswordDialog
+            databaseName="test.db"
+            isCurrentlyEncrypted={true}
+            visible={true}
+            onClose={jest.fn()}
+            showSnackbar={jest.fn()}
+          />
+        </PaperProvider>,
+      );
+    });
 
     expect(screen.getByTestId('change-password-current-key').props.value).toBe('');
   });
