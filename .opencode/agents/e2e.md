@@ -262,6 +262,14 @@ Do NOT use `runScript` with a JS sleep file for delays — it's unnecessary comp
   real devices; on the emulator it is a harmless no-op that does not trigger navigation. Always
   follow it with `pressKey: BACK`.
 
+- **`flowsOrder` only controls execution ORDER, not which flows run.** Maestro's `config.yaml`
+  `flowsOrder` list ensures the named flows run first in the specified sequence, but it does NOT
+  restrict the suite to only those flows. Any flow file in `e2e/` that is not listed in
+  `flowsOrder` will still execute afterward, in nondeterministic order. When running `npm run e2e`
+  (full suite), ALL flow files in `e2e/` will execute — the `flowsOrder` list just ensures those 13
+  run first in the specified sequence. See
+  <https://docs.maestro.dev/maestro-flows/workspace-management/sequential-execution>.
+
 - **SAF picker (Storage Access Framework):** The SAF system file picker IS automatable on Android.
   Maestro can see and interact with all picker elements including folder names, breadcrumbs, and
   buttons. Key selectors:
@@ -360,6 +368,20 @@ npm run e2e:start-device
       - adb: reverse tcp:8081 tcp:8081
       - adb: reverse --list
 ```
+
+## 1b. Clean accumulated backup files
+
+Before running the full test suite, clean accumulated `.db` backup files from the emulator's
+Pictures directory. These files accumulate across test runs (each backup/restore test writes a
+fresh `.db` to the SAF directory) and eventually make the ScrollView too tall, causing
+`scrollUntilVisible` timeouts in restore tests.
+
+```bash
+npm run e2e:clean-backups
+```
+
+This is only needed before the full suite, not before individual flow runs — unless the individual
+flow is a restore test that navigates the Pictures directory listing.
 
 ## 2. Build and install
 

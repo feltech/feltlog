@@ -25,6 +25,7 @@
     "e2e:adb-check": "adb shell echo ok",
     "e2e:adb-restart": "adb kill-server && adb start-server",
     "e2e:adb-uptime": "adb shell uptime",
+    "e2e:clean-backups": "adb shell rm -f /sdcard/Pictures/*.db",
     "e2e:adb-pidof": "adb shell pidof com.feltech.feltlog",
     "e2e:start-device": "maestro start-device --platform android --device-model pixel_6 --device-os android-36",
     "e2e:wait-build-success": "grep -q 'BUILD SUCCESSFUL' android.log || timeout 300 tail -F android.log | grep -m1 'BUILD SUCCESSFUL'",
