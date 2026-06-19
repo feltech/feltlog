@@ -3,10 +3,27 @@ appId: com.feltech.feltlog
 ---
 - clearState
 - launchApp
+# Wait for the cold-start to complete before interacting with the setup screen.
+# clearState kills the app process; launchApp returns immediately after sending the
+# intent, so the setup screen may take a few seconds to appear. Make the first wait
+# optional so we can conditionally re-launch if the emulator cold-start races us.
+- extendedWaitUntil:
+    visible:
+      id: 'db-name-input'
+    timeout: 10000
+    optional: true
+- runFlow:
+    when:
+      notVisible:
+        id: 'db-name-input'
+    commands:
+      - launchApp
+      - extendedWaitUntil:
+          visible:
+            id: 'db-name-input'
+          timeout: 15000
 - evalScript: ${output.dbName = dbName || "test_" + Date.now().toString() + ".db"}
 - evalScript: ${output.dbKey = dbKey || "key_" + Date.now().toString()}
-- assertVisible:
-    id: 'db-name-input'
 - tapOn:
     id: 'db-name-input'
     point: '95%,50%'
