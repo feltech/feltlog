@@ -172,7 +172,6 @@ const styles = StyleSheet.create({
   tag: {
     marginRight: 8,
     marginBottom: 4,
-    height: 28,
   },
   tagText: {
     fontSize: 12,
