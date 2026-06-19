@@ -32,6 +32,12 @@ jest.mock('@/src/data/database/database', () => ({
   useDatabase: jest.fn(),
 }));
 
+/** Mock react-native-paper-dates so the layout test does not load its ESM deps. */
+jest.mock('react-native-paper-dates', () => ({
+  en: {},
+  registerTranslation: jest.fn(),
+}));
+
 /** Mock backup functions to avoid file system operations. */
 jest.mock('@/src/data/database/backup', () => ({
   performLifecycleBackup: jest.fn().mockResolvedValue('skipped'),

@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Map, Camera, type ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import * as ExpoLocation from 'expo-location';
 import { useImmer } from 'use-immer';
+import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates';
 
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
@@ -187,6 +188,11 @@ export default function JournalEntryModal() {
   const [isMapTouched, setIsMapTouched] = useState(false);
   // Controls visibility of the delete confirmation dialog.
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  // Controls visibility of the date picker modal.
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  // Controls visibility of the time picker modal. Independent from the date
+  // picker so the user can edit only the time without touching the date.
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
   // Timer ref for the debounce that re-enables ScrollView scrolling after
   // the last user-driven map region change. Cleared on unmount.
   const mapInteractionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -1071,6 +1077,84 @@ export default function JournalEntryModal() {
     }
   }, [resolvedEntryId, actions, navigation]);
 
+  /**
+   * Handles a new date chosen in the date picker.
+   *
+   * The time-of-day (hours, minutes, seconds, and milliseconds) from the previously
+   * selected datetime is preserved so that tapping the date widget only changes the
+   * calendar day, not the clock time. A snapshot is pushed to the undo stack and the
+   * dirty flag is set so the change is persisted on back navigation.
+   *
+   * @param param - Object containing the selected date from the modal.
+   */
+  const handleDateChange = useCallback(
+    ({ date }: { date?: Date }) => {
+      setDatePickerVisible(false);
+      if (!date) return;
+
+      const prev = state.datetime;
+      const next = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        prev.getHours(),
+        prev.getMinutes(),
+        prev.getSeconds(),
+        prev.getMilliseconds(),
+      );
+
+      pushUndoState(state);
+      dirtyRef.current = true;
+      setState(draft => {
+        draft.datetime = next;
+      });
+    },
+    [state, setState, pushUndoState],
+  );
+
+  /**
+   * Handles a new time chosen in the time picker.
+   *
+   * The calendar date (year, month, day) plus seconds and milliseconds from the
+   * previously selected datetime are preserved so that tapping the time widget only
+   * changes the clock hours and minutes, not the day or sub-minute precision. A
+   * snapshot is pushed to the undo stack and the dirty flag is set so the change is
+   * persisted on back navigation.
+   *
+   * @param param - Object containing the selected hours and minutes from the modal.
+   *   Either field may be undefined when the user dismisses without choosing; in that
+   *   case the handler is a no-op.
+   */
+  const handleTimeChange = useCallback(
+    ({ hours, minutes }: { hours?: number; minutes?: number }) => {
+      setTimePickerVisible(false);
+      // Guard: the modal may invoke onConfirm with no values when the user
+      // cancels mid-selection. Treat that as a no-op so the existing time is
+      // preserved and no undo snapshot is pushed.
+      if (hours === undefined || minutes === undefined) return;
+
+      const prev = state.datetime;
+      // Keep seconds/ms intact so editing the clock doesn't silently zero out
+      // sub-minute precision the user never touched.
+      const next = new Date(
+        prev.getFullYear(),
+        prev.getMonth(),
+        prev.getDate(),
+        hours,
+        minutes,
+        prev.getSeconds(),
+        prev.getMilliseconds(),
+      );
+
+      pushUndoState(state);
+      dirtyRef.current = true;
+      setState(draft => {
+        draft.datetime = next;
+      });
+    },
+    [state, setState, pushUndoState],
+  );
+
   return (
     <SafeAreaView
       testID="entry-editor-root"
@@ -1178,17 +1262,51 @@ export default function JournalEntryModal() {
           </ScrollView>
         </Surface>
 
-        <Text
-          testID="entry-date-text"
-          variant="bodySmall"
-          style={[styles.dateText, { color: theme.colors.onSurfaceVariant }]}
-        >
-          {state.datetime.toLocaleDateString()}{' '}
-          {state.datetime.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </Text>
+        {/* Two independent buttons: one for the calendar date, one for the
+            clock time. Splitting them lets the user change only the time
+            without touching the date (and vice versa) — the time picker is
+            skippable by default; if the user never taps it, the existing
+            time-of-day is preserved. */}
+        <View style={styles.dateTimeRow}>
+          <Button
+            mode="outlined"
+            icon="calendar-edit"
+            testID="entry-date-button"
+            accessibilityLabel="Entry date"
+            onPress={() => setDatePickerVisible(true)}
+            textColor={theme.colors.primary}
+            style={styles.dateButton}
+          >
+            <Text
+              testID="entry-date-text"
+              variant="bodySmall"
+              style={[styles.dateText, { color: theme.colors.primary }]}
+            >
+              {state.datetime.toLocaleDateString()}
+            </Text>
+          </Button>
+
+          <Button
+            mode="outlined"
+            icon="clock-outline"
+            testID="entry-time-button"
+            accessibilityLabel="Entry time"
+            onPress={() => setTimePickerVisible(true)}
+            textColor={theme.colors.primary}
+            style={styles.timeButton}
+          >
+            <Text
+              testID="entry-time-text"
+              variant="bodySmall"
+              style={[styles.dateText, { color: theme.colors.primary }]}
+            >
+              {state.datetime.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </Button>
+        </View>
 
         <Surface style={styles.locationSection}>
           <View style={styles.locationHeader}>
@@ -1396,6 +1514,32 @@ export default function JournalEntryModal() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+
+      {datePickerVisible && (
+        <View testID="date-picker-modal">
+          <DatePickerModal
+            locale="en"
+            mode="single"
+            visible={datePickerVisible}
+            onDismiss={() => setDatePickerVisible(false)}
+            date={state.datetime}
+            onConfirm={handleDateChange}
+          />
+        </View>
+      )}
+
+      {timePickerVisible && (
+        <View testID="time-picker-modal">
+          <TimePickerModal
+            locale="en"
+            visible={timePickerVisible}
+            onDismiss={() => setTimePickerVisible(false)}
+            onConfirm={handleTimeChange}
+            hours={state.datetime.getHours()}
+            minutes={state.datetime.getMinutes()}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1433,6 +1577,21 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontSize: 12,
+  },
+  dateButton: {
+    alignSelf: 'center',
+  },
+  timeButton: {
+    alignSelf: 'center',
+    marginLeft: 8,
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    // Wrap so the time button drops below the date button on narrow screens or
+    // long locale strings (e.g. German weekday+month) instead of clipping.
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dateText: {
     textAlign: 'center',

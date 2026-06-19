@@ -21,7 +21,12 @@ import {
   useThemePreference,
 } from '@/src/presentation/theme/ThemePreferenceContext';
 import { getAppTheme } from '@/src/presentation/theme/appTheme';
+import { en, registerTranslation } from 'react-native-paper-dates';
 import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
+
+// Register the English translation for react-native-paper-dates before any
+// date picker is rendered.
+registerTranslation('en', en);
 
 /** Navigation theme type inferred from expo-router's ThemeProvider. */
 type NavigationTheme = NonNullable<React.ComponentProps<typeof ThemeProvider>['value']>;

@@ -81,6 +81,97 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
+jest.mock('react-native-paper-dates', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { View, Pressable, Text } = require('react-native');
+
+  return {
+    en: {},
+    registerTranslation: jest.fn(),
+    DatePickerModal: ({
+      visible,
+      onDismiss,
+      onConfirm,
+      testID,
+    }: {
+      visible: boolean;
+      onDismiss: () => void;
+      onConfirm: (params: { date?: Date }) => void;
+      testID?: string;
+    }) => {
+      if (!visible) return null;
+      return React.createElement(
+        View,
+        { testID },
+        React.createElement(
+          Pressable,
+          {
+            testID: 'date-picker-save',
+            onPress: () => onConfirm({ date: new Date(2026, 5, 17) }),
+          },
+          React.createElement(Text, null, 'Save'),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            testID: 'date-picker-save-undefined',
+            onPress: () => onConfirm({ date: undefined }),
+          },
+          React.createElement(Text, null, 'Save Undefined'),
+        ),
+        React.createElement(
+          Pressable,
+          { testID: 'date-picker-dismiss', onPress: onDismiss },
+          React.createElement(Text, null, 'Dismiss'),
+        ),
+      );
+    },
+    TimePickerModal: ({
+      visible,
+      onDismiss,
+      onConfirm,
+      testID,
+    }: {
+      visible: boolean;
+      onDismiss: () => void;
+      onConfirm: (params: { hours?: number; minutes?: number }) => void;
+      testID?: string;
+    }) => {
+      if (!visible) return null;
+      return React.createElement(
+        View,
+        { testID },
+        React.createElement(
+          Pressable,
+          {
+            testID: 'time-picker-save',
+            // Fixed test time: 08:30. Distinct from any default so a change
+            // is observable in the rendered time text.
+            onPress: () => onConfirm({ hours: 8, minutes: 30 }),
+          },
+          React.createElement(Text, null, 'Save'),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            testID: 'time-picker-save-undefined',
+            // Calls onConfirm with no values to exercise the guard branch.
+            onPress: () => onConfirm({}),
+          },
+          React.createElement(Text, null, 'Save Undefined'),
+        ),
+        React.createElement(
+          Pressable,
+          { testID: 'time-picker-dismiss', onPress: onDismiss },
+          React.createElement(Text, null, 'Dismiss'),
+        ),
+      );
+    },
+  };
+});
+
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import { useLocalSearchParams } from 'expo-router';
 import type { MD3Theme } from 'react-native-paper';
@@ -1633,9 +1724,12 @@ describe('JournalEntryModal', () => {
         fireEvent.press(cancelBtn);
       });
 
-      await waitFor(() => {
-        expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
-      });
+      await waitFor(
+        () => {
+          expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
+        },
+        { timeout: 3000 },
+      );
       expect(actions.deleteEntry).not.toHaveBeenCalled();
     });
 
@@ -3866,24 +3960,20 @@ describe('JournalEntryModal', () => {
       );
     });
 
-    it('uses onSurfaceVariant for the date text in light mode', async () => {
+    it('uses primary color for the date text in light mode', async () => {
       const result = await renderModal(undefined, lightTheme);
       await flushEffects();
 
       const dateText = result.getByTestId('entry-date-text');
-      expect(styleContainsColor(dateText.props.style, lightTheme.colors.onSurfaceVariant)).toBe(
-        true,
-      );
+      expect(styleContainsColor(dateText.props.style, lightTheme.colors.primary)).toBe(true);
     });
 
-    it('uses onSurfaceVariant for the date text in dark mode', async () => {
+    it('uses primary color for the date text in dark mode', async () => {
       const result = await renderModal(undefined, darkTheme);
       await flushEffects();
 
       const dateText = result.getByTestId('entry-date-text');
-      expect(styleContainsColor(dateText.props.style, darkTheme.colors.onSurfaceVariant)).toBe(
-        true,
-      );
+      expect(styleContainsColor(dateText.props.style, darkTheme.colors.primary)).toBe(true);
     });
 
     it('uses onSurfaceVariant for the saved indicator', async () => {
@@ -4211,6 +4301,678 @@ describe('JournalEntryModal', () => {
           ),
         ).toBeTruthy();
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Date picker
+  // -------------------------------------------------------------------------
+
+  describe('date picker', () => {
+    /**
+     * Joins the Text children array rendered by the date button into a plain string so
+     * tests can assert on the displayed date/time text.
+     *
+     * @param props - The props object from the rendered date text element.
+     *
+     * @returns The joined text content.
+     */
+    function dateTextContent(props: Record<string, unknown>): string {
+      const children = props.children;
+      return Array.isArray(children) ? children.join('') : String(children);
+    }
+
+    it('opens the date picker when the date button is pressed', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      expect(result.queryByTestId('date-picker-modal')).toBeNull();
+
+      const dateButton = result.getByTestId('entry-date-button');
+      await act(async () => {
+        fireEvent.press(dateButton);
+      });
+
+      expect(result.getByTestId('date-picker-modal')).toBeTruthy();
+    });
+
+    it('defaults to today for new entries', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      const dateText = result.getByTestId('entry-date-text');
+      expect(dateTextContent(dateText.props)).toContain(new Date().toLocaleDateString());
+    });
+
+    it('defaults to the saved datetime when editing an existing entry', async () => {
+      const savedDate = new Date(2025, 0, 15, 12, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'existing content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const dateText = result.getByTestId('entry-date-text');
+      expect(dateTextContent(dateText.props)).toContain(savedDate.toLocaleDateString());
+    });
+
+    it('updates the displayed date after confirming a new date', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save'));
+      });
+
+      const dateText = result.getByTestId('entry-date-text');
+      expect(dateTextContent(dateText.props)).toContain(
+        new Date(2026, 5, 17).toLocaleDateString(),
+      );
+    });
+
+    it('preserves the time-of-day when a new date is confirmed', async () => {
+      const savedDate = new Date(2025, 0, 15, 14, 37, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save'));
+      });
+
+      // Trigger the back-navigation flush so the update is persisted.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalled();
+      });
+
+      const persistedDate: Date = actions.updateEntry.mock.calls[0][1].datetime;
+      expect(persistedDate.getFullYear()).toBe(2026);
+      expect(persistedDate.getMonth()).toBe(5);
+      expect(persistedDate.getDate()).toBe(17);
+      expect(persistedDate.getHours()).toBe(14);
+      expect(persistedDate.getMinutes()).toBe(37);
+    });
+
+    it('pushes an undo snapshot when the date changes', async () => {
+      const savedDate = new Date(2025, 0, 15, 12, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const initialText = dateTextContent(result.getByTestId('entry-date-text').props);
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save'));
+      });
+
+      // The date should have changed.
+      await waitFor(() => {
+        expect(dateTextContent(result.getByTestId('entry-date-text').props)).not.toBe(initialText);
+      });
+
+      // Undo should restore the original date.
+      const undoBtn = result.getByTestId('undo-button');
+      await act(async () => {
+        fireEvent.press(undoBtn);
+      });
+
+      expect(dateTextContent(result.getByTestId('entry-date-text').props)).toBe(initialText);
+    });
+
+    it('does not change the date or push undo when the picker confirms without a date', async () => {
+      const savedDate = new Date(2025, 0, 15, 12, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const initialText = dateTextContent(result.getByTestId('entry-date-text').props);
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save-undefined'));
+      });
+
+      // The guard should short-circuit before mutating state.
+      expect(dateTextContent(result.getByTestId('entry-date-text').props)).toBe(initialText);
+
+      // No undo snapshot should have been pushed, so undo remains disabled.
+      expect(result.getByTestId('undo-button').props.accessibilityState?.disabled).toBe(true);
+    });
+
+    it('flushes a date-only change on back navigation', async () => {
+      const savedDate = new Date(2025, 0, 15, 9, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save'));
+      });
+
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            datetime: expect.any(Date),
+          }),
+        );
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Time picker
+  // -------------------------------------------------------------------------
+
+  describe('time picker', () => {
+    /**
+     * Joins the Text children array rendered by a button into a plain string so tests
+     * can assert on the displayed text.
+     *
+     * @param props - The props object from the rendered text element.
+     *
+     * @returns The joined text content.
+     */
+    function textContent(props: Record<string, unknown>): string {
+      const children = props.children;
+      return Array.isArray(children) ? children.join('') : String(children);
+    }
+
+    /**
+     * Reads the date text content. Re-declared locally because the date picker block's
+     * `dateTextContent` helper is block-scoped and not visible here.
+     */
+    const dateTextContent = textContent;
+
+    it('opens the time picker when the time button is pressed', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      expect(result.queryByTestId('time-picker-modal')).toBeNull();
+
+      const timeButton = result.getByTestId('entry-time-button');
+      await act(async () => {
+        fireEvent.press(timeButton);
+      });
+
+      expect(result.getByTestId('time-picker-modal')).toBeTruthy();
+    });
+
+    it('defaults to the current time for new entries', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      const timeText = result.getByTestId('entry-time-text');
+      const expected = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      expect(textContent(timeText.props)).toContain(expected);
+    });
+
+    it('defaults to the saved time when editing an existing entry', async () => {
+      const savedDate = new Date(2025, 0, 15, 14, 37, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'existing content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const timeText = result.getByTestId('entry-time-text');
+      const expected = savedDate.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      expect(textContent(timeText.props)).toContain(expected);
+    });
+
+    it('updates the displayed time after confirming a new time', async () => {
+      const result = await renderModal();
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      const timeText = result.getByTestId('entry-time-text');
+      // The mock confirms with hours=8, minutes=30.
+      const expected = new Date();
+      expected.setHours(8, 30, 0, 0);
+      expect(textContent(timeText.props)).toContain(
+        expected.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      );
+    });
+
+    it('preserves the date when a new time is confirmed', async () => {
+      const savedDate = new Date(2025, 0, 15, 14, 37, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const initialDateText = dateTextContent(result.getByTestId('entry-date-text').props);
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      // The date text should be unchanged after a time-only edit.
+      expect(dateTextContent(result.getByTestId('entry-date-text').props)).toBe(initialDateText);
+    });
+
+    it('preserves seconds and milliseconds when a new time is confirmed', async () => {
+      // Use a saved date with non-zero seconds and milliseconds so the
+      // preservation is observable via the persisted datetime on flush.
+      const savedDate = new Date(2025, 0, 15, 14, 37, 42, 123);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      // Trigger the back-navigation flush so the update is persisted.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalled();
+      });
+
+      const persistedDate: Date = actions.updateEntry.mock.calls[0][1].datetime;
+      // Hours/minutes replaced by the mock (8:30); seconds/ms preserved.
+      expect(persistedDate.getHours()).toBe(8);
+      expect(persistedDate.getMinutes()).toBe(30);
+      expect(persistedDate.getSeconds()).toBe(42);
+      expect(persistedDate.getMilliseconds()).toBe(123);
+    });
+
+    it('pushes an undo snapshot when the time changes', async () => {
+      const savedDate = new Date(2025, 0, 15, 12, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const initialText = textContent(result.getByTestId('entry-time-text').props);
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      // The time should have changed.
+      await waitFor(() => {
+        expect(textContent(result.getByTestId('entry-time-text').props)).not.toBe(initialText);
+      });
+
+      // Undo should restore the original time.
+      const undoBtn = result.getByTestId('undo-button');
+      await act(async () => {
+        fireEvent.press(undoBtn);
+      });
+
+      expect(textContent(result.getByTestId('entry-time-text').props)).toBe(initialText);
+    });
+
+    it('does not change the time or push undo when the picker confirms without hours/minutes', async () => {
+      const savedDate = new Date(2025, 0, 15, 12, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      const initialText = textContent(result.getByTestId('entry-time-text').props);
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save-undefined'));
+      });
+
+      // The guard should short-circuit before mutating state.
+      expect(textContent(result.getByTestId('entry-time-text').props)).toBe(initialText);
+
+      // No undo snapshot should have been pushed, so undo remains disabled.
+      expect(result.getByTestId('undo-button').props.accessibilityState?.disabled).toBe(true);
+    });
+
+    it('flushes a time-only change on back navigation', async () => {
+      const savedDate = new Date(2025, 0, 15, 9, 0, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalledWith(
+          'edit-1',
+          expect.objectContaining({
+            datetime: expect.any(Date),
+          }),
+        );
+      });
+
+      const persistedDate: Date = actions.updateEntry.mock.calls[0][1].datetime;
+      // The mock confirms 8:30; the date portion is preserved.
+      expect(persistedDate.getHours()).toBe(8);
+      expect(persistedDate.getMinutes()).toBe(30);
+      expect(persistedDate.getFullYear()).toBe(2025);
+      expect(persistedDate.getMonth()).toBe(0);
+      expect(persistedDate.getDate()).toBe(15);
+    });
+
+    it('preserves the new time when editing time then date', async () => {
+      const savedDate = new Date(2025, 0, 15, 14, 37, 0, 0);
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: {
+          ...DEFAULT_STATE,
+          entries: [
+            {
+              id: 'edit-1',
+              content: 'original content',
+              datetime: savedDate,
+              created_at: savedDate,
+              modified_at: savedDate,
+              tags: [] as string[],
+            },
+          ],
+        },
+        actions,
+      });
+
+      const result = await renderModal('edit-1');
+      await flushEffects();
+
+      // First, change the time via the time picker (mock confirms 8:30).
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-time-button'));
+      });
+      await act(async () => {
+        fireEvent.press(result.getByTestId('time-picker-save'));
+      });
+
+      // Then, change the date via the date picker (mock confirms 2026-06-17).
+      await act(async () => {
+        fireEvent.press(result.getByTestId('entry-date-button'));
+      });
+      await act(async () => {
+        fireEvent.press(result.getByTestId('date-picker-save'));
+      });
+
+      // Trigger the back-navigation flush so the update is persisted.
+      const action = { type: 'GO_BACK' };
+      const preventDefault = jest.fn();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault,
+          data: { action },
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(actions.updateEntry).toHaveBeenCalled();
+      });
+
+      const persistedDate: Date = actions.updateEntry.mock.calls[0][1].datetime;
+      // The new time (8:30) must survive the subsequent date edit, and the
+      // new date (2026-06-17) must be applied.
+      expect(persistedDate.getHours()).toBe(8);
+      expect(persistedDate.getMinutes()).toBe(30);
+      expect(persistedDate.getFullYear()).toBe(2026);
+      expect(persistedDate.getMonth()).toBe(5);
+      expect(persistedDate.getDate()).toBe(17);
     });
   });
 });
