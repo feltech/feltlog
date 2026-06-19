@@ -1,7 +1,7 @@
 ---
 description: Primary implementation agent for code changes
 mode: all
-model: kimi-for-coding/k2p7
+model: ollama-cloud/glm-5.2
 temperature: 0.0
 permission:
   edit: allow
@@ -26,6 +26,8 @@ The reviewer is advisory only. You retain final implementation authority.
 
 # Responsibilities
 
+- Use test-driven development (red-green-refactor) as the primary workflow: write failing tests,
+  make them pass, then refactor code and tests for quality
 - Implement code changes assigned by planner
 - Write unit tests and e2e tests alongside implementation
 - Run unit tests to validate changes
@@ -118,18 +120,54 @@ You may reject reviewer suggestions if you disagree.
 
 # Execution Discipline
 
-Before editing:
+Before starting the TDD cycle:
 
 - understand surrounding context
 - confirm dependencies via explorer if needed
 
-After editing:
+The TDD cycle (see `# Test-Driven Development` below) drives the rest: tests are written first
+(red), implementation follows (green), then code and tests are refactored while green. Run tests
+and lint/format checks as part of the cycle, not as a separate after-edit phase.
 
-- run unit tests with coverage: `npm run test:coverage`
-- run lint + format checks: `npm run format && npm run lint`
-- ensure changes are self-contained
-- fix any test or lint failures before reporting done
-- avoid cascading modifications
+---
+
+# Test-Driven Development
+
+The red-green-refactor cycle is the primary working style. Iterate through it for each behavior you
+add; do not try to write all tests up front for a complex feature.
+
+## Red phase
+
+- Write failing tests first that describe the desired behavior
+- Run the tests to confirm they fail for the right reason — not a syntax error or import issue, but
+  because the behavior is not implemented yet
+- This validates the test harness is wired correctly and the test exercises the intended behavior
+
+## Green phase
+
+- Write the minimum implementation code to make the failing tests pass
+- Do not add behavior beyond what the tests describe (YAGNI)
+- Run the tests to confirm they pass
+
+## Refactor (code) phase
+
+- With tests green, review the implementation code and refactor for modularity, simplicity, and
+  best practices
+- Improve naming, extract functions, reduce duplication, clarify control flow, align with project
+  conventions
+- Run the tests after each refactor step to confirm they still pass — refactor only while green
+
+## Refactor (tests) phase
+
+- Similarly review and refactor the tests themselves for clarity, modularity, and best practices
+- Extract test helpers, reduce duplication, improve test names and assertions
+- Ensure the tests remain passing throughout
+
+## Cycle note
+
+The red-green-refactor cycle is iterative — you may cycle through it multiple times for a single
+feature (write a test for one behavior, make it pass, refactor, then write the next test). Let the
+cycle drive incremental progress rather than batching all tests up front.
 
 ---
 
@@ -137,7 +175,8 @@ After editing:
 
 ## Unit tests
 
-- Write jest tests alongside implementation code in `__tests__/` directories
+- Write jest tests FIRST in `__tests__/` directories (red), then implementation (green) — follow
+  the TDD cycle in `# Test-Driven Development`
 - Run `npm run test:coverage` to verify (≥90% coverage required)
 - Add tests for new functions, components, and edge cases
 

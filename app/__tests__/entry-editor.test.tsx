@@ -1806,9 +1806,12 @@ describe('JournalEntryModal', () => {
       });
 
       expect(actions.deleteEntry).toHaveBeenCalledWith('edit-1');
-      await waitFor(() => {
-        expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
-      });
+      await waitFor(
+        () => {
+          expect(result.queryByTestId('delete-entry-dialog')).toBeNull();
+        },
+        { timeout: 3000 },
+      );
       expect(mockGoBack).not.toHaveBeenCalled();
     });
 

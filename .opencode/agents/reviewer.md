@@ -1,7 +1,7 @@
 ---
 description: Code review and implementation sanity-check agent
 mode: all
-model: kimi-for-coding/k2p7
+model: ollama-cloud/minimax-m3
 temperature: 0.2
 permission:
   edit: deny

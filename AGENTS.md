@@ -15,6 +15,13 @@ Agents must never assume they can throw away changes. The user or other agents m
 the same codebase, so agents must not run `git checkout`, `git reset`, `git clean`, or otherwise
 discard or revert existing working-tree changes unless explicitly instructed by the user.
 
+The user may edit `AGENTS.md`, agent persona instruction files (`.opencode/agents/*.md`), and
+opencode configuration (`opencode.json`, anything under `.opencode/`) in parallel to the delegated
+task. These edits are the user's own work, not scope creep by the builder. Reviewers and builders
+must exclude these files from review findings and from any commit related to the delegated task.
+When staging a commit, do not stage changes to `AGENTS.md`, `.opencode/`, or `opencode.json` unless
+those files were explicitly part of the task scope.
+
 ## Development Environment
 
 ### Core Tools
@@ -347,6 +354,24 @@ prevent the gap.
 - DB filename remembered in AsyncStorage for convenience
 - Optional SQLCipher encryption key (entered on setup, never persisted)
 
+### Backups
+
+The app maintains local file copies of the encrypted database in a user-chosen Storage Access
+Framework directory. Backups are written under four circumstances:
+
+- **Lifecycle (automatic):** when the app moves to the background and on app start-up, if the
+  database has changed since the last backup and a backup directory is configured. Skipped silently
+  if the database is not stale.
+- **Pre-migration (automatic):** before any pending database migrations run. Best-effort; the
+  migration proceeds even if the backup write fails.
+- **Safety (automatic, user-confirmed):** a fresh backup is taken immediately before a destructive
+  restore overwrites the existing database, and before an encryption-password change rewrites the
+  database.
+- **Manual:** the "Backup Now" button on the Settings screen.
+
+The most recent N backups are retained (default 5); older copies are deleted on rotation. A
+"Restore from backup" flow is reachable from the login screen.
+
 ### Search Functionality
 
 - Text search within journal entries (repository-level `searchEntries`)
@@ -387,7 +412,6 @@ prevent the gap.
 - Tag hierarchies
 - Location-based search
 - Database indices or query optimization
-- Automatic backups
 
 ## Build and Deployment
 

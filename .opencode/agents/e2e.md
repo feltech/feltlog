@@ -1,7 +1,7 @@
 ---
 description: E2e test writing and execution agent (Maestro, Android emulator)
 mode: all
-model: kimi-for-coding/k2p7
+model: ollama-cloud/glm-5.2
 temperature: 0.0
 permission:
   edit:
