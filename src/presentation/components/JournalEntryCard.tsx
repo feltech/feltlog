@@ -45,6 +45,10 @@ function createMarkdownStyles(theme: AppTheme) {
       fontSize: 12,
     },
     link: { color: theme.colors.primary },
+    // The markdown renderer creates its own internal <Text> elements that do not
+    // inherit the parent's color, so the base text color must be set explicitly
+    // to remain readable in dark mode.
+    text: { color: theme.colors.onSurface },
   };
 }
 

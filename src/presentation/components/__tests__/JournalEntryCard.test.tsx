@@ -194,6 +194,11 @@ describe('JournalEntryCard', () => {
       expect((mockCapturedMarkdownStyle?.link as Record<string, string>)?.color).toBe(
         lightTheme.colors.primary,
       );
+      // The base text color must be set so the markdown renderer's internal
+      // <Text> elements stay readable in dark mode.
+      expect((mockCapturedMarkdownStyle?.text as Record<string, string>)?.color).toBe(
+        lightTheme.colors.onSurface,
+      );
     });
 
     /** Tests that markdown colors use the dark Paper theme. */
@@ -210,6 +215,9 @@ describe('JournalEntryCard', () => {
       );
       expect((mockCapturedMarkdownStyle?.link as Record<string, string>)?.color).toBe(
         darkTheme.colors.primary,
+      );
+      expect((mockCapturedMarkdownStyle?.text as Record<string, string>)?.color).toBe(
+        darkTheme.colors.onSurface,
       );
     });
 
