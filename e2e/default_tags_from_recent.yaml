@@ -1,0 +1,120 @@
+appId: com.feltech.feltlog
+name: Default tags from most recent entry
+
+
+# This flow verifies that when creating a new entry, the tag list is
+# pre-populated with the tags from the most recently created entry.
+# Prerequisites: None - creates its own database and entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== CREATE FIRST ENTRY WITH TAGS "work" AND "personal" =====
+
+- evalScript: ${output.entry1Content = "First entry with tags " + Date.now().toString()}
+- evalScript: ${output.tag1 = "work"}
+- evalScript: ${output.tag2 = "personal"}
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Enter content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entry1Content}
+
+# Add first tag "work"
+- assertVisible: 'Tags'
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.tag1}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Add second tag "personal"
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- eraseText
+- inputText: ${output.tag2}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Verify both tag chips are present before saving
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+- takeScreenshot: first-entry-with-tags
+
+# Save and return to journal list
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Dismiss the LogBox banner if present (it can overlap the FAB).
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# ===== CREATE SECOND ENTRY AND VERIFY DEFAULT TAGS ARE PRE-POPULATED =====
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# The default tags load asynchronously. Wait for them to appear.
+- extendedWaitUntil:
+    visible: ${output.tag1}
+    timeout: 5000
+
+- takeScreenshot: second-entry-default-tags
+
+# Verify both default tags are pre-populated as chips
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+# ===== VERIFY USER CAN STILL ADD/REMOVE TAGS NORMALLY =====
+
+# Add a new tag "extra"
+- evalScript: ${output.tag3 = "extra"}
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.tag3}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Verify the new tag is added alongside the defaults
+- assertVisible: ${output.tag3}
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+- takeScreenshot: second-entry-after-add-tag
+
+# Remove the "work" default tag by tapping its close (×) icon. Paper Chip
+# renders the close icon as a separate button with accessibilityLabel "Close",
+# positioned to the right of the chip text. Use a directional selector to
+# target the Close button that is immediately right of the "work" chip text.
+- tapOn:
+    text: 'Close'
+    rightOf:
+      text: ${output.tag1}
+- waitForAnimationToEnd
+
+- takeScreenshot: second-entry-after-remove-tag
+
+# Verify "work" is gone but "personal" and "extra" remain
+- assertNotVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+- assertVisible: ${output.tag3}
+
+# Save and return
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'

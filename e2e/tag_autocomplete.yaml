@@ -1,0 +1,143 @@
+appId: com.feltech.feltlog
+name: Tag autocomplete suggestions
+
+
+# This flow verifies the tag autocomplete feature: typing a prefix in the tag
+# input shows matching existing tags as suggestions, tapping a suggestion adds
+# it as a chip and clears the input, and a brand-new tag can still be added via
+# the plus icon.
+#
+# Note: Because Feature 1 (default tags) auto-populates the second entry with
+# tags from the most recent entry, the seeded tag "groceries" will already be
+# present as a chip when the second entry opens. The autocomplete excludes
+# already-added tags, so we must first remove the default "groceries" chip
+# before typing "gro" to see it in the suggestions.
+# Prerequisites: None - creates its own database and entries.
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== CREATE FIRST ENTRY WITH TAG "groceries" (SEED THE TAG DB) =====
+
+- evalScript: ${output.entry1Content = "Seed entry " + Date.now().toString()}
+- evalScript: ${output.seedTag = "groceries"}
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entry1Content}
+
+- assertVisible: 'Tags'
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.seedTag}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+- assertVisible: ${output.seedTag}
+
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Dismiss the LogBox banner if present (it can overlap the FAB).
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# ===== CREATE SECOND ENTRY AND TEST AUTOCOMPLETE =====
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Feature 1: "groceries" is auto-populated as a default tag. Remove it first
+# so that typing "gro" will show it in the autocomplete suggestions (the
+# autocomplete excludes already-added tags).
+- extendedWaitUntil:
+    visible: ${output.seedTag}
+    timeout: 5000
+
+- assertVisible: ${output.seedTag}
+
+- takeScreenshot: second-entry-default-groceries
+
+# Remove the default "groceries" chip so we can test autocomplete showing it
+- tapOn:
+    text: 'Close'
+    rightOf:
+      text: ${output.seedTag}
+- waitForAnimationToEnd
+
+- assertNotVisible: ${output.seedTag}
+
+# Type a prefix that matches the seeded tag
+- tapOn:
+    id: 'tag-input'
+- inputText: 'gro'
+
+# Wait for the autocomplete dropdown to appear
+- extendedWaitUntil:
+    visible:
+      id: 'tag-suggestions'
+    timeout: 5000
+
+- takeScreenshot: autocomplete-dropdown-visible
+
+# Verify the suggestions dropdown is visible and contains "groceries"
+- assertVisible:
+    id: 'tag-suggestions'
+- assertVisible:
+    id: 'tag-suggestion-groceries'
+
+# Tap the "groceries" suggestion
+- tapOn:
+    id: 'tag-suggestion-groceries'
+- waitForAnimationToEnd
+
+- takeScreenshot: after-tapping-suggestion
+
+# Verify "groceries" is added as a chip
+- assertVisible: ${output.seedTag}
+
+# Verify the suggestions dropdown is dismissed after selecting
+- assertNotVisible:
+    id: 'tag-suggestions'
+
+# Verify the tag input is present (cleared after selecting suggestion)
+- assertVisible:
+    id: 'tag-input'
+
+# ===== ADD A BRAND-NEW TAG VIA THE PLUS ICON =====
+
+- evalScript: ${output.newTag = "shopping"}
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.newTag}
+
+# Tap the plus icon to add the new tag
+- tapOn:
+    id: 'add-tag-icon'
+- waitForAnimationToEnd
+
+- takeScreenshot: after-adding-new-tag-via-plus
+
+# Verify "shopping" is added as a chip
+- assertVisible: ${output.newTag}
+
+# Verify both tags are present
+- assertVisible: ${output.seedTag}
+- assertVisible: ${output.newTag}
+
+# Save and return
+- tapOn:
+    id: 'appbar-header'
+- pressKey: BACK
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'

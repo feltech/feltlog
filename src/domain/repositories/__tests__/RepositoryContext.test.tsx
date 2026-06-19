@@ -28,6 +28,7 @@ describe('RepositoryContext', () => {
       getOrCreateTag: jest.fn(),
       deleteTag: jest.fn(),
       getTagsForEntry: jest.fn(),
+      getMostRecentEntryTags: jest.fn(),
     };
   }
 

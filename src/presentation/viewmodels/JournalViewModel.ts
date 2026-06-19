@@ -389,6 +389,25 @@ export const useJournalViewModel = () => {
     [setError, repository],
   );
 
+  /**
+   * Loads the tag names of the most recently created journal entry.
+   *
+   * Used by the entry editor to pre-populate the tag list when creating a new entry.
+   * Returns an empty array when there are no entries or the most recent entry has no
+   * tags. Errors are surfaced via the shared `error` state field.
+   *
+   * @returns A list of tag name strings for the most recent entry, or an empty array on
+   *   failure or when no entries exist.
+   */
+  const loadDefaultTags = useCallback(async (): Promise<string[]> => {
+    try {
+      return await repository.getMostRecentEntryTags();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to load default tags');
+      return [];
+    }
+  }, [setError, repository]);
+
   return {
     state,
     actions: {
@@ -402,6 +421,7 @@ export const useJournalViewModel = () => {
       refreshData,
       setError,
       getEntryById,
+      loadDefaultTags,
     },
   };
 };

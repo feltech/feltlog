@@ -1,0 +1,17 @@
+# Subflow to dismiss the React Native LogBox "Open debugger to view warnings"
+# banner if it is visible. The banner appears when React Native DevTools
+# (Fusebox) is available and LogBox suppresses individual warning toasts. It
+# can overlap interactive elements (e.g. the FAB) and intercept taps.
+#
+# The banner has a close (×) button on its right side. We tap it conditionally
+# only when the banner is visible.
+appId: com.feltech.feltlog
+---
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      # Tap the close (×) button on the right side of the banner.
+      - tapOn:
+          point: '95%,92%'
+      - waitForAnimationToEnd

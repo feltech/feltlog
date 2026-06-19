@@ -696,4 +696,59 @@ describe('JournalRepositoryImpl', () => {
       expect(entry!.location?.address).toBe('London, UK');
     });
   });
+
+  describe('getMostRecentEntryTags', () => {
+    it('returns tag names of the most recently created entry', async () => {
+      // Older entry with different tags.
+      await repository.createEntry({
+        content: 'Older entry',
+        datetime: new Date('2024-01-01T10:00:00Z'),
+        tags: ['old-tag-1', 'old-tag-2'],
+      });
+      // Newer entry — its tags should be returned.
+      await repository.createEntry({
+        content: 'Newer entry',
+        datetime: new Date('2024-02-01T10:00:00Z'),
+        tags: ['recent-tag-1', 'recent-tag-2'],
+      });
+
+      const tags = await repository.getMostRecentEntryTags();
+
+      expect(tags.sort()).toEqual(['recent-tag-1', 'recent-tag-2']);
+    });
+
+    it('returns an empty array when there are no entries', async () => {
+      const tags = await repository.getMostRecentEntryTags();
+      expect(tags).toEqual([]);
+    });
+
+    it('returns an empty array when the most recent entry has no tags', async () => {
+      // Older entry with tags.
+      await repository.createEntry({
+        content: 'Older entry with tags',
+        datetime: new Date('2024-01-01T10:00:00Z'),
+        tags: ['tag-1'],
+      });
+      // Newer entry with no tags — should return empty.
+      await repository.createEntry({
+        content: 'Newer entry without tags',
+        datetime: new Date('2024-02-01T10:00:00Z'),
+        tags: [],
+      });
+
+      const tags = await repository.getMostRecentEntryTags();
+      expect(tags).toEqual([]);
+    });
+
+    it('returns tags of the single entry when only one exists', async () => {
+      await repository.createEntry({
+        content: 'Only entry',
+        datetime: new Date('2024-01-01T10:00:00Z'),
+        tags: ['solo-tag'],
+      });
+
+      const tags = await repository.getMostRecentEntryTags();
+      expect(tags).toEqual(['solo-tag']);
+    });
+  });
 });

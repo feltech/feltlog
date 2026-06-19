@@ -123,6 +123,18 @@ export interface JournalRepository {
    * @returns A list of tags for the entry.
    */
   getTagsForEntry(entryId: string): Promise<Tag[]>;
+
+  /**
+   * Retrieve the tag names of the most recently created journal entry.
+   *
+   * Used to pre-populate the tag list when creating a new entry, defaulting to the tags
+   * used on the user's last entry. Returns an empty array when there are no entries or
+   * the most recent entry has no tags.
+   *
+   * @returns A list of tag name strings for the most recent entry, or an empty array if
+   *   no entries exist.
+   */
+  getMostRecentEntryTags(): Promise<string[]>;
 }
 
 /* eslint-enable @typescript-eslint/no-unused-vars */

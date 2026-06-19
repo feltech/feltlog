@@ -111,9 +111,13 @@ function formatAddress(geocode: ExpoLocation.LocationGeocodedAddress): string | 
 export default function JournalEntryModal() {
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
   const resolvedEntryId: string | undefined = Array.isArray(entryId) ? entryId[0] : entryId;
-  const { actions } = useJournalViewModel();
+  const { actions, state: viewModelState } = useJournalViewModel();
   const navigation = useNavigation();
   const theme = useTheme();
+
+  // The ViewModel's tag list (all existing tags in the system) used for
+  // autocomplete suggestions in the tag input.
+  const viewModelTags = viewModelState.tags;
 
   // The entry loaded from the repository by ID. Decoupled from the ViewModel's
   // paginated `entries` array so that entries beyond the first page (loaded via
@@ -291,6 +295,61 @@ export default function JournalEntryModal() {
       });
     }
   }, [existingEntry, setState]);
+
+  // On create (not editing), pre-populate the tag list with the tags from
+  // the most recently created entry. This is a UX convenience so the user
+  // doesn't have to re-add their commonly used tags every time. Only runs in
+  // create mode (no entryId) and only once on mount. The async fetch is
+  // non-blocking — the UI renders immediately with an empty tag list and the
+  // tags appear once loaded.
+  //
+  // A pristine undo snapshot is pushed BEFORE the default tags are applied so
+  // the first Ctrl+Z clears the auto-populated tags. Without this snapshot the
+  // first undo would skip past the default tags (since setState does not push
+  // to the undo stack), which would surprise the user.
+  useEffect(() => {
+    if (resolvedEntryId) return; // edit mode — leave tags as loaded above
+    let cancelled = false;
+    actions
+      .loadDefaultTags()
+      .then(tags => {
+        if (cancelled) return;
+        if (tags.length > 0) {
+          // Snapshot the pre-default state (empty tags) so the first undo
+          // reverts the auto-populated default tags back to an empty list.
+          pushUndoState(state);
+          setState(draft => {
+            draft.tags = tags;
+          });
+        }
+      })
+      .catch(() => {
+        // Silently ignore — the user can still add tags manually.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only run once on mount. The actions object is stable (useCallback-backed)
+    // so loadDefaultTags won't change between renders. pushUndoState and
+    // setState are also stable. state is intentionally read at invocation time
+    // (the snapshot must capture the empty pre-default state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tag autocomplete suggestions derived from the system tags (state.tags from
+  // the ViewModel) filtered by the current tagInput. Case-insensitive prefix
+  // match; tags already added to the entry are excluded so the user isn't
+  // offered a tag they just added. Memoized to avoid recomputing on every
+  // render when neither the input nor the tag list changed.
+  const tagSuggestions = useMemo(() => {
+    const input = state.tagInput.trim().toLowerCase();
+    if (!input) return [];
+    return viewModelTags
+      .filter(tag => tag.name.toLowerCase().startsWith(input))
+      .filter(tag => !state.tags.includes(tag.name))
+      .map(tag => tag.name)
+      .slice(0, 8);
+  }, [state.tagInput, state.tags, viewModelTags]);
 
   // On create (not editing), request permission and fetch current location.
   // First checks existing permission to avoid unnecessarily prompting the user,
@@ -945,22 +1004,72 @@ export default function JournalEntryModal() {
   }, [navigation]);
 
   /**
+   * Adds a tag to the entry if it is not already present.
+   *
+   * Shared by the tag-input plus button and the autocomplete suggestion tap so both
+   * paths apply identical bookkeeping for the new-tag case: push an undo snapshot, mark
+   * the entry dirty, append the (deduplicated) tag, and clear the tag input.
+   *
+   * Returns true when the tag was added and false when it was already present, so each
+   * caller can decide how to handle the duplicate case (the plus button leaves the
+   * input intact so the user can edit it; the suggestion tap clears the input to
+   * dismiss the dropdown).
+   *
+   * @param tagName - The tag name to add. Assumed already trimmed by the caller.
+   *
+   * @returns True if the tag was newly added, false if it was already present.
+   */
+  const addTagIfNew = useCallback(
+    (tagName: string): boolean => {
+      if (state.tags.includes(tagName)) return false;
+      pushUndoState(state);
+      dirtyRef.current = true;
+      setState(draft => {
+        draft.tags.push(tagName);
+        draft.tagInput = '';
+      });
+      return true;
+    },
+    [state, setState, pushUndoState],
+  );
+
+  /**
    * Adds the current tag input value as a new tag on the entry.
    *
-   * Trims whitespace from the input. Duplicate tags are silently ignored. After adding,
+   * Trims whitespace from the input. Duplicate tags are silently ignored and the input
+   * is left intact so the user can edit it (e.g. fix a typo). After adding a new tag,
    * the tag input is cleared so the user can type another tag.
    */
   const handleAddTag = useCallback(() => {
     const trimmedTag = state.tagInput.trim();
-    if (trimmedTag && !state.tags.includes(trimmedTag)) {
-      pushUndoState(state);
-      dirtyRef.current = true;
-      setState(draft => {
-        draft.tags.push(trimmedTag);
-        draft.tagInput = '';
-      });
+    if (trimmedTag) {
+      // addTagIfNew returns false on duplicate — input is intentionally left
+      // intact so the user can edit the text rather than re-typing it.
+      addTagIfNew(trimmedTag);
     }
-  }, [state, setState, pushUndoState]);
+  }, [state.tagInput, addTagIfNew]);
+
+  /**
+   * Adds a tag selected from the autocomplete suggestions dropdown.
+   *
+   * Delegates to the shared `addTagIfNew` helper for the new-tag case. When the tag is
+   * already present (defensive — the dropdown excludes already-added tags, but a race
+   * could make one appear), the input is still cleared so the dropdown dismisses.
+   *
+   * @param tagName - The tag name selected from the suggestions dropdown.
+   */
+  const handleAddTagFromSuggestion = useCallback(
+    (tagName: string) => {
+      const added = addTagIfNew(tagName);
+      if (!added) {
+        // Tag already present — clear the input to dismiss the dropdown.
+        setState(draft => {
+          draft.tagInput = '';
+        });
+      }
+    },
+    [addTagIfNew, setState],
+  );
 
   /**
    * Removes a tag from the entry.
@@ -1255,6 +1364,30 @@ export default function JournalEntryModal() {
               />
             }
           />
+
+          {/* Tag autocomplete dropdown. Shown only when the tag input is
+              non-empty and there are matching existing tags not already added
+              to the entry. Tapping a suggestion adds it via the same logic as
+              handleAddTag (trim, deduplicate, push undo, mark dirty, clear
+              input). The dropdown dismisses when the input is cleared or a
+              suggestion is tapped. */}
+          {tagSuggestions.length > 0 && (
+            <Surface testID="tag-suggestions" style={styles.tagSuggestions}>
+              {tagSuggestions.map(suggestion => (
+                <Chip
+                  key={suggestion}
+                  testID={`tag-suggestion-${suggestion}`}
+                  accessibilityLabel={`Add tag ${suggestion}`}
+                  accessibilityHint="Adds this tag to the entry"
+                  onPress={() => handleAddTagFromSuggestion(suggestion)}
+                  style={styles.tagSuggestion}
+                  textStyle={styles.tagSuggestionText}
+                >
+                  {suggestion}
+                </Chip>
+              ))}
+            </Surface>
+          )}
 
           <ScrollView
             horizontal
@@ -1578,6 +1711,21 @@ const styles = StyleSheet.create({
   },
   tagInput: {
     marginBottom: 12,
+  },
+  tagSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 8,
+    marginBottom: 12,
+    borderRadius: 8,
+    elevation: 2,
+  },
+  tagSuggestion: {
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  tagSuggestionText: {
+    fontSize: 12,
   },
   tagsContainer: {
     flexDirection: 'row',

@@ -42,6 +42,7 @@ class MockRepo implements JournalRepository {
   getOrCreateTag = jest.fn();
   deleteTag = jest.fn();
   getTagsForEntry = jest.fn();
+  getMostRecentEntryTags = jest.fn().mockResolvedValue([]);
 
   /**
    * Retrieves all journal entries.
@@ -775,5 +776,68 @@ describe('JournalViewModel', () => {
 
     expect(result).toBeNull();
     expect(apiRef.current!.state.error).toBe('Failed to load entry');
+  });
+
+  // -------------------------------------------------------------------------
+  // loadDefaultTags
+  // -------------------------------------------------------------------------
+
+  /** Tests that loadDefaultTags returns the most recent entry's tags. */
+  it('loadDefaultTags returns tags from the repository', async () => {
+    const repo = new MockRepo();
+    repo.getMostRecentEntryTags = jest.fn().mockResolvedValue(['work', 'personal']);
+    const apiRef = await renderViewModel(repo);
+
+    let tags: string[] = [];
+    await act(async () => {
+      tags = await apiRef.current!.actions.loadDefaultTags();
+    });
+
+    expect(repo.getMostRecentEntryTags).toHaveBeenCalled();
+    expect(tags).toEqual(['work', 'personal']);
+  });
+
+  /** Tests that loadDefaultTags returns an empty array when no entries exist. */
+  it('loadDefaultTags returns empty array when repository returns empty', async () => {
+    const repo = new MockRepo();
+    repo.getMostRecentEntryTags = jest.fn().mockResolvedValue([]);
+    const apiRef = await renderViewModel(repo);
+
+    let tags: string[] = ['untouched'];
+    await act(async () => {
+      tags = await apiRef.current!.actions.loadDefaultTags();
+    });
+
+    expect(tags).toEqual([]);
+  });
+
+  /** Tests that loadDefaultTags handles Error exceptions from the repository. */
+  it('loadDefaultTags handles Error exceptions and sets error state', async () => {
+    const repo = new MockRepo();
+    repo.getMostRecentEntryTags = jest.fn().mockRejectedValue(new Error('DB read failed'));
+    const apiRef = await renderViewModel(repo);
+
+    let tags: string[] = ['untouched'];
+    await act(async () => {
+      tags = await apiRef.current!.actions.loadDefaultTags();
+    });
+
+    expect(tags).toEqual([]);
+    expect(apiRef.current!.state.error).toBe('DB read failed');
+  });
+
+  /** Tests that loadDefaultTags handles non-Error exceptions. */
+  it('loadDefaultTags handles non-Error exceptions and sets generic error', async () => {
+    const repo = new MockRepo();
+    repo.getMostRecentEntryTags = jest.fn().mockRejectedValue('string error');
+    const apiRef = await renderViewModel(repo);
+
+    let tags: string[] = ['untouched'];
+    await act(async () => {
+      tags = await apiRef.current!.actions.loadDefaultTags();
+    });
+
+    expect(tags).toEqual([]);
+    expect(apiRef.current!.state.error).toBe('Failed to load default tags');
   });
 });

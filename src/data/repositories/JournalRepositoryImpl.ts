@@ -385,6 +385,39 @@ export class JournalRepositoryImpl implements JournalRepository {
   }
 
   /**
+   * Retrieves the tag names of the most recently created journal entry.
+   *
+   * Uses a single query that joins `journal_entry_tags` and `tags` against a subquery
+   * selecting the most recent entry ID (ordered by `datetime` desc). Returns an empty
+   * array when no entries exist or the most recent entry has no tags.
+   *
+   * Note: `datetime` is persisted as an ISO 8601 string, which sorts lexicographically
+   * in chronological order, so `orderBy('datetime', 'desc')` correctly yields the most
+   * recent entry without casting to a date type.
+   *
+   * @returns A list of tag name strings for the most recent entry.
+   */
+  async getMostRecentEntryTags(): Promise<string[]> {
+    const db = this.db;
+
+    // Subquery: the single most recent entry ID by datetime desc.
+    const recentEntryId = db
+      .selectFrom('journal_entries')
+      .select('id')
+      .orderBy('datetime', 'desc')
+      .limit(1);
+
+    const tags = await db
+      .selectFrom('tags')
+      .innerJoin('journal_entry_tags', 'tags.id', 'journal_entry_tags.tag_id')
+      .select('tags.name')
+      .where('journal_entry_tags.entry_id', 'in', recentEntryId)
+      .execute();
+
+    return tags.map((tag: { name: string }) => tag.name);
+  }
+
+  /**
    * Maps a database entry and its tags to a domain-level JournalEntry object.
    *
    * @param dbEntry - The raw database entry.
