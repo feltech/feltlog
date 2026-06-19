@@ -182,23 +182,30 @@ describe('SettingsScreen', () => {
     });
   });
 
-  /** Tests that choosing a backup location shows an error when denied. */
-  it('shows error when backup location permission is denied', async () => {
+  /**
+   * Tests that cancelling the backup location picker (e.g. pressing the system back
+   * button) does not show any snackbar — cancellation is not an error.
+   */
+  it('does not show a snackbar when the user cancels the backup location picker', async () => {
     (StorageAccessFramework.requestDirectoryPermissionsAsync as jest.Mock).mockResolvedValue({
       granted: false,
       directoryUri: null,
     });
 
-    const { getByTestId, getByText } = renderScreen();
+    const { getByTestId, queryByText } = renderScreen();
 
     await waitFor(() => {
       expect(getByTestId('choose-backup-location-btn')).toBeTruthy();
     });
 
-    fireEvent.press(getByTestId('choose-backup-location-btn'));
+    await act(async () => {
+      fireEvent.press(getByTestId('choose-backup-location-btn'));
+    });
 
+    // Give any pending snackbar state a chance to settle before asserting.
     await waitFor(() => {
-      expect(getByText('Permission denied')).toBeTruthy();
+      expect(queryByText('Permission denied')).toBeNull();
+      expect(queryByText('Backup location configured')).toBeNull();
     });
   });
 

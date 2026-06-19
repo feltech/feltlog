@@ -127,13 +127,10 @@ export default function SettingsScreen() {
           message: 'Backup location configured',
           isError: false,
         });
-      } else {
-        setSnackbar({
-          visible: true,
-          message: 'Permission denied',
-          isError: true,
-        });
       }
+      // If result.granted is false, the user cancelled the SAF directory picker
+      // (e.g. pressed the system back button). Cancellation is a normal user
+      // action, not an error — do nothing, matching the restore flow's behavior.
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSnackbar({
