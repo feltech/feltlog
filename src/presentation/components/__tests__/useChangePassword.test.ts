@@ -12,7 +12,7 @@ function makeDeps(overrides: Partial<UseChangePasswordDeps> = {}): UseChangePass
   return {
     closeCurrentConnection: jest.fn().mockResolvedValue(undefined),
     changeDatabaseEncryptionKey: jest.fn().mockResolvedValue({ success: true }),
-    initialize: jest.fn().mockResolvedValue(undefined),
+    resetDatabase: jest.fn(),
     backupDatabase: jest.fn().mockResolvedValue({ success: true }),
     getBackupDirectoryUri: jest.fn().mockResolvedValue('content://mock-dir'),
     setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
@@ -207,7 +207,7 @@ describe('useChangePassword', () => {
     const backupDatabase = jest.fn().mockResolvedValue({ success: true });
     const closeCurrentConnection = jest.fn().mockResolvedValue(undefined);
     const rekey = jest.fn().mockResolvedValue({ success: true });
-    const initialize = jest.fn().mockResolvedValue(undefined);
+    const resetDatabase = jest.fn();
     const getBackupDirectoryUri = jest.fn().mockResolvedValue(null); // not configured yet
     const getDatabasePath = jest.fn().mockResolvedValue('/mock/target.db');
     const getLatestMigrationKey = jest.fn().mockReturnValue('20260523_one');
@@ -220,7 +220,7 @@ describe('useChangePassword', () => {
     const deps: UseChangePasswordDeps = {
       closeCurrentConnection,
       changeDatabaseEncryptionKey: rekey,
-      initialize,
+      resetDatabase,
       backupDatabase,
       getBackupDirectoryUri,
       setBackupDirectoryUri,
@@ -258,13 +258,12 @@ describe('useChangePassword', () => {
     expect(backupDatabase).toHaveBeenCalled();
     // The rekey was performed.
     expect(rekey).toHaveBeenCalledWith('oldkey', 'newkey', 'test.db');
-    // The DB was re-initialized with the new key.
-    expect(initialize).toHaveBeenCalledWith({ encryptionKey: 'newkey', databaseName: 'test.db' });
-    expect(showSnackbar).toHaveBeenCalledWith('Encryption updated', false);
+    // The app state was reset so the setup screen reappears.
+    expect(resetDatabase).toHaveBeenCalled();
   });
 
   /** Tests the happy path of confirmProceed. */
-  it('confirmProceed happy path: backup, rekey, initialize, success snackbar', async () => {
+  it('confirmProceed happy path: backup, rekey, resetDatabase, dialog closes', async () => {
     const deps = makeDeps();
     const { result } = renderHook(() =>
       useChangePassword({ databaseName: 'test.db', isCurrentlyEncrypted: true }, deps),
@@ -285,11 +284,10 @@ describe('useChangePassword', () => {
 
     expect(deps.closeCurrentConnection).toHaveBeenCalled();
     expect(deps.changeDatabaseEncryptionKey).toHaveBeenCalledWith('old', 'new', 'test.db');
-    expect(deps.initialize).toHaveBeenCalledWith({
-      encryptionKey: 'new',
-      databaseName: 'test.db',
-    });
-    expect(deps.showSnackbar).toHaveBeenCalledWith('Encryption updated', false);
+    expect(deps.resetDatabase).toHaveBeenCalled();
+    // No success snackbar — the component unmounts as the setup screen replaces
+    // the app tree.
+    expect(deps.showSnackbar).not.toHaveBeenCalled();
     expect(result.current.isOpen).toBe(false);
     expect(result.current.submitting).toBe(false);
   });
@@ -396,11 +394,7 @@ describe('useChangePassword', () => {
     });
 
     expect(deps.changeDatabaseEncryptionKey).toHaveBeenCalledWith('old', '', 'test.db');
-    expect(deps.initialize).toHaveBeenCalledWith({
-      encryptionKey: '',
-      databaseName: 'test.db',
-    });
-    expect(deps.showSnackbar).toHaveBeenCalledWith('Encryption updated', false);
+    expect(deps.resetDatabase).toHaveBeenCalled();
   });
 
   /** Tests adding encryption to an unencrypted DB. */
@@ -425,10 +419,7 @@ describe('useChangePassword', () => {
     });
 
     expect(deps.changeDatabaseEncryptionKey).toHaveBeenCalledWith('', 'new', 'test.db');
-    expect(deps.initialize).toHaveBeenCalledWith({
-      encryptionKey: 'new',
-      databaseName: 'test.db',
-    });
+    expect(deps.resetDatabase).toHaveBeenCalled();
   });
 
   /** Tests that an exception during confirmProceed is caught and shown as snackbar. */

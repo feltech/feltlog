@@ -7,18 +7,6 @@ jest.mock('@/src/domain/repositories/DatabaseContext', () => ({
   useDatabaseInfo: jest.fn(),
 }));
 
-// Mock useDatabase for the initialize function only (state mutator).
-const mockUseDatabase = jest.fn();
-jest.mock('@/src/data/database/database', () => ({
-  useDatabase: () => mockUseDatabase(),
-  openKysely: jest.fn().mockResolvedValue({
-    sqliteDb: {
-      databasePath: '/mock/test.db',
-      closeAsync: jest.fn().mockResolvedValue(undefined),
-    },
-  }),
-}));
-
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockUseDatabaseInfo = require('@/src/domain/repositories/DatabaseContext')
   .useDatabaseInfo as jest.Mock;
@@ -34,15 +22,14 @@ describe('useChangePasswordDeps', () => {
 
   /** Tests that the factory returns all expected dependencies. */
   it('returns a deps object with all required keys', () => {
+    const resetDatabase = jest.fn();
     mockUseDatabaseInfo.mockReturnValue({
       databasePath: '/mock/test.db',
       sqliteDb: {
         closeAsync: jest.fn().mockResolvedValue(undefined),
       },
       isCurrentlyEncrypted: true,
-    });
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+      resetDatabase,
     });
 
     const showSnackbar = jest.fn();
@@ -50,7 +37,7 @@ describe('useChangePasswordDeps', () => {
 
     expect(typeof result.current.closeCurrentConnection).toBe('function');
     expect(typeof result.current.changeDatabaseEncryptionKey).toBe('function');
-    expect(typeof result.current.initialize).toBe('function');
+    expect(typeof result.current.resetDatabase).toBe('function');
     expect(typeof result.current.backupDatabase).toBe('function');
     expect(typeof result.current.getBackupDirectoryUri).toBe('function');
     expect(typeof result.current.setBackupDirectoryUri).toBe('function');
@@ -58,6 +45,8 @@ describe('useChangePasswordDeps', () => {
     expect(typeof result.current.getLatestMigrationKey).toBe('function');
     expect(typeof result.current.requestDirectoryPermissions).toBe('function');
     expect(result.current.showSnackbar).toBe(showSnackbar);
+    // resetDatabase is forwarded from context verbatim.
+    expect(result.current.resetDatabase).toBe(resetDatabase);
   });
 
   /** Tests that closeCurrentConnection calls closeAsync when sqliteDb is present. */
@@ -67,9 +56,7 @@ describe('useChangePasswordDeps', () => {
       databasePath: '/mock/test.db',
       sqliteDb: { closeAsync },
       isCurrentlyEncrypted: true,
-    });
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+      resetDatabase: jest.fn(),
     });
 
     const showSnackbar = jest.fn();
@@ -86,9 +73,7 @@ describe('useChangePasswordDeps', () => {
       databasePath: '/mock/test.db',
       sqliteDb: { closeAsync },
       isCurrentlyEncrypted: true,
-    });
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+      resetDatabase: jest.fn(),
     });
 
     const showSnackbar = jest.fn();
@@ -103,9 +88,7 @@ describe('useChangePasswordDeps', () => {
       databasePath: '/mock/prod.db',
       sqliteDb: null,
       isCurrentlyEncrypted: true,
-    });
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+      resetDatabase: jest.fn(),
     });
 
     const showSnackbar = jest.fn();
@@ -120,9 +103,7 @@ describe('useChangePasswordDeps', () => {
       databasePath: null,
       sqliteDb: null,
       isCurrentlyEncrypted: true,
-    });
-    mockUseDatabase.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
+      resetDatabase: jest.fn(),
     });
 
     const showSnackbar = jest.fn();

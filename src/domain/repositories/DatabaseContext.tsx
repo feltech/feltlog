@@ -14,6 +14,14 @@ export interface DatabaseInfo {
 
   /** The underlying SQLite database handle, or null if not initialized. */
   sqliteDb: SQLiteDatabase | null;
+
+  /**
+   * Resets the app's database state back to uninitialized, forcing the setup screen to
+   * reappear. Used after destructive operations (e.g. encryption key change) so the
+   * user re-enters the new password and the primary useDatabase instance re-opens the
+   * database.
+   */
+  resetDatabase: () => void;
 }
 
 const DatabaseInfoContext = createContext<DatabaseInfo>({
@@ -21,6 +29,7 @@ const DatabaseInfoContext = createContext<DatabaseInfo>({
   databasePath: null,
   isCurrentlyEncrypted: true,
   sqliteDb: null,
+  resetDatabase: () => {},
 });
 
 export interface DatabaseInfoProviderProps {

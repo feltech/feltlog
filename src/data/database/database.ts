@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useImmer } from 'use-immer';
 import { Database } from '@/src/data/database/schema';
 import { up } from '@/src/data/database/migrations';
@@ -79,6 +79,14 @@ export async function closeSqlite(sqliteDb: SQLiteDatabase): Promise<void> {
  */
 export interface UseDatabaseApi extends UseDatabaseState {
   initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
+  /**
+   * Resets the hook state back to the initial uninitialized values.
+   *
+   * Used after a destructive operation (e.g. encryption key change) to force the app
+   * back to the setup screen, so the user re-enters the new password and
+   * {@link initialize} re-opens the database on the primary hook instance.
+   */
+  reset: () => void;
   lastDatabaseName: string | null;
 }
 
@@ -218,9 +226,30 @@ export const useDatabase = (): UseDatabaseApi => {
     }
   };
 
+  /**
+   * Resets the hook state to the initial uninitialized values without closing the
+   * existing connection (the caller is responsible for closing it before resetting,
+   * e.g. via the change-password flow's closeCurrentConnection).
+   *
+   * This forces the app back to the setup screen so the user re-enters the password and
+   * {@link initialize} re-opens the database on this — the primary — hook instance.
+   */
+  const reset = useCallback(() => {
+    setState({
+      ready: false,
+      db: null,
+      error: null,
+      databaseName: null,
+      sqliteDb: null,
+      databasePath: null,
+      isCurrentlyEncrypted: true,
+    });
+  }, [setState]);
+
   return {
     ...state,
     initialize,
+    reset,
     lastDatabaseName,
     databaseName: state.databaseName ?? null,
     sqliteDb: state.sqliteDb ?? null,

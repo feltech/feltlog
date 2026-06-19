@@ -88,6 +88,7 @@ function RootLayoutNav() {
     ready,
     db,
     initialize,
+    reset,
     lastDatabaseName,
     error,
     databaseName,
@@ -185,7 +186,15 @@ function RootLayoutNav() {
 
   return (
     <PaperProvider theme={appTheme}>
-      <DatabaseInfoProvider value={{ databaseName, databasePath, isCurrentlyEncrypted, sqliteDb }}>
+      <DatabaseInfoProvider
+        value={{
+          databaseName,
+          databasePath,
+          isCurrentlyEncrypted,
+          sqliteDb,
+          resetDatabase: reset,
+        }}
+      >
         <RepositoryProvider repository={repository}>
           <ThemeProvider value={appTheme as unknown as NavigationTheme}>
             <StatusBar style={appTheme.dark ? 'light' : 'dark'} />

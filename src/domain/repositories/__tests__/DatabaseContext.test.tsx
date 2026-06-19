@@ -18,6 +18,7 @@ describe('DatabaseContext', () => {
           databasePath: null,
           isCurrentlyEncrypted: true,
           sqliteDb: null,
+          resetDatabase: jest.fn(),
         }}
       >
         <Text>Child content</Text>
@@ -47,6 +48,7 @@ describe('DatabaseContext', () => {
           databasePath: '/data/test.db',
           isCurrentlyEncrypted: true,
           sqliteDb: null,
+          resetDatabase: jest.fn(),
         }}
       >
         <Harness />
@@ -58,6 +60,7 @@ describe('DatabaseContext', () => {
       databasePath: '/data/test.db',
       isCurrentlyEncrypted: true,
       sqliteDb: null,
+      resetDatabase: expect.any(Function),
     });
   });
 
@@ -82,6 +85,7 @@ describe('DatabaseContext', () => {
       databasePath: null,
       isCurrentlyEncrypted: true,
       sqliteDb: null,
+      resetDatabase: expect.any(Function),
     });
   });
 });

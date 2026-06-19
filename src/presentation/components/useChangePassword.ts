@@ -3,7 +3,6 @@ import { StorageAccessFramework } from 'expo-file-system/legacy';
 import { changeDatabaseEncryptionKey } from '@/src/data/database/rekey';
 import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
 import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
-import { useDatabase } from '@/src/data/database/database';
 import { useDatabaseInfo } from '@/src/domain/repositories/DatabaseContext';
 
 /**
@@ -39,7 +38,7 @@ export interface UseChangePasswordDeps {
     databaseName: string,
   ) => Promise<{ success: boolean; error?: string }>;
   /** Reopens the DB via useDatabase.initialize. */
-  initialize: (params: { encryptionKey: string; databaseName: string }) => Promise<void>;
+  resetDatabase: () => void;
   /** Performs a safety backup. */
   backupDatabase: (
     targetPath: string,
@@ -195,15 +194,15 @@ export function useChangePassword(
         return;
       }
 
-      // Re-initialize with the new key.
-      await deps.initialize({
-        encryptionKey: newKey,
-        databaseName: input.databaseName,
-      });
-
+      // Reset app state so RootLayoutNav re-renders the setup screen. The
+      // user re-enters the new password there, and RootLayoutNav's own
+      // useDatabase.initialize re-opens the database on the primary hook
+      // instance. We must NOT call useDatabase().initialize from this hook
+      // because that would target a separate hook instance and leave
+      // RootLayoutNav with a stale closed connection.
       setIsOpen(false);
       resetForm();
-      deps.showSnackbar('Encryption updated', false);
+      deps.resetDatabase();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       deps.showSnackbar(`Failed to change password: ${message}`, true);
@@ -248,12 +247,9 @@ export function useChangePasswordDeps(
 ): UseChangePasswordDeps {
   // Read from DatabaseInfoProvider context, NOT from useDatabase(). Only
   // RootLayoutNav owns the initialized useDatabase state; calling useDatabase
-  // here would create a fresh uninitialized state.
-  const { databasePath, sqliteDb } = useDatabaseInfo();
-  // For `initialize`, we still need to call the useDatabase hook because that
-  // is the only place that mutates the ready/db state. But we read the path
-  // from context.
-  const { initialize } = useDatabase();
+  // here would create a fresh uninitialized state. resetDatabase is wired
+  // through context to RootLayoutNav's primary useDatabase instance.
+  const { databasePath, sqliteDb, resetDatabase } = useDatabaseInfo();
 
   return {
     closeCurrentConnection: async () => {
@@ -266,7 +262,7 @@ export function useChangePasswordDeps(
       }
     },
     changeDatabaseEncryptionKey,
-    initialize,
+    resetDatabase,
     backupDatabase,
     getBackupDirectoryUri,
     setBackupDirectoryUri,

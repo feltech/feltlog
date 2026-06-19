@@ -431,6 +431,39 @@ describe('useDatabase', () => {
     expect(result.current.databaseName).toBe(dbName2);
   });
 
+  /**
+   * Tests that reset() returns the hook state to the initial uninitialized values,
+   * forcing the app back to the setup screen after a destructive operation such as an
+   * encryption key change.
+   */
+  it('should reset state to initial values after reset() is called', async () => {
+    const { result } = renderHook(() => useDatabase());
+    const dbName = makeDbName();
+
+    await act(async () => {
+      await result.current.initialize({
+        encryptionKey: 'test-key',
+        databaseName: dbName,
+      });
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.db).not.toBeNull();
+    expect(result.current.databaseName).toBe(dbName);
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.db).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.databaseName).toBeNull();
+    expect(result.current.sqliteDb).toBeNull();
+    expect(result.current.databasePath).toBeNull();
+    expect(result.current.isCurrentlyEncrypted).toBe(true);
+  });
+
   /** Tests that initialization continues when checking pending migrations throws. */
   it('should continue initialization when migration check throws', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
