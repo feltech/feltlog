@@ -370,11 +370,14 @@ name: Restore from backup — to fresh DB
       - waitForAnimationToEnd
 
 # Scroll down to the Restore button before tapping it.
+# The backup file list can be long (accumulated files from prior test
+# runs), so use a generous timeout and faster scroll speed.
 - scrollUntilVisible:
     element:
       id: 'restore-confirm-btn'
     direction: DOWN
-    timeout: 10000
+    timeout: 30000
+    speed: 80
 
 # Tap Restore — a confirm dialog may appear if the target DB name
 # collides with an existing file (e.g. if fileExists creates the file
