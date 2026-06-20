@@ -16,3 +16,7 @@ test_output/
 
 android.log
 report.xml
+
+# CNG: native projects are regenerated from source via `expo prebuild`
+/android/
+/ios/
