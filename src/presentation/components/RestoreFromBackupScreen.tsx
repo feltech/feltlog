@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
   Dialog,
@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   Title,
+  useTheme,
 } from 'react-native-paper';
 import { extractFileName } from '@/src/data/database/backup';
 import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
@@ -58,7 +59,7 @@ export default function RestoreFromBackupScreen({
   onCancel,
   onSuccess,
 }: RestoreFromBackupScreenProps) {
-  const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [backupDirUri, setBackupDirUri] = useState<string | null>(null);
   const [backupFiles, setBackupFiles] = useState<string[]>([]);
@@ -81,144 +82,147 @@ export default function RestoreFromBackupScreen({
   }, []);
 
   return (
-    <View style={styles.root}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
-      >
-        <Title style={styles.title}>Restore from backup</Title>
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+    >
+      <View style={styles.root}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 }]}>
+          <Title style={styles.title}>Restore from backup</Title>
 
-        <HelperText type="info" testID="safety-backup-notice">
-          A safety backup of the current database will be saved to the configured backup location
-          before restoring.
-        </HelperText>
-
-        <TextInput
-          testID="restore-db-name-input"
-          accessibilityLabel="Database file name input"
-          label="Database file name"
-          value={databaseName}
-          onChangeText={setDatabaseName}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
-        <HelperText type="info" testID="restore-db-name-helper">
-          The restored database will be saved with this name. After restore, you&apos;ll be
-          returned to the login screen where you can enter the encryption key (if any) for the
-          restored database.
-        </HelperText>
-
-        {!backupDirUri && (
-          <HelperText
-            type="error"
-            testID="restore-error-text"
-            accessibilityLabel={`backup-dir-uri-${backupDirUri ?? 'null'}`}
-          >
-            No backup location configured. Tap &quot;Choose Backup Location&quot; below.
+          <HelperText type="info" testID="safety-backup-notice">
+            A safety backup of the current database will be saved to the configured backup location
+            before restoring.
           </HelperText>
-        )}
 
-        <Button
-          mode="outlined"
-          onPress={async () => {
-            const newUri = await flow.chooseBackupDirectory();
-            if (newUri) {
-              setBackupDirUri(newUri);
-              const files = await flow.refreshFileList(newUri);
-              setBackupFiles(files);
-            }
-          }}
-          style={styles.button}
-          testID="restore-choose-backup-location-btn"
-        >
-          Choose Backup Location
-        </Button>
+          <TextInput
+            testID="restore-db-name-input"
+            accessibilityLabel="Database file name input"
+            label="Database file name"
+            value={databaseName}
+            onChangeText={setDatabaseName}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.input}
+          />
+          <HelperText type="info" testID="restore-db-name-helper">
+            The restored database will be saved with this name. After restore, you&apos;ll be
+            returned to the login screen where you can enter the encryption key (if any) for the
+            restored database.
+          </HelperText>
 
-        <Text style={styles.sectionLabel}>Backup files</Text>
-
-        <RadioButton.Group
-          onValueChange={value => setSelectedFileUri(value)}
-          value={selectedFileUri ?? ''}
-        >
-          <View testID="restore-source-list">
-            {backupFiles.length === 0 && (
-              <HelperText type="info">No .db files found in the backup location.</HelperText>
-            )}
-            {backupFiles.map(uri => {
-              const fileName = extractFileName(uri);
-              return (
-                <RadioButton.Item
-                  key={uri}
-                  value={uri}
-                  label={fileName}
-                  testID={`restore-source-item-${fileName}`}
-                  position="leading"
-                  style={styles.radioItem}
-                />
-              );
-            })}
-          </View>
-        </RadioButton.Group>
-
-        <View style={styles.buttonRow}>
-          <Button
-            mode="contained"
-            testID="restore-confirm-btn"
-            accessibilityLabel="Restore database"
-            disabled={!flow.canSubmit}
-            loading={flow.submitting}
-            onPress={flow.handleRestore}
-            style={styles.confirmButton}
-          >
-            Restore
-          </Button>
+          {!backupDirUri && (
+            <HelperText
+              type="error"
+              testID="restore-error-text"
+              accessibilityLabel={`backup-dir-uri-${backupDirUri ?? 'null'}`}
+            >
+              No backup location configured. Tap &quot;Choose Backup Location&quot; below.
+            </HelperText>
+          )}
 
           <Button
             mode="outlined"
-            testID="restore-cancel-btn"
-            accessibilityLabel="Cancel restore"
-            disabled={flow.submitting}
-            onPress={onCancel}
-            style={styles.cancelButton}
+            onPress={async () => {
+              const newUri = await flow.chooseBackupDirectory();
+              if (newUri) {
+                setBackupDirUri(newUri);
+                const files = await flow.refreshFileList(newUri);
+                setBackupFiles(files);
+              }
+            }}
+            style={styles.button}
+            testID="restore-choose-backup-location-btn"
           >
-            Cancel
+            Choose Backup Location
           </Button>
-        </View>
-      </ScrollView>
 
-      <Portal>
-        <Dialog
-          visible={flow.showConfirmDialog}
-          onDismiss={flow.cancelRestore}
-          testID="restore-confirm-dialog"
-        >
-          <Dialog.Title>Confirm restore</Dialog.Title>
-          <Dialog.Content>
-            <Text>
-              Proceed with restoring the selected backup? A safety backup will be created first.
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={flow.cancelRestore} testID="restore-dialog-cancel">
-              Cancel
-            </Button>
-            <Button onPress={flow.confirmRestore} testID="restore-dialog-confirm">
+          <Text style={styles.sectionLabel}>Backup files</Text>
+
+          <RadioButton.Group
+            onValueChange={value => setSelectedFileUri(value)}
+            value={selectedFileUri ?? ''}
+          >
+            <View testID="restore-source-list">
+              {backupFiles.length === 0 && (
+                <HelperText type="info">No .db files found in the backup location.</HelperText>
+              )}
+              {backupFiles.map(uri => {
+                const fileName = extractFileName(uri);
+                return (
+                  <RadioButton.Item
+                    key={uri}
+                    value={uri}
+                    label={fileName}
+                    testID={`restore-source-item-${fileName}`}
+                    position="leading"
+                    style={styles.radioItem}
+                  />
+                );
+              })}
+            </View>
+          </RadioButton.Group>
+
+          <View style={styles.buttonRow}>
+            <Button
+              mode="contained"
+              testID="restore-confirm-btn"
+              accessibilityLabel="Restore database"
+              disabled={!flow.canSubmit}
+              loading={flow.submitting}
+              onPress={flow.handleRestore}
+              style={styles.confirmButton}
+            >
               Restore
             </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
 
-      <Snackbar
-        visible={flow.snackbar.visible}
-        onDismiss={flow.dismissSnackbar}
-        duration={3000}
-        style={flow.snackbar.isError ? styles.snackbarError : styles.snackbarSuccess}
-        testID="restore-snackbar"
-      >
-        {flow.snackbar.message}
-      </Snackbar>
-    </View>
+            <Button
+              mode="outlined"
+              testID="restore-cancel-btn"
+              accessibilityLabel="Cancel restore"
+              disabled={flow.submitting}
+              onPress={onCancel}
+              style={styles.cancelButton}
+            >
+              Cancel
+            </Button>
+          </View>
+        </ScrollView>
+
+        <Portal>
+          <Dialog
+            visible={flow.showConfirmDialog}
+            onDismiss={flow.cancelRestore}
+            testID="restore-confirm-dialog"
+          >
+            <Dialog.Title>Confirm restore</Dialog.Title>
+            <Dialog.Content>
+              <Text>
+                Proceed with restoring the selected backup? A safety backup will be created first.
+              </Text>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={flow.cancelRestore} testID="restore-dialog-cancel">
+                Cancel
+              </Button>
+              <Button onPress={flow.confirmRestore} testID="restore-dialog-confirm">
+                Restore
+              </Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+
+        <Snackbar
+          visible={flow.snackbar.visible}
+          onDismiss={flow.dismissSnackbar}
+          duration={3000}
+          style={flow.snackbar.isError ? styles.snackbarError : styles.snackbarSuccess}
+          testID="restore-snackbar"
+        >
+          {flow.snackbar.message}
+        </Snackbar>
+      </View>
+    </SafeAreaView>
   );
 }
 

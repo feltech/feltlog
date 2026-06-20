@@ -162,6 +162,7 @@ function RootLayoutNav() {
   if (!ready || !db) {
     return (
       <PaperProvider theme={appTheme}>
+        <StatusBar style={appTheme.dark ? 'light' : 'dark'} />
         <ThemeProvider value={appTheme as unknown as NavigationTheme}>
           {restoreMode ? (
             <RestoreFromBackupScreen

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import type { UseDatabaseApi } from '@/src/data/database/database';
 
 /**
@@ -40,6 +41,7 @@ export default function SetupDatabaseScreen({
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [key, setKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const theme = useTheme();
 
   // The submit button is enabled as soon as the database name is non-empty.
   // An empty encryption key is explicitly allowed; openKysely treats '' as
@@ -57,68 +59,82 @@ export default function SetupDatabaseScreen({
   };
 
   return (
-    <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
-      <Text variant="headlineMedium" style={{ marginBottom: 16 }}>
-        Choose database
-      </Text>
-
-      <TextInput
-        testID="db-name-input"
-        accessibilityLabel="Database file name input"
-        label="Database file name"
-        value={databaseName}
-        onChangeText={setDatabaseName}
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={{ marginBottom: 12 }}
-      />
-
-      <TextInput
-        testID="db-key-input"
-        accessibilityLabel="Encryption key input"
-        label="Encryption key (leave empty for unencrypted)"
-        value={key}
-        onChangeText={setKey}
-        secureTextEntry
-        style={{ marginBottom: 8 }}
-      />
-      <HelperText type="info">
-        The file name will be remembered. Leave empty for an unencrypted database.
-      </HelperText>
-
-      {error ? (
-        <HelperText
-          type="error"
-          testID="db-error-text"
-          accessibilityLabel="Database error message"
-        >
-          {String(error)}
-        </HelperText>
-      ) : null}
-
-      <Button
-        mode="contained"
-        testID="db-open-btn"
-        accessibilityLabel="Open or create database"
-        disabled={!canSubmit || submitting}
-        loading={submitting}
-        onPress={onSubmit}
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+    >
+      <View
+        style={{
+          flex: 1,
+          padding: 16,
+          justifyContent: 'center',
+        }}
       >
-        Open or create database
-      </Button>
-
-      {onRestore ? (
-        <Button
-          mode="outlined"
-          testID="restore-backup-btn"
-          accessibilityLabel="Restore from backup"
-          disabled={submitting}
-          onPress={onRestore}
-          style={{ marginTop: 12 }}
+        <Text
+          variant="headlineMedium"
+          style={{ marginBottom: 16, color: theme.colors.onBackground }}
         >
-          Restore from backup
+          Choose database
+        </Text>
+
+        <TextInput
+          testID="db-name-input"
+          accessibilityLabel="Database file name input"
+          label="Database file name"
+          value={databaseName}
+          onChangeText={setDatabaseName}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{ marginBottom: 12 }}
+        />
+
+        <TextInput
+          testID="db-key-input"
+          accessibilityLabel="Encryption key input"
+          label="Encryption key (leave empty for unencrypted)"
+          value={key}
+          onChangeText={setKey}
+          secureTextEntry
+          style={{ marginBottom: 8 }}
+        />
+        <HelperText type="info">
+          The file name will be remembered. Leave empty for an unencrypted database.
+        </HelperText>
+
+        {error ? (
+          <HelperText
+            type="error"
+            testID="db-error-text"
+            accessibilityLabel="Database error message"
+          >
+            {String(error)}
+          </HelperText>
+        ) : null}
+
+        <Button
+          mode="contained"
+          testID="db-open-btn"
+          accessibilityLabel="Open or create database"
+          disabled={!canSubmit || submitting}
+          loading={submitting}
+          onPress={onSubmit}
+        >
+          Open or create database
         </Button>
-      ) : null}
-    </View>
+
+        {onRestore ? (
+          <Button
+            mode="outlined"
+            testID="restore-backup-btn"
+            accessibilityLabel="Restore from backup"
+            disabled={submitting}
+            onPress={onRestore}
+            style={{ marginTop: 12 }}
+          >
+            Restore from backup
+          </Button>
+        ) : null}
+      </View>
+    </SafeAreaView>
   );
 }
