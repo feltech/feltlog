@@ -101,6 +101,8 @@
             yq
             # GitHub CLI
             gh
+            # Image manipulation (e.g. icon)
+            imagemagick
 
             # Custom script (above) to create an appropriate AVD.
             create-avd

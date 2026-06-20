@@ -119,6 +119,7 @@
       "python3 -m xml.dom.minidom *": "allow",
       "python -m xml.dom.minidom *": "allow",
       "rm -rf test_output": "allow",
+      "magick *": "allow",
       "./gradlew *": "allow"
     },
     "describe_image": "allow",
@@ -143,7 +144,7 @@
     [
       ".opencode/lib/image-vision.ts",
       {
-        "vision_model": "kimi-for-coding/k2p7"
+        "vision_model": "ollama-cloud/kimi-k2.7-code"
       }
     ]
   ]

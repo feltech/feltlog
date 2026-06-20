@@ -37,8 +37,8 @@ those files were explicitly part of the task scope.
 - Nix Flake for reproducible development environment in `build_env/` directory
 - Minimal system dependencies, focused on Android development needs
 - The shell is auto-activated via Direnv, so commands run directly without any prefix.
-- Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `yq`, `pup`, `python3`.
-  sqlite.
+- Shell provides: `nodejs`, `openjdk`, `gh`, `maestro`, `watchman`, `jq`, `yq`, `pup`, `python3`,
+  `imagemagick`, `sqlite`.
 
 ### Agent restriction on `build_env/` changes
 
