@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import {
   Button,
   Dialog,
@@ -13,6 +14,7 @@ import {
   Title,
   useTheme,
 } from 'react-native-paper';
+import { useDatabaseSetup } from '@/src/domain/repositories/DatabaseSetupContext';
 import { extractFileName } from '@/src/data/database/backup';
 import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
 
@@ -31,41 +33,31 @@ import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
  *    restored database.
  * 5. Errors are surfaced through a snackbar matching the Settings pattern.
  *
- * Because the setup screen is rendered outside the Stack navigator, this screen is
- * intended to be rendered as a sibling of `SetupDatabaseScreen` via a parent state
- * toggle. The `onCancel` prop returns the user to the setup screen.
+ * This component is rendered as the `restore-backup` Expo Router route inside the root
+ * Stack navigator. The hardware back button is handled by the navigator automatically,
+ * so no manual BackHandler is needed. `lastDatabaseName` is read from the
+ * DatabaseSetupContext; cancel navigates back via `router.back()` and a successful
+ * restore returns to the setup screen via `router.replace('/setup')`.
  */
-export interface RestoreFromBackupScreenProps {
-  /** The last used database name, if any. */
-  lastDatabaseName: string | null;
-  /** Callback to return to the setup screen. */
-  onCancel: () => void;
-  /** Callback invoked after a successful restore to return to the setup screen. */
-  onSuccess: () => void;
-}
 
 /**
  * Component that renders the "Restore from backup" UI.
  *
- * @param props - The component props.
- * @param props.lastDatabaseName - The last used database name.
- * @param props.onCancel - Callback invoked when the user taps "Cancel".
- * @param props.onSuccess - Callback invoked after a successful restore.
- *
  * @returns The rendered restore screen.
  */
-export default function RestoreFromBackupScreen({
-  lastDatabaseName,
-  onCancel,
-  onSuccess,
-}: RestoreFromBackupScreenProps) {
+export default function RestoreFromBackupScreen() {
+  const router = useRouter();
+  const { lastDatabaseName } = useDatabaseSetup();
   const theme = useTheme();
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [backupDirUri, setBackupDirUri] = useState<string | null>(null);
   const [backupFiles, setBackupFiles] = useState<string[]>([]);
   const [selectedFileUri, setSelectedFileUri] = useState<string | null>(null);
 
-  const deps = useRestoreFlowDeps(onSuccess);
+  // After a successful restore, return the user to the setup screen so they can
+  // enter the encryption key (if any) for the restored database. Using replace
+  // avoids leaving the restore route on the back stack.
+  const deps = useRestoreFlowDeps(() => router.replace('/setup'));
   const flow = useRestoreFlow({ databaseName, selectedFileUri, backupDirUri }, deps);
 
   // Load the configured backup directory on mount.
@@ -181,7 +173,7 @@ export default function RestoreFromBackupScreen({
               testID="restore-cancel-btn"
               accessibilityLabel="Cancel restore"
               disabled={flow.submitting}
-              onPress={onCancel}
+              onPress={() => router.back()}
               style={styles.cancelButton}
             >
               Cancel

@@ -1,8 +1,8 @@
 /**
  * Restore from backup route.
  *
- * This file exists as an Expo Router route so that the restore screen can be
- * deep-linked or navigated to from anywhere in the app in the future. For now it
- * re-exports the shared component.
+ * Expo Router route for the restore-from-backup screen. It is reachable from the
+ * setup/login screen and re-exports the shared presentation component so it can be
+ * navigated to via `router.replace('/restore-backup')` from anywhere in the app.
  */
 export { default } from '@/src/presentation/components/RestoreFromBackupScreen';

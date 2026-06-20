@@ -1,43 +1,29 @@
 import React, { useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
-import type { UseDatabaseApi } from '@/src/data/database/database';
+import { useDatabaseSetup } from '@/src/domain/repositories/DatabaseSetupContext';
 
 /**
  * Simple setup screen that asks the user to choose a database filename/location and to
  * enter the encryption key. The location is cached for next time via AsyncStorage; the
  * key is never saved.
+ *
+ * This component is rendered as the `setup` Expo Router route. It pulls `initialize`,
+ * `lastDatabaseName`, and `error` from the DatabaseSetupContext (provided by
+ * `_layout.tsx`) rather than receiving them as props, and navigates to the
+ * restore-backup route via `router.push('/restore-backup')`.
  */
-export interface SetupDatabaseScreenProps {
-  /** Callback to initialize the database. */
-  initialize: UseDatabaseApi['initialize'];
-  /** The last used database name, if any. */
-  lastDatabaseName: string | null;
-  /** Any error that occurred during initialization. */
-  error: unknown | null;
-  /** Callback to switch to the restore-from-backup screen. */
-  onRestore?: () => void;
-}
 
 /**
  * Screen component for setting up the database connection.
  *
- * @param props - The component props.
- * @param props.initialize - Callback to initialize the database.
- * @param props.lastDatabaseName - The last used database name.
- * @param props.error - Any error to display.
- * @param props.onRestore - Callback invoked when the user taps the "Restore from
- *   backup" button. Omit to hide the button entirely.
- *
  * @returns The rendered setup screen.
  */
-export default function SetupDatabaseScreen({
-  initialize,
-  lastDatabaseName,
-  error,
-  onRestore,
-}: SetupDatabaseScreenProps) {
+export default function SetupDatabaseScreen() {
+  const router = useRouter();
+  const { initialize, lastDatabaseName, error } = useDatabaseSetup();
   const [databaseName, setDatabaseName] = useState(lastDatabaseName ?? 'feltlog.db');
   const [key, setKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -122,18 +108,16 @@ export default function SetupDatabaseScreen({
           Open or create database
         </Button>
 
-        {onRestore ? (
-          <Button
-            mode="outlined"
-            testID="restore-backup-btn"
-            accessibilityLabel="Restore from backup"
-            disabled={submitting}
-            onPress={onRestore}
-            style={{ marginTop: 12 }}
-          >
-            Restore from backup
-          </Button>
-        ) : null}
+        <Button
+          mode="outlined"
+          testID="restore-backup-btn"
+          accessibilityLabel="Restore from backup"
+          disabled={submitting}
+          onPress={() => router.push('/restore-backup')}
+          style={{ marginTop: 12 }}
+        >
+          Restore from backup
+        </Button>
       </View>
     </SafeAreaView>
   );

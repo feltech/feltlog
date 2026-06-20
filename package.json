@@ -92,6 +92,7 @@
       "src/presentation/components/useClientOnlyValue.web.ts",
       "app/\\+html.tsx",
       "app/restore-backup.tsx",
+      "app/setup.tsx",
       "src/test-utils/"
     ],
     "testPathIgnorePatterns": [

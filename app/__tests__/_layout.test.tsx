@@ -49,48 +49,9 @@ jest.mock('@/src/data/database/dbBackupStorage', () => ({
   getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
 }));
 
-/** Mock SetupDatabaseScreen to simplify assertions. */
-jest.mock('@/src/presentation/components/SetupDatabaseScreen', () => ({
-  __esModule: true,
-  default: jest.fn(({ error, onRestore }: { error?: string; onRestore?: () => void }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const React = require('react');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const RN = require('react-native');
-    return React.createElement(
-      RN.View,
-      null,
-      React.createElement(RN.Text, null, error ? `Setup Error: ${error}` : 'SetupDatabaseScreen'),
-      onRestore
-        ? React.createElement(RN.TouchableOpacity, {
-            testID: 'restore-backup-btn',
-            onPress: onRestore,
-          })
-        : null,
-    );
-  }),
-}));
-
-/** Mock RestoreFromBackupScreen to simplify assertions. */
-jest.mock('@/src/presentation/components/RestoreFromBackupScreen', () => ({
-  __esModule: true,
-  default: jest.fn(({ onCancel }: { onCancel?: () => void }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const React = require('react');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const RN = require('react-native');
-    return React.createElement(
-      RN.View,
-      null,
-      React.createElement(RN.Text, null, 'RestoreFromBackupScreen'),
-      onCancel
-        ? React.createElement(RN.TouchableOpacity, {
-            testID: 'restore-cancel-btn',
-            onPress: onCancel,
-          })
-        : null,
-    );
-  }),
+/** Mock the JournalRepositoryImpl constructor so it does not touch a real db. */
+jest.mock('@/src/data/repositories/JournalRepositoryImpl', () => ({
+  JournalRepositoryImpl: jest.fn().mockImplementation((db: unknown) => ({ db })),
 }));
 
 /** Mock the color scheme hook to return 'light' by default. */
@@ -114,6 +75,55 @@ jest.mock('@expo/vector-icons/FontAwesome', () => ({
   font: { fontFamily: 'FontAwesome' },
 }));
 
+/** Mock DatabaseSetupProvider as a pass-through that renders a marker text. */
+jest.mock('@/src/domain/repositories/DatabaseSetupContext', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require('react-native');
+  return {
+    DatabaseSetupProvider: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(
+        RN.View,
+        { testID: 'database-setup-provider' },
+        React.createElement(RN.Text, null, 'DatabaseSetupProvider'),
+        children,
+      ),
+  };
+});
+
+/** Mock DatabaseInfoProvider and RepositoryProvider as pass-throughs with markers. */
+jest.mock('@/src/domain/repositories/DatabaseContext', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require('react-native');
+  return {
+    DatabaseInfoProvider: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(
+        RN.View,
+        { testID: 'database-info-provider' },
+        React.createElement(RN.Text, null, 'DatabaseInfoProvider'),
+        children,
+      ),
+  };
+});
+jest.mock('@/src/domain/repositories/RepositoryContext', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require('react-native');
+  return {
+    RepositoryProvider: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(
+        RN.View,
+        { testID: 'repository-provider' },
+        React.createElement(RN.Text, null, 'RepositoryProvider'),
+        children,
+      ),
+  };
+});
+
 // Module-level variable to capture the last theme value passed to ThemeProvider.
 let capturedThemeValue: unknown = null;
 
@@ -121,6 +131,8 @@ let capturedThemeValue: unknown = null;
 jest.mock('expo-router', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RN = require('react-native');
 
   /**
    * Mock Stack navigator component.
@@ -132,7 +144,22 @@ jest.mock('expo-router', () => {
    */
   const MockStack = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   MockStack.displayName = 'Stack';
-  MockStack.Screen = jest.fn(() => null);
+  // Stack.Screen renders a marker text so tests can assert which routes are
+  // registered. The `name` prop identifies the route.
+  MockStack.Screen = jest.fn(({ name }: { name?: string }) =>
+    name ? <RN.Text>{`Stack.Screen:${name}`}</RN.Text> : null,
+  );
+  // Stack.Protected renders a marker text recording its guard value so tests
+  // can assert which routes are protected in each phase. Its children are
+  // rendered regardless (the real component blocks navigation, not rendering).
+  MockStack.Protected = jest.fn(
+    ({ guard, children }: { guard: boolean; children: React.ReactNode }) => (
+      <>
+        <RN.Text>{`Stack.Protected:${guard ? 'blocked' : 'open'}`}</RN.Text>
+        {children}
+      </>
+    ),
+  );
 
   /**
    * Mock ThemeProvider that captures the theme value passed to it.
@@ -170,6 +197,7 @@ import { performLifecycleBackup } from '@/src/data/database/backup';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { useThemePreference } from '@/src/presentation/theme/ThemePreferenceContext';
 import { lightTheme, darkTheme } from '@/src/presentation/theme/appTheme';
+import { Stack } from 'expo-router';
 import RootLayout from '../_layout';
 
 // ---------------------------------------------------------------------------
@@ -264,69 +292,91 @@ describe('RootLayout', () => {
   // -------------------------------------------------------------------------
 
   describe('database initialization', () => {
-    /** Tests that the setup screen is shown when the database is not ready. */
-    it('shows setup screen when database is not ready', async () => {
-      const { toJSON } = await renderLayout(true, false);
-      const json = JSON.stringify(toJSON());
-      expect(json).toContain('SetupDatabaseScreen');
-    });
-
-    /** Tests that the setup screen shows an error when db init fails. */
-    it('shows setup screen with error when database has an error', async () => {
-      const { toJSON } = await renderLayout(true, false, 'DB error');
-      const json = JSON.stringify(toJSON());
-      expect(json).toContain('Setup Error: DB error');
-    });
-
-    /** Tests that the setup screen receives an onRestore callback. */
-    it('passes onRestore callback to setup screen', async () => {
-      const { toJSON } = await renderLayout(true, false);
-      const json = JSON.stringify(toJSON());
-      expect(json).toContain('SetupDatabaseScreen');
-
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mockSetup = require('@/src/presentation/components/SetupDatabaseScreen').default;
-      const lastCall = mockSetup.mock.calls[mockSetup.mock.calls.length - 1][0];
-      expect(typeof lastCall.onRestore).toBe('function');
+    /**
+     * Tests that all four routes are registered in a single Stack regardless of DB
+     * readiness — Expo Router discovers routes from the file system, so Stack.Protected
+     * (not branch omission) controls reachability.
+     */
+    it('registers all routes in a single Stack when DB is not ready', async () => {
+      await renderLayout(true, false);
+      const screenNames = (Stack.Screen as unknown as jest.Mock).mock.calls.map(
+        ([props]: [{ name: string }]) => props.name,
+      );
+      expect(screenNames).toContain('setup');
+      expect(screenNames).toContain('restore-backup');
+      expect(screenNames).toContain('(tabs)');
+      expect(screenNames).toContain('entry-editor');
     });
 
     /**
-     * Tests that the restore screen receives an onCancel callback. We force restoreMode
-     * by invoking onRestore and asserting the restore screen renders with the expected
-     * prop.
+     * Tests that all four routes are registered in a single Stack when the DB is ready
+     * — the same set of Stack.Screen declarations as the pre-DB phase.
      */
-    it('passes onCancel callback to restore screen', async () => {
-      const { toJSON } = await renderLayout(true, false);
-      const json = JSON.stringify(toJSON());
-      expect(json).toContain('SetupDatabaseScreen');
+    it('registers all routes in a single Stack when DB is ready', async () => {
+      await renderLayout(true, true);
+      const screenNames = (Stack.Screen as unknown as jest.Mock).mock.calls.map(
+        ([props]: [{ name: string }]) => props.name,
+      );
+      expect(screenNames).toContain('setup');
+      expect(screenNames).toContain('restore-backup');
+      expect(screenNames).toContain('(tabs)');
+      expect(screenNames).toContain('entry-editor');
+    });
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mockSetup = require('@/src/presentation/components/SetupDatabaseScreen').default;
-      const setupCall = mockSetup.mock.calls[mockSetup.mock.calls.length - 1][0];
-      expect(typeof setupCall.onRestore).toBe('function');
+    /**
+     * Tests that when the DB is not ready, the pre-DB guard is `!ready` (true) and the
+     * post-DB guard is `!!ready` (false). Per the spec, guard=true means the route is
+     * accessible; guard=false means it is blocked.
+     */
+    it('passes guard=true for pre-DB and guard=false for post-DB when DB is not ready', async () => {
+      await renderLayout(true, false);
+      const protectedCalls = (Stack.Protected as unknown as jest.Mock).mock.calls;
+      expect(protectedCalls[0][0].guard).toBe(true); // !ready = true
+      expect(protectedCalls[1][0].guard).toBe(false); // !!ready = false
+    });
 
-      // Invoke onRestore to toggle restoreMode in RootLayoutNav.
-      await act(async () => {
-        setupCall.onRestore();
-      });
+    /**
+     * Tests that when the DB is ready, the pre-DB guard is `!ready` (false) and the
+     * post-DB guard is `!!ready` (true).
+     */
+    it('passes guard=false for pre-DB and guard=true for post-DB when DB is ready', async () => {
+      await renderLayout(true, true);
+      const protectedCalls = (Stack.Protected as unknown as jest.Mock).mock.calls;
+      expect(protectedCalls[0][0].guard).toBe(false); // !ready = false
+      expect(protectedCalls[1][0].guard).toBe(true); // !!ready = true
+    });
 
-      // After toggling, the restore screen should be rendered.
-      const restoreJson = JSON.stringify(toJSON());
-      expect(restoreJson).toContain('RestoreFromBackupScreen');
+    /**
+     * Tests that the post-database routes ((tabs), entry-editor) are NOT wrapped in
+     * DatabaseInfoProvider/RepositoryProvider when the database is not ready — the
+     * post-DB providers are only mounted in the ready branch.
+     */
+    it('does not mount DatabaseInfoProvider/RepositoryProvider when DB is not ready', async () => {
+      const { queryByText } = await renderLayout(true, false);
+      expect(queryByText('DatabaseInfoProvider')).toBeNull();
+      expect(queryByText('RepositoryProvider')).toBeNull();
+    });
 
-      // Verify onCancel was passed to RestoreFromBackupScreen.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mockRestore = require('@/src/presentation/components/RestoreFromBackupScreen').default;
-      const restoreCall = mockRestore.mock.calls[mockRestore.mock.calls.length - 1][0];
-      expect(typeof restoreCall.onCancel).toBe('function');
+    /**
+     * Tests that DatabaseInfoProvider and RepositoryProvider wrap the Stack when the
+     * database is ready.
+     */
+    it('wraps the Stack with DatabaseInfoProvider and RepositoryProvider when DB is ready', async () => {
+      const { getByText } = await renderLayout(true, true);
+      expect(getByText('DatabaseInfoProvider')).toBeTruthy();
+      expect(getByText('RepositoryProvider')).toBeTruthy();
+    });
 
-      // Invoke onCancel to return to setup.
-      await act(async () => {
-        restoreCall.onCancel();
-      });
+    /**
+     * Tests that DatabaseSetupProvider is mounted only in the pre-DB phase — the
+     * post-DB branch uses DatabaseInfoProvider/RepositoryProvider instead.
+     */
+    it('mounts DatabaseSetupProvider in pre-DB but not in post-DB', async () => {
+      const preDb = await renderLayout(true, false);
+      expect(preDb.getByText('DatabaseSetupProvider')).toBeTruthy();
 
-      const backJson = JSON.stringify(toJSON());
-      expect(backJson).toContain('SetupDatabaseScreen');
+      const postDb = await renderLayout(true, true);
+      expect(postDb.queryByText('DatabaseSetupProvider')).toBeNull();
     });
   });
 

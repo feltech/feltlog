@@ -1,6 +1,10 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { PaperProvider } from 'react-native-paper';
+import {
+  DatabaseSetupProvider,
+  type DatabaseSetupInfo,
+} from '@/src/domain/repositories/DatabaseSetupContext';
 
 /**
  * Mock SafeAreaProvider to pass through children. The native SafeAreaProvider renders
@@ -18,6 +22,14 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   };
 });
+
+/**
+ * Mock expo-router's useRouter so RestoreFromBackupScreen can call `router.back()` and
+ * `router.replace('/setup')` without a real navigator.
+ */
+jest.mock('expo-router', () => ({
+  useRouter: jest.fn(),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock('expo-file-system/legacy', () => require('../../../test-utils/expo-file-system-mock'));
@@ -50,6 +62,9 @@ jest.mock('@/src/data/database/database', () => ({
   })),
 }));
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { useRouter } = require('expo-router') as { useRouter: jest.Mock };
+
 import RestoreFromBackupScreen from '../RestoreFromBackupScreen';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 
@@ -60,30 +75,49 @@ const mockGetBackupDirectoryUri = getBackupDirectoryUri as jest.Mock;
  * Snackbar / Dialog have access to the theme.
  *
  * @param element - The React element to render.
+ * @param setupInfo - The DatabaseSetupInfo to provide via context.
  *
  * @returns The RNTL render result.
  */
-function renderWithProvider(element: React.ReactElement) {
-  return render(<PaperProvider>{element}</PaperProvider>);
+function renderWithProvider(element: React.ReactElement, setupInfo: DatabaseSetupInfo) {
+  return render(
+    <PaperProvider>
+      <DatabaseSetupProvider value={setupInfo}>{element}</DatabaseSetupProvider>
+    </PaperProvider>,
+  );
+}
+
+/**
+ * Builds a DatabaseSetupInfo object with sensible defaults for tests.
+ *
+ * @param overrides - Partial overrides merged over the defaults.
+ *
+ * @returns A DatabaseSetupInfo suitable for passing to DatabaseSetupProvider.
+ */
+function makeSetupInfo(overrides: Partial<DatabaseSetupInfo> = {}): DatabaseSetupInfo {
+  return {
+    initialize: jest.fn().mockResolvedValue(undefined),
+    lastDatabaseName: null,
+    error: null,
+    ...overrides,
+  };
 }
 
 /** Minimal smoke tests for RestoreFromBackupScreen. */
 describe('RestoreFromBackupScreen', () => {
+  const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn() };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetBackupDirectoryUri.mockResolvedValue(null);
+    useRouter.mockReturnValue(mockRouter);
   });
 
   /** Tests that the form renders with all expected inputs and buttons. */
   it('renders the form', () => {
-    const onCancel = jest.fn();
-    const onSuccess = jest.fn();
     const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName="test.db"
-        onCancel={onCancel}
-        onSuccess={onSuccess}
-      />,
+      <RestoreFromBackupScreen />,
+      makeSetupInfo({ lastDatabaseName: 'test.db' }),
     );
 
     expect(getByTestId('restore-db-name-input')).toBeTruthy();
@@ -94,20 +128,12 @@ describe('RestoreFromBackupScreen', () => {
     expect(nameInput.props.value).toBe('test.db');
   });
 
-  /** Tests that pressing the Cancel button invokes the onCancel callback. */
-  it('calls onCancel when Cancel is pressed', () => {
-    const onCancel = jest.fn();
-    const onSuccess = jest.fn();
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={onCancel}
-        onSuccess={onSuccess}
-      />,
-    );
+  /** Tests that pressing the Cancel button navigates back via router.back(). */
+  it('navigates back when Cancel is pressed', () => {
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
 
     fireEvent.press(getByTestId('restore-cancel-btn'));
-    expect(onCancel).toHaveBeenCalled();
+    expect(mockRouter.back).toHaveBeenCalled();
   });
 
   /**
@@ -115,52 +141,31 @@ describe('RestoreFromBackupScreen', () => {
    * selected.
    */
   it('Restore button is disabled when no file is selected', () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
 
     const confirmBtn = getByTestId('restore-confirm-btn');
     expect(confirmBtn.props.accessibilityState?.disabled).toBe(true);
   });
 
-  /** Tests that the name input is pre-filled from the lastDatabaseName prop. */
+  /** Tests that the name input is pre-filled from lastDatabaseName via context. */
   it('pre-fills database name from lastDatabaseName', () => {
     const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName="previous.db"
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <RestoreFromBackupScreen />,
+      makeSetupInfo({ lastDatabaseName: 'previous.db' }),
     );
     expect(getByTestId('restore-db-name-input').props.value).toBe('previous.db');
   });
 
   /** Tests that the name defaults to 'feltlog.db' when lastDatabaseName is null. */
   it("defaults the name to 'feltlog.db' when lastDatabaseName is null", () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     expect(getByTestId('restore-db-name-input').props.value).toBe('feltlog.db');
   });
 
   /** Tests that the no-backup-location warning appears when no directory is set. */
   it('shows the no-backup-location warning when no directory is configured', async () => {
     mockGetBackupDirectoryUri.mockResolvedValue(null);
-    const { findByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { findByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     const warn = await findByTestId('restore-error-text');
     expect(warn).toBeTruthy();
   });
@@ -178,11 +183,8 @@ describe('RestoreFromBackupScreen', () => {
     ]);
 
     const { findByTestId, getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName="memoires.db"
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <RestoreFromBackupScreen />,
+      makeSetupInfo({ lastDatabaseName: 'memoires.db' }),
     );
 
     await findByTestId('restore-source-item-memoires.db');
@@ -206,11 +208,8 @@ describe('RestoreFromBackupScreen', () => {
     ]);
 
     const { findByTestId, queryByText } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
     );
 
     await findByTestId('restore-source-item-backup-1.db');
@@ -225,13 +224,7 @@ describe('RestoreFromBackupScreen', () => {
     const ExpoFs = require('expo-file-system/legacy');
     ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([]);
 
-    const { findByText } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { findByText } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     const empty = await findByText(/No .db files found/i);
     expect(empty).toBeTruthy();
   });
@@ -243,13 +236,7 @@ describe('RestoreFromBackupScreen', () => {
     const ExpoFs = require('expo-file-system/legacy');
     ExpoFs.StorageAccessFramework.readDirectoryAsync.mockRejectedValue(new Error('nope'));
 
-    const { findByText } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { findByText } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     const empty = await findByText(/No .db files found/i);
     expect(empty).toBeTruthy();
   });
@@ -271,11 +258,8 @@ describe('RestoreFromBackupScreen', () => {
     ]);
 
     const { getByTestId, findByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
     );
     fireEvent.press(getByTestId('restore-choose-backup-location-btn'));
     const item = await findByTestId('restore-source-item-backup.db');
@@ -288,37 +272,19 @@ describe('RestoreFromBackupScreen', () => {
    * managed by the Portal/Dialog machinery which is tested by Paper itself).
    */
   it('renders the confirm dialog Portal element', () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     expect(getByTestId('restore-db-name-input')).toBeTruthy();
   });
 
   /** Tests that the encryption key input is no longer rendered. */
   it('does not render the encryption key input', () => {
-    const { queryByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { queryByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     expect(queryByTestId('restore-db-key-input')).toBeNull();
   });
 
   /** The helper text under the database name explains the simplified flow. */
   it('shows the simplified restore helper text', () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     const helper = getByTestId('restore-db-name-helper');
     expect(helper.props.children).toContain('After restore');
   });
@@ -328,25 +294,13 @@ describe('RestoreFromBackupScreen', () => {
    * by an existing test, but duplicated here as a regression guard.)
    */
   it("uses 'feltlog.db' as the default database name", () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
     expect(getByTestId('restore-db-name-input').props.value).toBe('feltlog.db');
   });
 
   /** The safety-backup notice should appear in the form. */
   it('renders the safety-backup notice in the form', () => {
-    const { getByTestId } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { getByTestId } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
 
     const notice = getByTestId('safety-backup-notice');
     expect(notice).toBeTruthy();
@@ -358,13 +312,7 @@ describe('RestoreFromBackupScreen', () => {
    * content.
    */
   it('confirmation dialog does not contain the full safety-backup wording', () => {
-    const { queryByText } = renderWithProvider(
-      <RestoreFromBackupScreen
-        lastDatabaseName={null}
-        onCancel={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
-    );
+    const { queryByText } = renderWithProvider(<RestoreFromBackupScreen />, makeSetupInfo());
 
     // The original long form is removed from the confirmation dialog.
     expect(

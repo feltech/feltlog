@@ -9,10 +9,9 @@ import 'react-native-reanimated';
 import { PaperProvider, Snackbar } from 'react-native-paper';
 import { RepositoryProvider } from '@/src/domain/repositories/RepositoryContext';
 import { DatabaseInfoProvider } from '@/src/domain/repositories/DatabaseContext';
+import { DatabaseSetupProvider } from '@/src/domain/repositories/DatabaseSetupContext';
 import { JournalRepositoryImpl } from '@/src/data/repositories/JournalRepositoryImpl';
 import { useDatabase } from '@/src/data/database/database';
-import SetupDatabaseScreen from '@/src/presentation/components/SetupDatabaseScreen';
-import RestoreFromBackupScreen from '@/src/presentation/components/RestoreFromBackupScreen';
 import { performLifecycleBackup, getLatestMigrationKey } from '@/src/data/database/backup';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { useColorScheme } from '@/src/presentation/components/useColorScheme';
@@ -99,7 +98,6 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { themeMode } = useThemePreference();
   const [showBackupSnackbar, setShowBackupSnackbar] = useState(false);
-  const [restoreMode, setRestoreMode] = useState(false);
 
   // Resolve effective scheme: 'auto' follows system, else explicit.
   const effectiveScheme = themeMode === 'auto' ? colorScheme : themeMode;
@@ -159,53 +157,70 @@ function RootLayoutNav() {
     };
   }, [ready, db, databaseName, databasePath]);
 
+  // All routes live in a single <Stack>. Expo Router discovers routes from the
+  // file system regardless of which <Stack.Screen> entries are declared, so a
+  // two-branch approach (one Stack for pre-DB, another for post-DB) does not
+  // prevent the un-declared routes from rendering — it crashes because their
+  // providers aren't mounted. Stack.Protected is the mechanism that makes a
+  // route inaccessible: when its `guard` is true, the route is blocked and Expo
+  // Router redirects away from it. The two guards below are symmetric, so both
+  // phase transitions are handled:
+  //   - ready: false → true: pre-DB routes become inaccessible, redirect to
+  //     (tabs).
+  //   - ready: true → false (reset): post-DB routes become inaccessible,
+  //     redirect to setup.
+  const stackElement = (
+    <Stack>
+      <Stack.Protected guard={!ready}>
+        <Stack.Screen name="setup" options={{ headerShown: false }} />
+        <Stack.Screen name="restore-backup" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={!!ready}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="entry-editor"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
+      </Stack.Protected>
+    </Stack>
+  );
+
+  // Pre-database: only setup/restore-backup are reachable (Stack.Protected
+  // guard={!!ready} is false, making (tabs)/entry-editor inaccessible). The
+  // DatabaseSetupProvider supplies the initialize callback and last-database-name
+  // hint to the setup screen.
   if (!ready || !db) {
     return (
       <PaperProvider theme={appTheme}>
         <StatusBar style={appTheme.dark ? 'light' : 'dark'} />
         <ThemeProvider value={appTheme as unknown as NavigationTheme}>
-          {restoreMode ? (
-            <RestoreFromBackupScreen
-              lastDatabaseName={lastDatabaseName}
-              onCancel={() => setRestoreMode(false)}
-              onSuccess={() => setRestoreMode(false)}
-            />
-          ) : (
-            <SetupDatabaseScreen
-              initialize={initialize}
-              lastDatabaseName={lastDatabaseName}
-              error={error}
-              onRestore={() => setRestoreMode(true)}
-            />
-          )}
+          <DatabaseSetupProvider value={{ initialize, lastDatabaseName, error }}>
+            {stackElement}
+          </DatabaseSetupProvider>
         </ThemeProvider>
       </PaperProvider>
     );
   }
 
+  // Post-database: all routes reachable, wrapped with the providers they need.
+  // `db` is narrowed to non-null by the early return above.
   const repository = new JournalRepositoryImpl(db);
 
   return (
     <PaperProvider theme={appTheme}>
-      <DatabaseInfoProvider
-        value={{
-          databaseName,
-          databasePath,
-          isCurrentlyEncrypted,
-          sqliteDb,
-          resetDatabase: reset,
-        }}
-      >
-        <RepositoryProvider repository={repository}>
-          <ThemeProvider value={appTheme as unknown as NavigationTheme}>
-            <StatusBar style={appTheme.dark ? 'light' : 'dark'} />
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="entry-editor"
-                options={{ presentation: 'modal', headerShown: false }}
-              />
-            </Stack>
+      <StatusBar style={appTheme.dark ? 'light' : 'dark'} />
+      <ThemeProvider value={appTheme as unknown as NavigationTheme}>
+        <DatabaseInfoProvider
+          value={{
+            databaseName,
+            databasePath,
+            isCurrentlyEncrypted,
+            sqliteDb,
+            resetDatabase: reset,
+          }}
+        >
+          <RepositoryProvider repository={repository}>
+            {stackElement}
             <Snackbar
               visible={showBackupSnackbar}
               onDismiss={() => setShowBackupSnackbar(false)}
@@ -213,9 +228,9 @@ function RootLayoutNav() {
             >
               Backup saved
             </Snackbar>
-          </ThemeProvider>
-        </RepositoryProvider>
-      </DatabaseInfoProvider>
+          </RepositoryProvider>
+        </DatabaseInfoProvider>
+      </ThemeProvider>
     </PaperProvider>
   );
 }
