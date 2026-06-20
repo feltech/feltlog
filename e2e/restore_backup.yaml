@@ -286,6 +286,27 @@ name: Restore from backup
 - assertVisible:
     id: 'restore-backup-btn'
 
+# ===== HARDWARE BACK BUTTON ON RESTORE SCREEN =====
+# RestoreFromBackupScreen is now a proper Expo Router Stack screen
+# (app/restore-backup.tsx) guarded by Stack.Protected. The custom
+# BackHandler was removed — React Navigation's Stack navigator handles
+# the Android hardware back button automatically, popping the restore
+# screen and returning to the setup screen. This test verifies that
+# pressKey: Back performs that pop rather than exiting the app.
+- tapOn:
+    id: 'restore-backup-btn'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'restore-db-name-input'
+- takeScreenshot: restore-merged-hw-back-restore-screen
+- pressKey: Back
+- waitForAnimationToEnd
+- takeScreenshot: restore-merged-hw-back-returned
+- assertVisible:
+    id: 'db-name-input'
+- assertVisible:
+    id: 'restore-backup-btn'
+
 # ===== LOCATION RECONFIG + FULL RESTORE FLOW =====
 
 # Tap "Restore from backup" again
@@ -491,8 +512,9 @@ name: Restore from backup
           id: 'restore-dialog-confirm'
       - waitForAnimationToEnd
 
-# Wait for the restore to complete. After a successful restore, the app
-# returns to the setup screen (onSuccess sets restoreMode=false).
+# Wait for the restore to complete. After a successful restore, the
+# RestoreFromBackupScreen calls router.replace('/setup'), which returns
+# the user to the setup screen.
 - extendedWaitUntil:
     visible:
       id: 'db-name-input'
