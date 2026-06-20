@@ -287,6 +287,11 @@ that hide real timing issues.
 - All non-trivial functions must have docstrings.
 - All classes and interfaces must have docstrings.
 - Avoid the use of singletons, prefer dependency injection or contexts.
+- Prefer idiomatic, extensible architecture over quick fixes. When a problem can be solved either
+  by a local patch (e.g., adding a BackHandler to one screen) or by restructuring to use the
+  framework's intended patterns (e.g., making all screens proper navigator routes), choose the
+  architectural approach. Quick fixes accumulate technical debt; architectural fixes eliminate the
+  root cause and make future changes easier.
 - Use the available CLI tools for parsing files instead of writing custom scripts. The development
   shell provides `jq` for JSON, `yq` for YAML/JSON/INI/XML, `pup` for HTML, and `python3` for
   everything else. Reach for `jq` before writing a Python one-liner to extract a JSON field; reach
