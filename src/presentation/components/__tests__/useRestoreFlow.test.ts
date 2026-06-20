@@ -24,7 +24,7 @@ function makeDeps(overrides: Partial<UseRestoreFlowDeps> = {}): UseRestoreFlowDe
       databasePath: '/mock/target.db',
       closeAsync: jest.fn().mockResolvedValue(undefined),
     }),
-    onSuccess: jest.fn(),
+    onSuccess: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -289,6 +289,29 @@ describe('useRestoreFlow', () => {
   /** HandleRestore proceeds to restoreDatabase when no existing target. */
   it('handleRestore proceeds to restoreDatabase when no existing target', async () => {
     const deps = makeDeps();
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+    expect(deps.restoreDatabase).toHaveBeenCalledWith('test.db', 'u');
+    expect(deps.onSuccess).toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
+  });
+
+  /** HandleRestore swallows onSuccess rejection and still clears submitting. */
+  it('handleRestore swallows onSuccess rejection and clears submitting', async () => {
+    const deps = makeDeps({
+      onSuccess: jest.fn().mockRejectedValue(new Error('navigation failed')),
+    });
     const { result } = renderHook(() =>
       useRestoreFlow(
         {
@@ -713,7 +736,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockRejectedValue(new Error('no permission'));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps(jest.fn());
+    const deps = useRestoreFlowDeps(jest.fn().mockResolvedValue(undefined));
     const exists = await deps.fileExists('bad.db');
     expect(exists).toBe(false);
   });
@@ -733,7 +756,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps(jest.fn());
+    const deps = useRestoreFlowDeps(jest.fn().mockResolvedValue(undefined));
     const exists = await deps.fileExists('test.db');
     expect(exists).toBe(true);
     expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(
@@ -755,7 +778,7 @@ describe('useRestoreFlow', () => {
     ExpoFs.getInfoAsync.mockResolvedValue({ exists: true });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useRestoreFlowDeps } = require('../useRestoreFlow');
-    const deps = useRestoreFlowDeps(jest.fn());
+    const deps = useRestoreFlowDeps(jest.fn().mockResolvedValue(undefined));
     const exists = await deps.fileExists('test.db');
     expect(exists).toBe(true);
     expect(ExpoFs.getInfoAsync).toHaveBeenCalledWith(

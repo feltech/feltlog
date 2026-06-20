@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { PaperProvider } from 'react-native-paper';
 import {
   DatabaseSetupProvider,
@@ -46,6 +46,10 @@ jest.mock('@/src/data/database/dbBackupStorage', () => ({
   setBackupDirectoryUri: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('@/src/data/database/dbLocationStorage', () => ({
+  setLastDatabaseName: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@/src/data/database/backup', () => ({
   backupDatabase: jest.fn().mockResolvedValue({ success: true }),
   extractFileName: jest.fn((uri: string) => uri.split('/').pop() ?? ''),
@@ -67,8 +71,10 @@ const { useRouter } = require('expo-router') as { useRouter: jest.Mock };
 
 import RestoreFromBackupScreen from '../RestoreFromBackupScreen';
 import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
+import { setLastDatabaseName } from '@/src/data/database/dbLocationStorage';
 
 const mockGetBackupDirectoryUri = getBackupDirectoryUri as jest.Mock;
+const mockSetLastDatabaseName = setLastDatabaseName as jest.Mock;
 
 /**
  * Helper that wraps the component in a PaperProvider so react-native-paper Portal /
@@ -321,5 +327,100 @@ describe('RestoreFromBackupScreen', () => {
           ' location before restoring. Continue?',
       ),
     ).toBeNull();
+  });
+
+  /**
+   * Tests that after a successful restore, the target database name is persisted so the
+   * setup/login screen pre-fills it, and the user is navigated back to setup.
+   */
+  it('persists the target database name and navigates to setup on success', async () => {
+    mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([
+      'content://mock-dir/backup.db',
+    ]);
+
+    const { findByTestId, getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
+    );
+
+    await findByTestId('restore-source-item-backup.db');
+
+    const nameInput = getByTestId('restore-db-name-input');
+    fireEvent.changeText(nameInput, 'restored.db');
+
+    fireEvent.press(getByTestId('restore-source-item-backup.db'));
+    fireEvent.press(getByTestId('restore-confirm-btn'));
+
+    await waitFor(() => {
+      expect(mockSetLastDatabaseName).toHaveBeenCalledWith('restored.db');
+    });
+    expect(mockRouter.replace).toHaveBeenCalledWith('/setup');
+  });
+
+  /**
+   * Tests that surrounding whitespace on the database name is trimmed before it is
+   * persisted, matching the trimmed name used for the actual database file.
+   */
+  it('trims whitespace from the persisted database name', async () => {
+    mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([
+      'content://mock-dir/backup.db',
+    ]);
+
+    const { findByTestId, getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
+    );
+
+    await findByTestId('restore-source-item-backup.db');
+
+    const nameInput = getByTestId('restore-db-name-input');
+    fireEvent.changeText(nameInput, '  restored.db  ');
+
+    fireEvent.press(getByTestId('restore-source-item-backup.db'));
+    fireEvent.press(getByTestId('restore-confirm-btn'));
+
+    await waitFor(() => {
+      expect(mockSetLastDatabaseName).toHaveBeenCalledWith('restored.db');
+    });
+    expect(mockRouter.replace).toHaveBeenCalledWith('/setup');
+  });
+
+  /**
+   * Tests that navigation back to the setup screen still happens even if persisting the
+   * database name fails. The name cache is best-effort once the restore itself
+   * succeeded.
+   */
+  it('navigates to setup even when persisting the database name fails', async () => {
+    mockSetLastDatabaseName.mockRejectedValue(new Error('persist failed'));
+    mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([
+      'content://mock-dir/backup.db',
+    ]);
+
+    const { findByTestId, getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
+    );
+
+    await findByTestId('restore-source-item-backup.db');
+
+    const nameInput = getByTestId('restore-db-name-input');
+    fireEvent.changeText(nameInput, 'restored.db');
+
+    fireEvent.press(getByTestId('restore-source-item-backup.db'));
+    fireEvent.press(getByTestId('restore-confirm-btn'));
+
+    await waitFor(() => {
+      expect(mockRouter.replace).toHaveBeenCalledWith('/setup');
+    });
+    expect(mockSetLastDatabaseName).toHaveBeenCalledWith('restored.db');
   });
 });

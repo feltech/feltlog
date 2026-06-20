@@ -54,7 +54,7 @@ export interface UseRestoreFlowDeps {
     tag?: string,
   ) => Promise<{ success: boolean; error?: string }>;
   /** Called after a successful restore so the UI returns to the setup screen. */
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>;
   /** Returns the current migration key for the database schema. */
   getLatestMigrationKey: () => string;
   /** Opens a database handle (used to discover its file path). */
@@ -240,7 +240,12 @@ export function useRestoreFlow(
         return;
       }
 
-      deps.onSuccess();
+      try {
+        await deps.onSuccess();
+      } catch {
+        // The success callback is best-effort UI cleanup; the restore has already
+        // succeeded at this point.
+      }
     },
     [safetyBackupRequired, input.backupDirUri, deps, showSnackbar, chooseBackupDirectory],
   );
@@ -338,7 +343,7 @@ export function useRestoreFlow(
  *
  * @returns Production dependencies for the restore flow hook.
  */
-export function useRestoreFlowDeps(onSuccess: () => void): UseRestoreFlowDeps {
+export function useRestoreFlowDeps(onSuccess: () => Promise<void>): UseRestoreFlowDeps {
   return {
     getBackupDirectoryUri,
     setBackupDirectoryUri,

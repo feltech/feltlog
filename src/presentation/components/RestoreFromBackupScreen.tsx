@@ -16,6 +16,7 @@ import {
 } from 'react-native-paper';
 import { useDatabaseSetup } from '@/src/domain/repositories/DatabaseSetupContext';
 import { extractFileName } from '@/src/data/database/backup';
+import { setLastDatabaseName } from '@/src/data/database/dbLocationStorage';
 import { useRestoreFlow, useRestoreFlowDeps } from './useRestoreFlow';
 
 /**
@@ -54,10 +55,20 @@ export default function RestoreFromBackupScreen() {
   const [backupFiles, setBackupFiles] = useState<string[]>([]);
   const [selectedFileUri, setSelectedFileUri] = useState<string | null>(null);
 
-  // After a successful restore, return the user to the setup screen so they can
-  // enter the encryption key (if any) for the restored database. Using replace
-  // avoids leaving the restore route on the back stack.
-  const deps = useRestoreFlowDeps(() => router.replace('/setup'));
+  // After a successful restore, persist the target database name so the setup/login
+  // screen pre-fills it, then return the user to the setup screen so they can enter
+  // the encryption key (if any) for the restored database. Using replace avoids
+  // leaving the restore route on the back stack.
+  const deps = useRestoreFlowDeps(async () => {
+    // Persisting the name is a convenience for the next setup screen; it should never
+    // block navigation after a successful restore.
+    try {
+      await setLastDatabaseName(databaseName.trim());
+    } catch {
+      // Best-effort: continue to the setup screen even if the cache cannot be written.
+    }
+    router.replace('/setup');
+  });
   const flow = useRestoreFlow({ databaseName, selectedFileUri, backupDirUri }, deps);
 
   // Load the configured backup directory on mount.

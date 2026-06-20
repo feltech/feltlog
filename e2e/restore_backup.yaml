@@ -525,13 +525,10 @@ name: Restore from backup
 
 # ===== OPEN THE RESTORED DATABASE =====
 
-# The setup screen is now showing. Enter the DB name and encryption key
-# to open the restored database and verify it works.
-- tapOn:
-    id: 'db-name-input'
-    point: '95%,50%'
-- eraseText
-- inputText: ${output.restoredDbName}
+# The setup screen is now showing. After a successful restore, the app
+# persists the restored database name and pre-fills it on the setup screen,
+# so the DB name field should already contain the correct value.
+- takeScreenshot: restore-merged-db-name-prefilled
 - tapOn:
     id: 'db-key-input'
 - inputText: ${output.dbKey}
