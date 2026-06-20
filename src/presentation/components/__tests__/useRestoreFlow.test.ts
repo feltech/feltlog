@@ -509,15 +509,16 @@ describe('useRestoreFlow', () => {
     expect(result.current.snackbar.message).toContain('picker crashed');
   });
 
-  /** RefreshFileList returns .db files. */
-  it('refreshFileList filters to .db files', async () => {
+  /** RefreshFileList returns .db files sorted newest-first. */
+  it('refreshFileList filters to .db files sorted newest-first', async () => {
     const deps = makeDeps({
       readDirectory: jest
         .fn()
         .mockResolvedValue([
-          'content://d/backup.db',
+          'content://d/20260101_backup.db',
           'content://d/readme.txt',
-          'content://d/other.db',
+          'content://d/20260103_backup.db',
+          'content://d/20260102_backup.db',
         ]),
     });
     const { result } = renderHook(() =>
@@ -534,7 +535,50 @@ describe('useRestoreFlow', () => {
     await act(async () => {
       files = await result.current.refreshFileList();
     });
-    expect(files).toEqual(['content://d/backup.db', 'content://d/other.db']);
+    expect(files).toEqual([
+      'content://d/20260103_backup.db',
+      'content://d/20260102_backup.db',
+      'content://d/20260101_backup.db',
+    ]);
+  });
+
+  /**
+   * RefreshFileList sorts on the decoded filename, not the raw URI. SAF content:// URIs
+   * percent-encode path separators in the last segment, so raw-URI comparison could
+   * order files differently than the rotation sort in backup.ts. This test guards
+   * against regressing back to raw-URI comparison.
+   */
+  it('refreshFileList sorts on decoded filename for SAF percent-encoded URIs', async () => {
+    // The last segment encodes "primary:backups/<timestamp>.db". Raw-URI sort
+    // would compare the percent-encoded strings; filename sort decodes first.
+    const deps = makeDeps({
+      readDirectory: jest
+        .fn()
+        .mockResolvedValue([
+          'content://d/primary%3Abackups%2F20260101_backup.db',
+          'content://d/primary%3Abackups%2F20260103_backup.db',
+          'content://d/primary%3Abackups%2F20260102_backup.db',
+        ]),
+    });
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: 'u',
+          backupDirUri: 'd',
+        },
+        deps,
+      ),
+    );
+    let files: string[] = [];
+    await act(async () => {
+      files = await result.current.refreshFileList();
+    });
+    expect(files).toEqual([
+      'content://d/primary%3Abackups%2F20260103_backup.db',
+      'content://d/primary%3Abackups%2F20260102_backup.db',
+      'content://d/primary%3Abackups%2F20260101_backup.db',
+    ]);
   });
 
   /** RefreshFileList returns empty array when backupDirUri is null. */

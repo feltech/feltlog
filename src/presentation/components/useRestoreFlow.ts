@@ -2,7 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { StorageAccessFramework, getInfoAsync } from 'expo-file-system/legacy';
 import { defaultDatabaseDirectory, openDatabaseAsync } from 'expo-sqlite';
 import { getBackupDirectoryUri, setBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
-import { backupDatabase, getLatestMigrationKey } from '@/src/data/database/backup';
+import {
+  backupDatabase,
+  extractFileName,
+  getLatestMigrationKey,
+} from '@/src/data/database/backup';
 import { restoreDatabase } from '@/src/data/database/restore';
 
 /**
@@ -171,7 +175,14 @@ export function useRestoreFlow(
       if (!dir) return [];
       try {
         const files = await deps.readDirectory(dir);
-        return files.filter(f => f.endsWith('.db'));
+        // Sort newest-first: backup filenames embed timestamps, so descending
+        // filename order matches reverse chronological order. Compare on the
+        // decoded filename rather than the raw URI, because SAF content:// URIs
+        // percent-encode path separators in the last segment — mirroring the
+        // rotation sort in src/data/database/backup.ts (rotateBackups).
+        return files
+          .filter(f => f.endsWith('.db'))
+          .sort((a, b) => extractFileName(b).localeCompare(extractFileName(a)));
       } catch {
         return [];
       }
