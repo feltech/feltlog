@@ -3,7 +3,12 @@ name: Create and view journal entry
 
 
 # This flow sets up the app on first run with a random database name and key,
-# creates a journal entry with unique content, and verifies it can be opened.
+# verifies the empty state, tests the empty-content back behaviour, creates a
+# journal entry with unique content, and verifies it can be opened.
+#
+# Merged from:
+#   - create_and_view_entry.yaml (create + view)
+#   - error_states.yaml (empty state + empty content back)
 ---
 - runFlow:
     file: subflows/setup_database.yaml
@@ -11,13 +16,44 @@ name: Create and view journal entry
       dbName: 'db_view_${Date.now()}.db'
       dbKey: 'key_view'
 
+# ===== TEST EMPTY STATE =====
+- assertVisible: 'No journal entries found. Create your first entry!'
+
+# ===== TEST EMPTY CONTENT - SAVE BUTTON DISABLED =====
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Verify save is handled by system back - back without content just navigates back
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible: 'Create entry'
+
+# Re-open edit to verify we landed back
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# ===== TEST VALID ENTRY (error resolved) =====
 - evalScript: ${output.entryText = "Some entry " + Date.now()}
 
-- runFlow:
-    file: subflows/create_entry.yaml
-    env:
-      content: ${output.entryText}
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryText}
+# Back button saves and closes
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
+- tapOn:
+    id: 'appbar-header'
+- waitForAnimationToEnd
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
 
+# ===== VERIFY ENTRY CARD VISIBLE AND TAPPABLE =====
 - assertVisible: 'Journal entry card'
 - tapOn: 'Journal entry card'
 

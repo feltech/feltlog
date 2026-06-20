@@ -2,7 +2,15 @@ appId: com.feltech.feltlog
 name: Tag management in entry
 
 
-# This flow tests adding, viewing, and managing tags in journal entries.
+# This flow tests adding, viewing, and managing tags in journal entries,
+# including the tag-edit-back-button bug scenario where adding a tag to an
+# existing entry in edit mode and pressing back WITHOUT editing the entry text
+# must still persist the tag.
+#
+# Merged from:
+#   - tag_management.yaml (add/view/edit tags)
+#   - tag_edit_back_button.yaml (tag-only edit + back persists)
+#
 # Prerequisites: None - creates its own database and entries.
 ---
 - runFlow: subflows/setup_database.yaml
@@ -99,7 +107,107 @@ name: Tag management in entry
 # consuming the BACK event on real devices.
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
+- pressKey: Back
 - waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
+
+# ===== TEST TAG-ONLY EDIT + BACK PERSISTS TAG (regression) =====
+# Reproduces a bug where adding a tag to an existing entry in edit mode and
+# pressing back WITHOUT editing the entry text caused the tag to NOT be saved.
+#
+# Root cause (app-level): The autosave useEffect depended on state.content but
+# not state.tags, and the flushSave function only called doEditSave when
+# pendingSaveRef was true. Adding a tag without changing content never set
+# pendingSaveRef to true, so the tag change was never persisted on back press.
+#
+# The fix uses dirtyRef (which covers tag-only changes) instead of
+# pendingSaveRef. This test verifies the fix by making a tag-only change
+# (removing a default tag) without editing content, then verifying the
+# removal persists after back navigation.
+#
+# Note: We test tag REMOVAL instead of tag ADDITION because Maestro's
+# inputText command fails to inject text into the tag-input when editing
+# an existing entry with Gboard visible on the emulator. Tag removal
+# (tapping the Close button on a chip) exercises the same dirtyRef code
+# path as tag addition.
+#
+# Create a new entry WITHOUT tags (use create_entry subflow for clean state).
+- evalScript: ${output.bugEntryContent = "Test entry for tag bug " + Date.now().toString()}
+
+# Dismiss the LogBox banner if present — it overlaps the FAB and can
+# intercept the create-entry tap.
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.bugEntryContent}
+
+- takeScreenshot: journal-list-after-create
+
+- assertVisible: 'Journal entry card'
+
+# Dismiss the LogBox banner if present — it can overlap the entry card.
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# Open the entry in edit mode.
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+- takeScreenshot: editor-opened-in-edit-mode
+
+# Verify original content is loaded
+- assertVisible: ${output.bugEntryContent}
+
+# The entry has default tags from the most recent entry (personal, work,
+# important, updated). Verify at least one default tag is present.
+- evalScript: ${output.removedTag = "personal"}
+- assertVisible: ${output.removedTag}
+
+- takeScreenshot: editor-before-tag-removal
+
+# Remove a default tag WITHOUT editing content. This exercises the same
+# dirtyRef code path as adding a tag (tag-only change without content edit).
+# Tap the Close button to the right of the tag chip.
+- tapOn:
+    text: 'Close'
+    rightOf:
+      text: ${output.removedTag}
+- waitForAnimationToEnd
+
+# Verify the tag was removed
+- assertNotVisible: ${output.removedTag}
+
+- takeScreenshot: editor-after-tag-removal
+
+# DO NOT EDIT CONTENT — GO STRAIGHT TO BACK.
+# The bug: pressing back here without editing the content text meant
+# the tag change was never persisted, because the autosave/flushSave
+# logic only triggered on content changes.
+#
+# Dismiss keyboard / blur input before system back to prevent IME from
+# consuming the BACK event on real devices.
+- tapOn:
+    id: 'appbar-header'
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+
+- takeScreenshot: journal-list-after-back
+
+# Reopen the entry and verify tag removal is saved
+- assertVisible: 'Journal entry card'
+
+- tapOn: 'Journal entry card'
+- assertVisible:
+    id: 'entry-content-input'
+
+- takeScreenshot: editor-reopened-to-check-tag
+
+# The tag should NOT be visible because we removed it and pressed back
+# to save. This assertion would FAIL if the bug were present (tag removal
+# not persisted — the removed tag would reappear as a default tag).
+- assertNotVisible: ${output.removedTag}

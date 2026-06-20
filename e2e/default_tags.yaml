@@ -1,0 +1,208 @@
+appId: com.feltech.feltlog
+name: Default tags
+
+
+# This flow verifies the default-tags feature: when creating a new entry, the
+# tag list is pre-populated with the tags from the most recently created entry.
+# Also verifies the empty case: the very first entry in a fresh database starts
+# with no default tags.
+#
+# Merged from:
+#   - default_tags_empty.yaml (empty case — no prior entries)
+#   - default_tags_from_recent.yaml (from-recent case + add/remove)
+---
+- runFlow: subflows/setup_database.yaml
+
+# ===== EMPTY CASE: FIRST ENTRY IN A FRESH DATABASE =====
+# When there are no prior entries, getMostRecentEntryTags returns an empty
+# array and no chips should be pre-populated.
+
+- evalScript: ${output.emptyEntryContent = "First entry in fresh db " + Date.now().toString()}
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.emptyEntryContent}
+
+- assertVisible: 'Tags'
+
+# Give the async loadDefaultTags fetch a moment to complete. Since there are no
+# prior entries, getMostRecentEntryTags returns an empty array and no chips
+# should appear. We wait briefly for a non-existent element to allow the async
+# fetch to settle, then assert no tag chips are present.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-delay-element'
+    timeout: 1500
+    optional: true
+
+- takeScreenshot: fresh-db-no-default-tags
+
+# Verify the tag input is present and empty (ready for input)
+- assertVisible:
+    id: 'tag-input'
+
+# Verify no tag chips are present. We assert that common placeholder tag names
+# are not visible. Since the database is fresh, no tags exist to be
+# pre-populated. The tag chips render as Chip components with the tag name as
+# text; asserting a few common names are absent confirms the section is empty.
+- assertNotVisible: 'work'
+- assertNotVisible: 'personal'
+- assertNotVisible: 'groceries'
+- assertNotVisible: 'exercise'
+
+# Verify the user can still add a tag manually
+- evalScript: ${output.emptyNewTag = "firsttag"}
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.emptyNewTag}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+- assertVisible: ${output.emptyNewTag}
+
+- takeScreenshot: fresh-db-after-manual-tag
+
+# Save and return
+- tapOn:
+    id: 'appbar-header'
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Wait briefly to ensure the next entry's datetime is distinct from the
+# empty-case entry above. getMostRecentEntryTags returns tags from the entry
+# with the most recent datetime; without a gap, fast successive entries can
+# share the same datetime and the "most recent" becomes ambiguous.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-delay-between-cases'
+    timeout: 2000
+    optional: true
+
+# Dismiss the LogBox banner if present (it can overlap the FAB).
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# ===== FROM-RECENT CASE: CREATE ENTRY WITH TAGS "work" AND "personal" =====
+
+- evalScript: ${output.recentEntryContent = "First entry with tags " + Date.now().toString()}
+- evalScript: ${output.tag1 = "work"}
+- evalScript: ${output.tag2 = "personal"}
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# Enter content
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.recentEntryContent}
+
+# Add first tag "work"
+- assertVisible: 'Tags'
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.tag1}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Add second tag "personal"
+- assertVisible:
+    id: 'tag-input'
+- tapOn:
+    id: 'tag-input'
+- eraseText
+- inputText: ${output.tag2}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Verify both tag chips are present before saving
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+- takeScreenshot: first-entry-with-tags
+
+# Save and return to journal list
+- tapOn:
+    id: 'appbar-header'
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'
+
+# Wait briefly to ensure the next entry's datetime is distinct from the
+# from-recent entry above.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-delay-before-third'
+    timeout: 2000
+    optional: true
+
+# Dismiss the LogBox banner if present (it can overlap the FAB).
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# ===== CREATE THIRD ENTRY AND VERIFY DEFAULT TAGS ARE PRE-POPULATED =====
+
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+
+# The default tags load asynchronously. Wait for them to appear.
+- extendedWaitUntil:
+    visible: ${output.tag1}
+    timeout: 5000
+
+- takeScreenshot: second-entry-default-tags
+
+# Verify both default tags are pre-populated as chips
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+# ===== VERIFY USER CAN STILL ADD/REMOVE TAGS NORMALLY =====
+
+# Add a new tag "extra"
+- evalScript: ${output.tag3 = "extra"}
+- tapOn:
+    id: 'tag-input'
+- inputText: ${output.tag3}
+- pressKey: Enter
+- waitForAnimationToEnd
+
+# Verify the new tag is added alongside the defaults
+- assertVisible: ${output.tag3}
+- assertVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+
+- takeScreenshot: second-entry-after-add-tag
+
+# Remove the "work" default tag by tapping its close (×) icon. Paper Chip
+# renders the close icon as a separate button with accessibilityLabel "Close",
+# positioned to the right of the chip text. Use a directional selector to
+# target the Close button that is immediately right of the "work" chip text.
+- tapOn:
+    text: 'Close'
+    rightOf:
+      text: ${output.tag1}
+- waitForAnimationToEnd
+
+- takeScreenshot: second-entry-after-remove-tag
+
+# Verify "work" is gone but "personal" and "extra" remain
+- assertNotVisible: ${output.tag1}
+- assertVisible: ${output.tag2}
+- assertVisible: ${output.tag3}
+
+# Save and return
+- tapOn:
+    id: 'appbar-header'
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'create-entry-fab'

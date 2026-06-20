@@ -1,15 +1,32 @@
 appId: com.feltech.feltlog
-name: Restore from backup — to fresh DB
+name: Restore from backup
 
 
 # E2E test for the Restore from Backup feature.
 # Verifies the entry point on the setup screen lets the user restore
 # a database from a backup file.
 #
-# Flow A: Restore to a fresh DB (no existing DB to overwrite).
-#   Sets up a DB, configures backup location, creates a backup, wipes
-#   state, then restores from that backup into a new DB name.
-#   No safety-backup confirm dialog should appear.
+# Merged from:
+#   - restore_backup_to_fresh_db.yaml (Flow A: restore to fresh DB,
+#     filename-tap regression, backward-compat radio tap)
+#   - restore_backup_after_cancel.yaml (Flow B: cancel/return flow,
+#     location reconfiguration on restore screen)
+#
+# Combined flow:
+#   1. Create encrypted DB, configure backup location, create an entry + backup.
+#   2. clearState + launchApp.
+#   3. Cancel flow: tap "Restore from backup", verify restore screen, tap Cancel,
+#      verify back on setup screen.
+#   4. Location reconfig: tap "Restore from backup" again, verify "No backup
+#      location configured" error, reconfigure backup location via SAF picker.
+#   5. Wait for backup files to load, verify our backup file is listed.
+#   6. Filename-tap regression: scroll to restore-confirm-btn, assert enabled:
+#      false, scroll back up, tap filename text directly, verify enabled: true.
+#   7. Backward-compat radio tap: also tap leftOf text to verify radio circle.
+#   8. Set target DB name, tap Restore, handle confirm dialog if present.
+#   9. Wait for restore to complete (db-name-input visible).
+#  10. Open restored DB with credentials, verify 'Create entry' appears.
+#  11. Navigate to Settings, verify 'Encryption: Enabled'.
 #
 # Note: The overwrite confirm dialog (safety backup for existing DB)
 # cannot be tested via clearState because `adb pm clear` wipes all app
@@ -17,13 +34,12 @@ name: Restore from backup — to fresh DB
 # target name to trigger the overwrite path. That path is covered by
 # unit tests in useRestoreFlow.test.ts.
 ---
-# Flow A: Restore to a fresh DB (no existing DB to back up).
+# ===== INITIAL SETUP: CREATE ENCRYPTED DB + BACKUP =====
 - clearState
 - launchApp
 
 # Wait for the app to fully load after clearState kills the process.
-# Use optional: true so we can retry if the app lands on the home screen
-# (known clearState + launchApp race on emulators).
+# Use optional: true so we can retry if the app lands on the home screen.
 - extendedWaitUntil:
     visible:
       id: 'db-name-input'
@@ -42,9 +58,8 @@ name: Restore from backup — to fresh DB
             id: 'db-name-input'
           timeout: 30000
 
-# ===== INITIAL SETUP: Create a database with known credentials =====
-- evalScript: ${output.dbName = "restore_fresh_" + Date.now() + ".db"}
-- evalScript: ${output.dbKey = "restore_key_fresh"}
+- evalScript: ${output.dbName = "restore_merged_" + Date.now() + ".db"}
+- evalScript: ${output.dbKey = "restore_key_merged"}
 
 - assertVisible:
     id: 'db-name-input'
@@ -59,19 +74,68 @@ name: Restore from backup — to fresh DB
 - tapOn:
     id: 'db-open-btn'
 
-# Wait for the journal screen to appear
 - assertVisible: 'Create entry'
-- takeScreenshot: restore-flow-a-journal-ready
+- takeScreenshot: restore-merged-journal-ready
 
-# ===== NAVIGATE TO SETTINGS AND CONFIGURE BACKUP LOCATION =====
+# ===== CREATE AN ENTRY AND BACKUP =====
+
+# Dismiss LogBox warning if present — it can cover the FAB
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+- setLocation:
+    latitude: 53.787977855061214
+    longitude: -2.244492876694697
+
+- evalScript: ${output.entryText = "Restore merged test " + Date.now()}
+- tapOn:
+    id: 'create-entry-fab'
+- assertVisible:
+    id: 'entry-content-input'
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryText}
+# Save entry and navigate back by tapping the back button directly.
+# The entry editor's beforeRemove listener intercepts back navigation,
+# calls e.preventDefault(), and does an async save (createEntry +
+# loadEntries + loadTags). On slow emulators, this chain can take
+# variable time. If the first tap doesn't complete the navigation
+# within 10 seconds, the isLeavingRef guard allows a second back
+# press to bypass the handler and navigate immediately.
+- tapOn: 'Back'
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+    optional: true
+# If still on the entry editor, press BACK again — the beforeRemove
+# guard (isLeavingRef.current = true) lets the second press through.
+- runFlow:
+    when:
+      visible: 'Back'
+    commands:
+      - tapOn: 'Back'
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 60000
+- assertVisible:
+    id: 'create-entry-fab'
+- takeScreenshot: restore-merged-entry-created
+
+# ===== NAVIGATE TO SETTINGS AND CONFIGURE BACKUP =====
 
 - waitForAnimationToEnd
 - tapOn:
     point: '75%,96%'
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-settings
+- takeScreenshot: restore-merged-settings
 
-# Verify backup section
 - assertVisible: 'Backup'
 - assertVisible: 'No backup location configured'
 
@@ -79,18 +143,16 @@ name: Restore from backup — to fresh DB
 - tapOn:
     id: 'choose-backup-location-btn'
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-saf-picker
+- takeScreenshot: restore-merged-saf-picker
 
-# If a breadcrumb with device name is visible, navigate back to root
 - runFlow:
     when:
       visible: 'sdk_gphone64_x86_64'
     commands:
       - tapOn: 'sdk_gphone64_x86_64'
       - waitForAnimationToEnd
-      - takeScreenshot: restore-flow-a-saf-root
+      - takeScreenshot: restore-merged-saf-root
 
-# Select Pictures folder (may be below the fold in root listing)
 - scrollUntilVisible:
     element: 'Pictures'
     direction: DOWN
@@ -101,18 +163,15 @@ name: Restore from backup — to fresh DB
     commands:
       - tapOn: 'Pictures'
       - waitForAnimationToEnd
-      - takeScreenshot: restore-flow-a-saf-folder-selected
+      - takeScreenshot: restore-merged-saf-folder-selected
 
-# Confirm folder selection
 - tapOn: 'USE THIS FOLDER'
 - waitForAnimationToEnd
-
-# Grant permission
 - tapOn: 'ALLOW'
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-settings-location-set
+- takeScreenshot: restore-merged-settings-location-set
 
-# Dismiss LogBox warning banner if present — it can cover the Snackbar
+# Dismiss LogBox warning banner if present
 - runFlow:
     when:
       visible: 'Open debugger to view warnings.'
@@ -121,10 +180,7 @@ name: Restore from backup — to fresh DB
           point: '93%,92%'
       - waitForAnimationToEnd
 
-# Verify backup location is now configured
 - assertVisible: 'Location: (Pictures|Documents)'
-
-# ===== CREATE A BACKUP =====
 
 # Guard against minute-boundary races
 - evalScript: ${output.backupSecond = new Date().getUTCSeconds()}
@@ -138,27 +194,25 @@ name: Restore from backup — to fresh DB
           timeout: 6000
           optional: true
 
-# Compute expected backup filename prefix for later verification
 - runScript: scripts/compute-backup-prefix.js
 
 - tapOn:
     id: 'backup-now-btn'
 - waitForAnimationToEnd
 
-# Wait for backup to complete (SAF operations can take several seconds)
 - extendedWaitUntil:
     visible: 'Backup saved'
     timeout: 60000
 - assertVisible: 'Backup saved'
-- takeScreenshot: restore-flow-a-backup-done
+- takeScreenshot: restore-merged-backup-done
 
-# ===== WIPE APP STATE AND RESTORE FROM BACKUP =====
+# ===== WIPE STATE AND TEST CANCEL/RETURN FLOW =====
 
-# Clear all state so the app returns to the setup screen
 - clearState
 - launchApp
 
-# Wait for the app to fully load after clearState kills the process
+# Wait for the app to fully load after clearState kills the process.
+# Use optional: true so we can retry if the app lands on the home screen.
 - extendedWaitUntil:
     visible:
       id: 'db-name-input'
@@ -177,7 +231,18 @@ name: Restore from backup — to fresh DB
             id: 'db-name-input'
           timeout: 30000
 
-# Dismiss LogBox warning if it appears on the setup screen
+# If still not visible after relaunch, try once more (emulator may be slow)
+- runFlow:
+    when:
+      notVisible:
+        id: 'db-name-input'
+    commands:
+      - launchApp
+      - extendedWaitUntil:
+          visible:
+            id: 'db-name-input'
+          timeout: 60000
+
 - runFlow:
     when:
       visible: 'Open debugger to view warnings.'
@@ -186,22 +251,18 @@ name: Restore from backup — to fresh DB
           point: '93%,92%'
       - waitForAnimationToEnd
 
-# Should be on the setup screen now
 - assertVisible:
     id: 'db-name-input'
-
-# Verify the "Restore from backup" button is visible
 - assertVisible:
     id: 'restore-backup-btn'
-- takeScreenshot: restore-flow-a-setup-screen
 
-# Tap "Restore from backup" to open the RestoreFromBackupScreen
+# Tap "Restore from backup" to open the restore screen
 - tapOn:
     id: 'restore-backup-btn'
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-restore-screen
+- takeScreenshot: restore-merged-restore-screen
 
-# Verify restore screen elements are visible.
+# Verify restore screen elements.
 # Note: the encryption key input was removed — restore is now a pure
 # file copy that returns the user to the setup screen.
 - assertVisible:
@@ -211,18 +272,47 @@ name: Restore from backup — to fresh DB
 - assertVisible:
     id: 'restore-cancel-btn'
 
-# clearState wipes AsyncStorage, so the backup directory URI is lost.
-# The error text is always shown after clearState. Reconfigure the backup
-# location unconditionally.
+# Tap Cancel — should return to the setup screen
+- tapOn:
+    id: 'restore-cancel-btn'
+- waitForAnimationToEnd
+- takeScreenshot: restore-merged-back-to-setup
+
+# Verify we're back on the setup screen
+- assertVisible:
+    id: 'db-name-input'
+- assertVisible:
+    id: 'db-open-btn'
+- assertVisible:
+    id: 'restore-backup-btn'
+
+# ===== LOCATION RECONFIG + FULL RESTORE FLOW =====
+
+# Tap "Restore from backup" again
+- tapOn:
+    id: 'restore-backup-btn'
+- waitForAnimationToEnd
+
+# Verify the "No backup location configured" error is shown on the
+# RestoreFromBackupScreen. The full text is "No backup location
+# configured. Tap "Choose Backup Location" below." — use regex for
+# a partial match since Maestro matches full element text.
+# (clearState wiped AsyncStorage which held the backup dir URI)
+- assertVisible: 'No backup location configured.*'
+- takeScreenshot: restore-merged-no-backup-location
+
+# Reconfigure backup location via SAF picker on the restore screen
 - tapOn:
     id: 'restore-choose-backup-location-btn'
 - waitForAnimationToEnd
+
 - runFlow:
     when:
       visible: 'sdk_gphone64_x86_64'
     commands:
       - tapOn: 'sdk_gphone64_x86_64'
       - waitForAnimationToEnd
+
 - scrollUntilVisible:
     element: 'Pictures'
     direction: DOWN
@@ -233,18 +323,14 @@ name: Restore from backup — to fresh DB
     commands:
       - tapOn: 'Pictures'
       - waitForAnimationToEnd
+
 - tapOn: 'USE THIS FOLDER'
 - waitForAnimationToEnd
 - tapOn: 'ALLOW'
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-restore-location-reconfigured
+- takeScreenshot: restore-merged-restore-location-configured
 
-# Wait for backup files to load
-- extendedWaitUntil:
-    visible: 'Backup files'
-    timeout: 10000
-
-# Dismiss LogBox warning if it reappeared
+# Dismiss LogBox if present
 - runFlow:
     when:
       visible: 'Open debugger to view warnings.'
@@ -252,6 +338,11 @@ name: Restore from backup — to fresh DB
       - tapOn:
           point: '93%,92%'
       - waitForAnimationToEnd
+
+# Wait for backup files to load
+- extendedWaitUntil:
+    visible: 'Backup files'
+    timeout: 10000
 
 # The backup file list should show the backup we just created.
 # Use the specific regex computed before the backup so we match the
@@ -261,8 +352,9 @@ name: Restore from backup — to fresh DB
     direction: DOWN
     timeout: 30000
 - assertVisible: ${output.backupFileRegex}
-- takeScreenshot: restore-flow-a-backup-files-listed
+- takeScreenshot: restore-merged-files-listed
 
+# ===== FILENAME-TAP REGRESSION (from Flow A) =====
 # Regression test (was the root cause of user-reported bug): tapping the
 # filename label directly must select the file. Before the fix, only the
 # tiny radio circle was tappable; tapping the filename text did nothing
@@ -280,7 +372,7 @@ name: Restore from backup — to fresh DB
 - assertVisible:
     id: 'restore-confirm-btn'
     enabled: false
-- takeScreenshot: restore-flow-a-button-disabled-before-tap
+- takeScreenshot: restore-merged-button-disabled-before-tap
 
 # Scroll back up to the file list to select a file.
 # Use the input at the top as an anchor since "Backup files" label
@@ -316,8 +408,9 @@ name: Restore from backup — to fresh DB
 - assertVisible:
     id: 'restore-confirm-btn'
     enabled: true
-- takeScreenshot: restore-flow-a-file-selected
+- takeScreenshot: restore-merged-file-selected
 
+# ===== BACKWARD-COMPAT RADIO TAP (from Flow A) =====
 # Also keep the original `leftOf` radio tap as backward-compat coverage
 # (the radio circle itself is still tappable). Scroll back up to the file
 # list first.
@@ -334,7 +427,9 @@ name: Restore from backup — to fresh DB
     leftOf:
       text: ${output.backupFileRegex}
 - waitForAnimationToEnd
-- takeScreenshot: restore-flow-a-file-selected-backward-compat
+- takeScreenshot: restore-merged-file-selected-backward-compat
+
+# ===== SET TARGET DB NAME AND RESTORE =====
 
 # Set the target DB name to a NEW name so there's no existing DB to
 # overwrite (no confirm dialog will appear). Scroll to the top of the
@@ -348,7 +443,7 @@ name: Restore from backup — to fresh DB
     id: 'restore-db-name-input'
     point: '95%,50%'
 - eraseText
-- evalScript: ${output.restoredDbName = "restored_fresh_" + Date.now() + ".db"}
+- evalScript: ${output.restoredDbName = "restored_merged_" + Date.now() + ".db"}
 - inputText: ${output.restoredDbName}
 
 # Dismiss the keyboard by tapping a non-interactive area. On the emulator,
@@ -358,7 +453,7 @@ name: Restore from backup — to fresh DB
 - tapOn: 'Backup files'
 - waitForAnimationToEnd
 
-- takeScreenshot: restore-flow-a-restore-form-filled
+- takeScreenshot: restore-merged-restore-form-filled
 
 # Dismiss LogBox warning if it covers the Restore button
 - runFlow:
@@ -404,13 +499,12 @@ name: Restore from backup — to fresh DB
     timeout: 60000
 - assertVisible:
     id: 'db-name-input'
-- takeScreenshot: restore-flow-a-restore-complete
+- takeScreenshot: restore-merged-restore-complete
 
 # ===== OPEN THE RESTORED DATABASE =====
 
-# The setup screen is now showing with the DB name field. The restored
-# DB was saved with a specific name; enter it along with the encryption
-# key and tap Open to verify the restored database opens successfully.
+# The setup screen is now showing. Enter the DB name and encryption key
+# to open the restored database and verify it works.
 - tapOn:
     id: 'db-name-input'
     point: '95%,50%'
@@ -428,4 +522,22 @@ name: Restore from backup — to fresh DB
     visible: 'Create entry'
     timeout: 30000
 - assertVisible: 'Create entry'
-- takeScreenshot: restore-flow-a-restored-db-opened
+- takeScreenshot: restore-merged-restored-db-opened
+
+# Dismiss LogBox if present
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# Navigate to Settings and verify the restored database
+- tapOn:
+    point: '75%,96%'
+- waitForAnimationToEnd
+- takeScreenshot: restore-merged-settings-verified
+
+# Verify database section shows encryption is enabled
+- assertVisible: 'Encryption: Enabled'

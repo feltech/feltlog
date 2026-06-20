@@ -1,19 +1,23 @@
 appId: com.feltech.feltlog
-name: Location re-center and no-location state
+name: Location no-permission state
 
 
-# This flow tests the re-center button behaviour and the "no location" state
-# for entries created without location permission.
+# This flow tests the "no location" state for entries created without location
+# permission, and the re-center button's ability to add a location to a
+# no-location entry.
 #
-# TEST 1: Re-center button on a single entry in edit mode changes address.
-# TEST 2: Entry with no saved location shows text, no spinner, and the
+# TEST 1: Entry with no saved location shows text, no spinner, and the
 #         re-center button is present.
-# TEST 3: Re-center button can add a location to a no-location entry.
-# TEST 4: Double-tapping the re-center button while a fetch is in
-#         progress is harmless.
+# TEST 2: Re-center button can add a location to a no-location entry.
+#
+# The re-center-on-existing-entry and double-tap-safety scenarios are covered
+# by location_features.yaml (Tests 7 and 7b), so they are not duplicated here.
 #
 # By using a fresh database with one entry at a time, this test avoids
 # the multi-card matching problem on the journal list.
+#
+# Merged/stripped from:
+#   - location_recenter.yaml (Tests 1 and 4 removed as redundant)
 #
 # Prerequisites: None - this test is independent and creates its own entries.
 ---
@@ -24,126 +28,7 @@ name: Location re-center and no-location state
     permissions:
       all: allow
 
-# Set a known location before creating the entry (London, UK)
-- setLocation:
-    latitude: 51.5074
-    longitude: -0.1278
-
-# ===== TEST 1: Re-center button updates location on an existing entry =====
-# Create an entry with a London location, save it, reopen it in edit
-# mode, change GPS to Berlin, then tap re-center and verify the address
-# updates from London to Berlin.
-- evalScript: ${output.entryText = "Recenter test " + Date.now().toString()}
-
-# Create new entry - location should be captured automatically
-- tapOn:
-    id: 'create-entry-fab'
-- assertVisible:
-    id: 'entry-content-input'
-
-# Wait for map and location to appear
-- waitForAnimationToEnd
-
-# Verify the map is showing (location captured)
-- assertVisible:
-    id: 'entry-location-map'
-
-# Verify geocoded address text is displayed
-- assertVisible:
-    id: 'location-address-text'
-
-# Verify the re-center button is visible
-- assertVisible:
-    id: 'recenter-button'
-
-# Capture the initial London address text for later comparison
-- copyTextFrom:
-    id: 'location-address-text'
-- evalScript: ${output.addressBeforeRecenter = maestro.copiedText}
-
-# Type content
-- tapOn:
-    id: 'entry-content-input'
-- inputText: ${output.entryText}
-
-# Save entry (system back saves)
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
-- assertVisible: 'Create entry'
-
-# Change emulator GPS to Berlin
-- setLocation:
-    latitude: 52.52
-    longitude: 13.405
-
-- waitForAnimationToEnd
-
-# Dismiss LogBox warning banner if present — it overlays the bottom of
-# the screen and can block FAB taps.
-- runFlow:
-    when:
-      visible: 'Open debugger to view warnings.'
-    commands:
-      - tapOn:
-          point: '93%,92%'
-      - waitForAnimationToEnd
-
-# Re-open the entry in edit mode (only one entry on the list)
-- tapOn: 'Journal entry card'
-- assertVisible:
-    id: 'entry-content-input'
-
-# Wait for map and location to render. The geocode may still be in
-# progress after re-opening an existing entry, so wait for the address
-# text to resolve instead of asserting immediately.
-- waitForAnimationToEnd
-- assertVisible:
-    id: 'entry-location-map'
-- extendedWaitUntil:
-    visible:
-      id: 'location-address-text'
-    timeout: 8000
-
-# Capture the current address before re-centering
-- copyTextFrom:
-    id: 'location-address-text'
-- evalScript: ${output.addressBeforeRecenter2 = maestro.copiedText}
-
-# Tap the re-center button to fetch the new Berlin GPS location
-- tapOn:
-    id: 'recenter-button'
-
-# Wait for the position fetch + reverse geocode to complete.
-- extendedWaitUntil:
-    visible:
-      id: 'location-address-text'
-    timeout: 15000
-
-- takeScreenshot: screenshot-recenter-berlin
-
-# Capture the new address after re-centering
-- copyTextFrom:
-    id: 'location-address-text'
-- evalScript: ${output.addressAfterRecenter = maestro.copiedText}
-
-# PROOF: the address must have changed after re-centering. If the
-# re-center button failed (no-op), the address would still be the
-# pre-recenter London address.
-- assertTrue:
-    condition: ${output.addressBeforeRecenter2 != output.addressAfterRecenter}
-    label: Address changed after re-center to Berlin
-
-# Go back to list
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
-- assertVisible: 'Create entry'
-
-# ===== TEST 2: Entry with no saved location — no spinner, text visible, re-center present =====
-# Start fresh with a new database to avoid multi-card matching issues.
+# ===== TEST 1: Entry with no saved location — no spinner, text visible, re-center present =====
 # Deny location permission, create an entry, save it, reopen it.
 # Verify:
 # - "No location was recorded for this entry" is visible
@@ -163,7 +48,7 @@ name: Location re-center and no-location state
 # enableSchedulerDelegateInvalidation feature flag — verify the flag
 # is enabled in the upgraded version before removing this block.
 #
-# When bumping RN past 0.85.3, re-test Tests 2 and 3 and consider
+# When bumping RN past 0.85.3, re-test Tests 1 and 2 and consider
 # removing the stopApp + clearState + stabilization + retry block
 # below.
 - stopApp
@@ -284,7 +169,7 @@ name: Location re-center and no-location state
 # Save entry (system back saves)
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
+- pressKey: Back
 - waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
@@ -342,11 +227,11 @@ name: Location re-center and no-location state
 # Go back to list
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
+- pressKey: Back
 - waitForAnimationToEnd
 - assertVisible: 'Create entry'
 
-# ===== TEST 3: Re-center button adds location to a no-location entry =====
+# ===== TEST 2: Re-center button adds location to a no-location entry =====
 # Re-open the no-location entry, grant location permission, tap re-center,
 # and verify the map and address appear.
 #
@@ -363,7 +248,7 @@ name: Location re-center and no-location state
 # enableSchedulerDelegateInvalidation feature flag — verify the flag
 # is enabled in the upgraded version before removing this block.
 #
-# When bumping RN past 0.85.3, re-test Tests 2 and 3 and consider
+# When bumping RN past 0.85.3, re-test Tests 1 and 2 and consider
 # removing the stopApp + clearState + stabilization + retry block
 # below.
 - stopApp
@@ -514,69 +399,6 @@ name: Location re-center and no-location state
 # Save the entry with the new location
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
-- assertVisible: 'Create entry'
-
-# ===== TEST 4: Double-tap re-center during fetch is safe =====
-# Re-open the entry, change GPS, and double-tap re-center quickly.
-# The second tap while the button is disabled or the ref guard is
-# active must be harmless.
-- setLocation:
-    latitude: 40.7128
-    longitude: -74.006
-
-- waitForAnimationToEnd
-
-# Dismiss LogBox warning banner if present
-- runFlow:
-    when:
-      visible: 'Open debugger to view warnings.'
-    commands:
-      - tapOn:
-          point: '93%,92%'
-      - waitForAnimationToEnd
-
-# With only 1 entry on the list, just tap the card directly.
-- tapOn: 'Journal entry card'
-- waitForAnimationToEnd
-- extendedWaitUntil:
-    visible:
-      id: 'entry-content-input'
-    timeout: 5000
-- assertVisible: ${output.noLocationEntryText}
-
-# Wait for map and location to render
-- waitForAnimationToEnd
-- extendedWaitUntil:
-    visible:
-      id: 'entry-location-map'
-    timeout: 10000
-
-# Wait for geocode to settle
-- extendedWaitUntil:
-    visible:
-      id: 'location-address-text'
-    timeout: 10000
-
-# Double-tap re-center: the second tap may land while the button is
-# disabled or while recenterInProgressRef is true. Both must be safe.
-- tapOn:
-    id: 'recenter-button'
-- tapOn:
-    id: 'recenter-button'
-
-# Wait for the fetch to complete
-- extendedWaitUntil:
-    visible:
-      id: 'location-address-text'
-    timeout: 15000
-
-- takeScreenshot: screenshot-after-double-tap-recenter
-
-# Save the entry
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
+- pressKey: Back
 - waitForAnimationToEnd
 - assertVisible: 'Create entry'

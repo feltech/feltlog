@@ -2,33 +2,56 @@ appId: com.feltech.feltlog
 name: Edit entry flow
 
 
-# This flow tests editing an existing entry.
-# Prerequisites: None - creates its own entries.
+# This flow tests editing an existing entry's content, date (with re-sort), and
+# time (via the skippable TimePickerModal).
+#
+# Merged from:
+#   - edit_entry.yaml (content edit)
+#   - edit_date_resort.yaml (date edit + re-sort)
+#   - edit_time.yaml (time edit via time picker)
+#
+# Two entries are created: entry A (for the time edit) and entry B (for the
+# content + date edit). B is created after A so it sorts to the top initially.
+# After B's date is changed to a past date, A rises to the top.
 ---
 - runFlow: subflows/setup_database.yaml
 
-- evalScript: ${output.originalContent = "Original content " + Date.now().toString()}
+# ===== CREATE ENTRY A (for time edit) =====
 
-# ===== CREATE INITIAL ENTRY =====
-
+- evalScript: ${output.entryA = 'Entry A ' + Date.now()}
 - runFlow:
     file: subflows/create_entry.yaml
     env:
-      content: ${output.originalContent}
+      content: ${output.entryA}
 
-# Journal list should be showing with the entry card visible
+# ===== CREATE ENTRY B (for content + date edit) =====
 
-# ===== TEST EDIT EXISTING ENTRY =====
+- evalScript: ${output.entryB = 'Entry B ' + Date.now()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.entryB}
 
-- assertVisible: 'Journal entry card'
+# Dismiss the LogBox warning banner if present — it can cover cards and FABs.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
 
-# Tap on the entry to edit
-- tapOn: 'Journal entry card'
+# ===== TEST CONTENT EDIT ON ENTRY B =====
+
+# B was created after A, so it sorts to the top of the datetime-DESC list.
+# Tap entry B by its content text to avoid ambiguity with entry A's card.
+- assertVisible: ${output.entryB}
+- tapOn: ${output.entryB}
 - assertVisible:
     id: 'entry-content-input'
 
 # Verify original content is loaded
-- assertVisible: ${output.originalContent}
+- assertVisible: ${output.entryB}
 
 # Clear and type new content
 - tapOn:
@@ -44,26 +67,221 @@ name: Edit entry flow
 # consuming the BACK event on real devices.
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
+- waitForAnimationToEnd
+- pressKey: Back
 - waitForAnimationToEnd
 - assertVisible:
     id: 'create-entry-fab'
 
-# ===== VERIFY EDIT WAS SAVED =====
+# ===== VERIFY CONTENT EDIT WAS SAVED =====
 
-- assertVisible: 'Journal entry card'
-
-# Open entry again
-- tapOn: 'Journal entry card'
+# Re-open entry B (still at top) by its new content text.
+- assertVisible: ${output.editedContent}
+- tapOn: ${output.editedContent}
 - assertVisible:
     id: 'entry-content-input'
 
 # Verify edited content is there
 - assertVisible: ${output.editedContent}
 
-# Go back (tap header to dismiss keyboard first)
+# ===== EDIT ENTRY B'S DATE (re-sort) =====
+
+# We are already in the editor for entry B. Open the date picker.
+- tapOn:
+    id: 'entry-date-button'
+- waitForAnimationToEnd
+- takeScreenshot: date-picker-open
+
+# Switch to text-input mode, clear the existing date, and type the target past date.
+- tapOn:
+    id: 'react-native-paper-dates-toggle-edit'
+- waitForAnimationToEnd
+- eraseText
+- inputText: 01/15/2024
+- takeScreenshot: date-picker-text-entered
+
+# Confirm the date selection.
+- tapOn:
+    id: 'react-native-paper-dates-save'
+- waitForAnimationToEnd
+- takeScreenshot: editor-after-date-change
+
+# Capture the displayed date and time strings from the editor. The list card
+# formats the datetime as date + ' ' + time (see JournalEntryCard.formatDate),
+# so the expected list-card text is the concatenation of the two button texts.
+# The date-text split (date-only on the date button, time-only on the time
+# button) means we must capture both and join them to match the card's combined
+# string — Maestro assertVisible uses full-string matching, not substring.
+- copyTextFrom:
+    id: 'entry-date-button-text'
+- evalScript: ${output.expectedDateString = maestro.copiedText}
+- copyTextFrom:
+    id: 'entry-time-button-text'
+- evalScript: ${output.expectedTimeString = maestro.copiedText}
+- evalScript:
+    ${output.expectedCardString = output.expectedDateString + ' ' + output.expectedTimeString}
+
+# ===== RETURN TO JOURNAL LIST =====
+
+# Blur any focused input before system back so the IME does not consume the BACK
+# event, then navigate back. The editor's beforeRemove interceptor flushes the
+# datetime change to the database.
 - tapOn:
     id: 'appbar-header'
-- pressKey: BACK
 - waitForAnimationToEnd
-- assertVisible: 'Create entry'
+- pressKey: Back
+- waitForAnimationToEnd
+
+# Wait for the journal list to reappear and refresh its query.
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+
+# Dismiss the LogBox warning banner if present before asserting on list content.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# ===== VERIFY NEW SORT ORDER AND DISPLAYED DATE =====
+
+# Entry A kept today's datetime, so it should now be at the top.
+- assertVisible: ${output.entryA}
+- takeScreenshot: new-order-a-at-top
+
+# Entry B should be visible below A after re-sorting.
+- scrollUntilVisible:
+    element:
+      text: ${output.editedContent}
+    direction: DOWN
+- assertVisible: ${output.editedContent}
+
+# The edited entry's card should show the new past date combined with the
+# preserved time-of-day, matching the JournalEntryCard.formatDate output.
+- assertVisible: ${output.expectedCardString}
+- takeScreenshot: final-new-sort-order
+
+# ===== TEST TIME EDIT ON ENTRY A =====
+
+# Open entry A (now at top) for editing.
+- tapOn: ${output.entryA}
+- assertVisible:
+    id: 'entry-content-input'
+- takeScreenshot: editor-open
+
+# Capture the currently-displayed time from the time button. The list card
+# formats datetime as date + ' ' + time, so we also capture the date to build
+# the expected card string for a later list assertion.
+- copyTextFrom:
+    id: 'entry-date-button-text'
+- evalScript: ${output.originalDate = maestro.copiedText}
+- copyTextFrom:
+    id: 'entry-time-button-text'
+- evalScript: ${output.originalTime = maestro.copiedText}
+- takeScreenshot: editor-before-time-change
+
+# ===== OPEN TIME PICKER AND CHANGE TIME =====
+
+# Open the time picker modal.
+- tapOn:
+    id: 'entry-time-button'
+- waitForAnimationToEnd
+- takeScreenshot: time-picker-open
+
+# The TimePickerModal renders as a clock face on Android. The clock shows
+# hour numbers 1-12; tapping a number selects that hour and the clock
+# automatically switches to minute mode showing 00, 05, 10, ... 60. Tapping
+# a minute number selects it. Both hour and minute numbers are exposed as
+# tappable elements with the number as their text, so we target by text
+# rather than fragile screen coordinates.
+# Select hour 3 (distinct from the original hour).
+- tapOn:
+    text: '3'
+- waitForAnimationToEnd
+- takeScreenshot: time-picker-hour-selected
+# Select minute 30 (distinct from the original minute).
+- tapOn:
+    text: '30'
+- waitForAnimationToEnd
+- takeScreenshot: time-picker-minute-selected
+
+# Confirm the time selection. TimePickerModal has no testID on its confirm
+# button, so target by text. The default confirm label is 'Ok'.
+- tapOn: 'Ok'
+- waitForAnimationToEnd
+- takeScreenshot: editor-after-time-change
+
+# Capture the new displayed time from the time button.
+- copyTextFrom:
+    id: 'entry-time-button-text'
+- evalScript: ${output.newTime = maestro.copiedText}
+
+# Assert the time actually changed — proves the picker interaction had an
+# effect. If the clock-face tap was a no-op, newTime would equal originalTime.
+- assertNotVisible: ${output.originalTime}
+
+# ===== RETURN TO JOURNAL LIST =====
+
+# Blur any focused input before system back so the IME does not consume the
+# BACK event, then navigate back. The editor's beforeRemove interceptor flushes
+# the time change to the database.
+- tapOn:
+    id: 'appbar-header'
+- waitForAnimationToEnd
+- pressKey: Back
+- waitForAnimationToEnd
+
+# Wait for the journal list to reappear and refresh its query.
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+
+# Dismiss the LogBox warning banner if present before asserting on list content.
+- runFlow:
+    when:
+      visible: 'Open debugger to view warnings.'
+    commands:
+      - tapOn:
+          point: '93%,92%'
+      - waitForAnimationToEnd
+
+# ===== VERIFY LIST CARD SHOWS NEW TIME =====
+
+# The list card shows date + ' ' + time. Build the expected card string from
+# the captured date (unchanged) and the new time.
+- evalScript: ${output.expectedCardString = output.originalDate + ' ' + output.newTime}
+- assertVisible: ${output.expectedCardString}
+- takeScreenshot: list-after-time-change
+
+# ===== RE-OPEN ENTRY A AND VERIFY PERSISTED TIME =====
+
+# Re-open entry A (still at top) to confirm the time change persisted.
+- tapOn: ${output.entryA}
+- assertVisible:
+    id: 'entry-content-input'
+
+# The time button text should now show the new time, different from the original.
+- copyTextFrom:
+    id: 'entry-time-button-text'
+- evalScript: ${output.persistedTime = maestro.copiedText}
+- assertNotVisible: ${output.originalTime}
+- assertVisible: ${output.newTime}
+- takeScreenshot: editor-verified-persisted-time
+
+# ===== RETURN TO LIST =====
+
+- tapOn:
+    id: 'appbar-header'
+- waitForAnimationToEnd
+- pressKey: Back
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+- takeScreenshot: final-list

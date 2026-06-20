@@ -5,6 +5,9 @@ name: Backup rotation
 # Regression test for backup rotation: when more backups exist than maxBackups
 # (default 5), the oldest should be deleted, not the newest.
 #
+# Also verifies the Settings screen renders the Database, Encryption, and About
+# sections (merged from backup_settings.yaml).
+#
 # The test waits for the minute to change before creating the 6th backup so it has
 # a distinct filename from the first 5, making it unambiguous which file should
 # survive rotation. Maestro's evalScript/runScript execute on the host (GraalJS on
@@ -34,6 +37,14 @@ name: Backup rotation
 # Verify backup section is visible
 - assertVisible: 'Backup'
 - assertVisible: 'No backup location configured'
+
+# Verify Database section renders (merged from backup_settings.yaml)
+- assertVisible: 'Database'
+- assertVisible: 'Encryption: Enabled'
+
+# Verify About section renders (merged from backup_settings.yaml)
+- assertVisible: 'About'
+- assertVisible: 'App name: FeltLog'
 
 # ===== SAF PICKER: CHOOSE BACKUP LOCATION =====
 

@@ -2,10 +2,46 @@ appId: com.feltech.feltlog
 name: Infinite scroll and pagination
 
 
-# This flow tests infinite scroll / pagination by creating many entries
-# and verifying more load as the user scrolls.
+# This flow tests pull-to-refresh and infinite scroll / pagination by creating
+# many entries and verifying more load as the user scrolls.
+#
+# Merged from:
+#   - pull_to_refresh.yaml (pull-to-refresh gesture)
+#   - infinite_scroll.yaml (pagination via scroll)
 ---
 - runFlow: subflows/setup_database.yaml
+
+# ===== CREATE 2 QUICK ENTRIES FOR PULL-TO-REFRESH =====
+- evalScript: ${output.refreshEntry1 = "Refresh entry 1 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.refreshEntry1}
+
+- evalScript: ${output.refreshEntry2 = "Refresh entry 2 " + Date.now().toString()}
+- runFlow:
+    file: subflows/create_entry.yaml
+    env:
+      content: ${output.refreshEntry2}
+
+# ===== TEST PULL TO REFRESH =====
+# Verify entry is displayed
+- assertVisible: 'Journal entry card'
+
+# Perform pull to refresh gesture
+- swipe:
+    direction: DOWN
+    duration: 1000
+- waitForAnimationToEnd
+
+# Additional wait for refresh to complete
+- takeScreenshot: screenshot-pull-refresh-after-swipe
+
+# After pull, loading indicator should appear briefly
+# then entries refresh
+
+# Verify we're back to list view
+- assertVisible: 'Create entry'
 
 # ===== CREATE 12 ENTRIES (more than batch size of 10) =====
 # Create entries manually (Maestro doesn't support loops well)

@@ -293,9 +293,11 @@ Do NOT use `runScript` with a JS sleep file for delays — it's unnecessary comp
 - Prefer `tapOn: { id: '...' }` over text selectors — testIDs are more stable
 - Each test part should create a fresh entry for clean undo/redo state
 - Close entries with `pressKey: BACK` then `assertVisible: 'Create entry'`
-- Before `pressKey: BACK` when the soft keyboard may be open (after `inputText`), add
-  `tapOn: { id: 'appbar-header' }` to blur the input field and ensure the back key is not consumed
-  by the IME
+- Before `pressKey: BACK` when the soft keyboard may be open (after `inputText`), use the full
+  sequence: `tapOn: { id: 'appbar-header' }` → `waitForAnimationToEnd` → `pressKey: BACK`. The
+  `tapOn` blurs the input field; `waitForAnimationToEnd` lets the Gboard dismissal animation
+  complete so the IME does not consume the BACK event. Without the wait, the BACK key dismisses the
+  keyboard instead of navigating back.
 - Use `takeScreenshot` during development to debug failures. In the final test file, keep
   screenshots only at critical checkpoints (key state transitions, SAF picker opens, error states)
   — they're essential for diagnosing failures that can't be reproduced locally. Avoid screenshots
