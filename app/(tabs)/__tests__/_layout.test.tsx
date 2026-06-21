@@ -140,13 +140,21 @@ describe('TabLayout', () => {
     expect(json).toContain('Icon:plus');
   });
 
-  /** Tests that tab icons are rendered for both tabs. */
-  it('renders tab icons for both tabs', () => {
+  /** Tests that the Lock tab title is present. */
+  it('renders the Lock tab', () => {
     const { toJSON } = render(<TabLayout />);
     const json = JSON.stringify(toJSON());
-    // Journal tab uses "book" icon, Settings uses "cog" icon.
+    expect(json).toContain('Lock');
+  });
+
+  /** Tests that tab icons are rendered for all three tabs. */
+  it('renders tab icons for all three tabs', () => {
+    const { toJSON } = render(<TabLayout />);
+    const json = JSON.stringify(toJSON());
+    // Journal tab uses "book" icon, Settings uses "cog" icon, Lock uses "lock" icon.
     expect(json).toContain('Icon:book');
     expect(json).toContain('Icon:cog');
+    expect(json).toContain('Icon:lock');
   });
 
   /** Tests that the tab layout uses the active tint color from the Paper theme. */

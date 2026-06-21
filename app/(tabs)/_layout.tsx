@@ -68,6 +68,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="lock"
+        options={{
+          title: 'Lock',
+          tabBarIcon: ({ color }) => <TabBarIcon name="lock" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
