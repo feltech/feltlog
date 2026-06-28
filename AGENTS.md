@@ -281,6 +281,25 @@ that hide real timing issues.
 - You may make git commits, but must propose the commit structure for review first.
 - When writing commit body messages, split long lines into multiple lines rather than shortening
   the content. Commitlint enforces a 100-character body line limit.
+- Use `git commit -F - <<'EOF'` with a heredoc for multi-line commit messages. Read the message
+  from stdin via `-F -` so the first line becomes the subject and the rest becomes the body. Do
+  **not** use repeated `-m` flags — each `-m` creates a separate paragraph (blank line between
+  them), which breaks intended paragraph flow and can confuse commitlint. A heredoc preserves
+  normal paragraph wrapping within the body.
+
+  Example:
+
+  ```bash
+  git commit -F - <<'EOF'
+  type(scope): short subject under 72 characters
+
+  Body paragraph. Wrap lines at 100 characters. Commitlint enforces a
+  100-character body line limit.
+
+  Additional paragraphs or bullet points go here.
+  EOF
+  ```
+
 - Add inline comments explaining **why** code is added — the rationale, the context, the constraint
   that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
   Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
