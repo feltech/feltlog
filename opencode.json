@@ -62,7 +62,9 @@
       "base64 *": "allow",
       "md5sum *": "allow",
       "stat *": "allow",
+      "identify *": "allow",
       "ldd *": "allow",
+      "ps *": "allow",
       "jar *": "allow",
       "javap *": "allow",
       "nix-locate *": "allow",
@@ -72,6 +74,7 @@
       "git -C * reset HEAD": "allow",
       "git diff *": "allow",
       "git -C * diff *": "allow",
+      "xargs -I {} git diff": "allow",
       "git log *": "allow",
       "git -C * log *": "allow",
       "git show *": "allow",
@@ -119,7 +122,10 @@
       "python3 -m xml.dom.minidom *": "allow",
       "python -m xml.dom.minidom *": "allow",
       "rm -rf test_output": "allow",
+      "rm -f android.log": "allow",
       "magick *": "allow",
+      "convert *": "allow",
+      "emulator *": "allow",
       "./gradlew *": "allow"
     },
     "describe_image": "allow",
@@ -144,7 +150,7 @@
     [
       ".opencode/lib/image-vision.ts",
       {
-        "vision_model": "ollama-cloud/kimi-k2.7-code"
+        "vision_model": "kimi-for-coding/k2p7"
       }
     ]
   ]
