@@ -451,6 +451,63 @@ describe('useChangePassword', () => {
     expect(result.current.submitting).toBe(false);
   });
 
+  /** The catch block stringifies non-Error rejections. */
+  it('shows a stringified error when changeDatabaseEncryptionKey rejects with a string', async () => {
+    const deps = makeDeps({
+      changeDatabaseEncryptionKey: jest.fn().mockRejectedValue('raw error'),
+    });
+
+    const { result } = renderHook(() =>
+      useChangePassword({ databaseName: 'test.db', isCurrentlyEncrypted: true }, deps),
+    );
+
+    act(() => {
+      result.current.setCurrentKey('old');
+      result.current.setNewKey('new');
+      result.current.setConfirmKey('new');
+    });
+    act(() => {
+      result.current.submit();
+    });
+
+    await act(async () => {
+      await result.current.confirmProceed();
+    });
+
+    expect(deps.showSnackbar).toHaveBeenCalledWith('Failed to change password: raw error', true);
+    expect(result.current.submitting).toBe(false);
+  });
+
+  /** The hook requests a backup directory when none is configured. */
+  it('requests a backup directory when none is configured', async () => {
+    const deps = makeDeps({
+      getBackupDirectoryUri: jest.fn().mockResolvedValue(null),
+      requestDirectoryPermissions: jest
+        .fn()
+        .mockResolvedValue({ granted: true, directoryUri: 'content://new-dir' }),
+    });
+
+    const { result } = renderHook(() =>
+      useChangePassword({ databaseName: 'test.db', isCurrentlyEncrypted: true }, deps),
+    );
+
+    act(() => {
+      result.current.setCurrentKey('old');
+      result.current.setNewKey('new');
+      result.current.setConfirmKey('new');
+    });
+    act(() => {
+      result.current.submit();
+    });
+
+    await act(async () => {
+      await result.current.confirmProceed();
+    });
+
+    expect(deps.requestDirectoryPermissions).toHaveBeenCalled();
+    expect(deps.setBackupDirectoryUri).toHaveBeenCalledWith('content://new-dir');
+  });
+
   /** Tests that unencrypted DB with empty newKey shows validation error. */
   it('submit shows error when adding encryption with empty newKey', () => {
     const deps = makeDeps();

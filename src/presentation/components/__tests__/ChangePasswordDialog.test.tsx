@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 import { PaperProvider } from 'react-native-paper';
 
 /**
@@ -308,5 +309,29 @@ describe('ChangePasswordDialog', () => {
     // The confirmation dialog's shorter wording does NOT appear in the
     // form — it lives in the second Dialog which is hidden by default.
     expect(queryByText('Proceed with changing the encryption password?')).toBeNull();
+  });
+
+  /**
+   * The KeyboardAvoidingView uses 'height' on Android and 'padding' on iOS. The other
+   * tests in this file run on iOS (the default in the Jest environment), so this test
+   * explicitly covers the Android branch.
+   */
+  it('uses height behavior for KeyboardAvoidingView on Android', () => {
+    const replace = jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      const { UNSAFE_getByType } = renderWithProvider(
+        <ChangePasswordDialog
+          databaseName="test.db"
+          isCurrentlyEncrypted={true}
+          visible={true}
+          onClose={jest.fn()}
+          showSnackbar={jest.fn()}
+        />,
+      );
+
+      expect(UNSAFE_getByType(KeyboardAvoidingView).props.behavior).toBe('height');
+    } finally {
+      replace.restore();
+    }
   });
 });

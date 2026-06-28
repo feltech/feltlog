@@ -8,6 +8,9 @@ jest.mock('@/src/domain/repositories/DatabaseContext', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-file-system/legacy', () => require('../../../test-utils/expo-file-system-mock'));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockUseDatabaseInfo = require('@/src/domain/repositories/DatabaseContext')
   .useDatabaseInfo as jest.Mock;
 
@@ -112,5 +115,44 @@ describe('useChangePasswordDeps', () => {
     await expect(result.current.getDatabasePath()).rejects.toThrow(
       'Database not initialized; cannot resolve path',
     );
+  });
+
+  /** CloseCurrentConnection is a no-op when sqliteDb is null. */
+  it('closeCurrentConnection does nothing when sqliteDb is null', async () => {
+    mockUseDatabaseInfo.mockReturnValue({
+      databasePath: '/mock/test.db',
+      sqliteDb: null,
+      isCurrentlyEncrypted: true,
+      resetDatabase: jest.fn(),
+    });
+
+    const showSnackbar = jest.fn();
+    const { result } = renderHook(() => useChangePasswordDeps(showSnackbar));
+
+    await expect(result.current.closeCurrentConnection()).resolves.toBeUndefined();
+  });
+
+  /** RequestDirectoryPermissions delegates to StorageAccessFramework. */
+  it('requestDirectoryPermissions delegates to StorageAccessFramework', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.requestDirectoryPermissionsAsync.mockResolvedValue({
+      granted: true,
+      directoryUri: 'content://dir',
+    });
+
+    mockUseDatabaseInfo.mockReturnValue({
+      databasePath: '/mock/test.db',
+      sqliteDb: null,
+      isCurrentlyEncrypted: true,
+      resetDatabase: jest.fn(),
+    });
+
+    const showSnackbar = jest.fn();
+    const { result } = renderHook(() => useChangePasswordDeps(showSnackbar));
+
+    const response = await result.current.requestDirectoryPermissions();
+    expect(ExpoFs.StorageAccessFramework.requestDirectoryPermissionsAsync).toHaveBeenCalled();
+    expect(response).toEqual({ granted: true, directoryUri: 'content://dir' });
   });
 });

@@ -785,4 +785,65 @@ describe('useRestoreFlow', () => {
       'file:///data/data/com.feltech.feltlog/databases/test.db',
     );
   });
+
+  /** The chooseBackupDirectory catch block stringifies non-Error rejections. */
+  it('handles non-Error rejection when choosing a backup directory', async () => {
+    const deps = makeDeps({
+      requestDirectoryPermissions: jest.fn().mockRejectedValue('permission denied'),
+    });
+
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: null,
+          backupDirUri: null,
+        },
+        deps,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.chooseBackupDirectory();
+    });
+
+    expect(result.current.snackbar).toMatchObject({
+      visible: true,
+      message: 'Failed to choose directory: permission denied',
+      isError: true,
+    });
+  });
+
+  /** The safety-backup catch block stringifies non-Error rejections. */
+  it('handles non-Error rejection during safety backup', async () => {
+    const deps = makeDeps({
+      fileExists: jest.fn().mockResolvedValue(true),
+      backupDatabase: jest.fn().mockRejectedValue('backup error'),
+    });
+
+    const { result } = renderHook(() =>
+      useRestoreFlow(
+        {
+          databaseName: 'test.db',
+          selectedFileUri: 'content://mock-dir/file.db',
+          backupDirUri: 'content://mock-dir',
+        },
+        deps,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+
+    await act(async () => {
+      await result.current.confirmRestore();
+    });
+
+    expect(result.current.snackbar).toMatchObject({
+      visible: true,
+      message: 'Safety backup failed: backup error',
+      isError: true,
+    });
+  });
 });

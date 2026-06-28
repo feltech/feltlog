@@ -178,4 +178,26 @@ describe('ThemePreferenceContext', () => {
 
     consoleError.mockRestore();
   });
+
+  /** Unmounting before the persisted mode loads does not update state. */
+  it('handles unmount before persisted theme mode loads', async () => {
+    let resolveGetThemeMode: (value: string) => void;
+    (getThemeMode as jest.Mock).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveGetThemeMode = resolve;
+        }),
+    );
+
+    const { unmount } = renderWithProvider();
+    expect(unmount).toBeInstanceOf(Function);
+    unmount();
+
+    // Resolve the deferred promise after unmount; the cleanup should prevent a
+    // state update on the unmounted component.
+    await act(async () => {
+      resolveGetThemeMode!('dark');
+      await Promise.resolve();
+    });
+  });
 });

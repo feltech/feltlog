@@ -392,6 +392,28 @@ describe('JournalViewModel', () => {
     expect(apiRef.current!.state.error).toBe('Failed to update entry');
   });
 
+  /** Tests that updateEntry does nothing when the entry is not in local state. */
+  it('does not modify local state when updating an unknown entry', async () => {
+    const repo = new MockRepo();
+    repo.entriesToReturn = [];
+    const apiRef = await renderViewModel(repo);
+
+    (repo.updateEntry as jest.Mock).mockResolvedValue({
+      id: 'entry-1',
+      content: 'updated',
+      datetime: new Date(),
+      created_at: new Date(),
+      modified_at: new Date(),
+      tags: [],
+    });
+
+    await act(async () => {
+      await apiRef.current!.actions.updateEntry('entry-1', { content: 'updated' });
+    });
+
+    expect(apiRef.current!.state.entries).toHaveLength(0);
+  });
+
   /** Tests that deleteEntry removes the entry from local state. */
   it('deletes an entry and removes it from state', async () => {
     const repo = new MockRepo();

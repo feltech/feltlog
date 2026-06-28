@@ -423,4 +423,60 @@ describe('RestoreFromBackupScreen', () => {
     });
     expect(mockSetLastDatabaseName).toHaveBeenCalledWith('restored.db');
   });
+
+  /**
+   * When the user cancels the SAF directory picker, chooseBackupDirectory returns null
+   * and the component leaves the directory state unchanged.
+   */
+  it('does not update the backup directory when the SAF picker is cancelled', async () => {
+    mockGetBackupDirectoryUri.mockResolvedValue(null);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.requestDirectoryPermissionsAsync.mockResolvedValue({
+      granted: false,
+    });
+
+    const { getByTestId, getByText } = renderWithProvider(
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
+    );
+
+    await waitFor(() => {
+      expect(getByTestId('restore-choose-backup-location-btn')).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId('restore-choose-backup-location-btn'));
+
+    await waitFor(() => {
+      expect(getByText(/No backup location configured/)).toBeTruthy();
+    });
+  });
+
+  /** Triggers the error snackbar style branch by making restoreDatabase fail. */
+  it('uses error snackbar styling when restore fails', async () => {
+    mockGetBackupDirectoryUri.mockResolvedValue('content://mock-dir');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ExpoFs = require('expo-file-system/legacy');
+    ExpoFs.StorageAccessFramework.readDirectoryAsync.mockResolvedValue([
+      'content://mock-dir/backup.db',
+    ]);
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { restoreDatabase } = require('@/src/data/database/restore');
+    (restoreDatabase as jest.Mock).mockResolvedValue({ success: false, error: 'restore failed' });
+
+    const { findByTestId, getByTestId } = renderWithProvider(
+      <RestoreFromBackupScreen />,
+      makeSetupInfo(),
+    );
+
+    await findByTestId('restore-source-item-backup.db');
+    fireEvent.press(getByTestId('restore-source-item-backup.db'));
+    fireEvent.press(getByTestId('restore-confirm-btn'));
+
+    await waitFor(() => {
+      const snackbar = getByTestId('restore-snackbar');
+      expect(snackbar.props.style).toMatchObject({ backgroundColor: '#d32f2f' });
+    });
+  });
 });
