@@ -1389,11 +1389,7 @@ export default function JournalEntryEditorScreen() {
             </Surface>
           )}
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.tagsContainer}
-          >
+          <View style={styles.tagsContainer}>
             {state.tags.map((tag, index) => (
               <Chip
                 key={index}
@@ -1404,7 +1400,7 @@ export default function JournalEntryEditorScreen() {
                 {tag}
               </Chip>
             ))}
-          </ScrollView>
+          </View>
         </Surface>
 
         {/* Two independent buttons: one for the calendar date, one for the
@@ -1729,6 +1725,7 @@ const styles = StyleSheet.create({
   },
   tagsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     marginBottom: 8,
   },
   tag: {
