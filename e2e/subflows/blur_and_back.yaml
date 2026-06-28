@@ -1,0 +1,18 @@
+# Subflow to blur a focused editor input and navigate back.
+appId: com.feltech.feltlog
+---
+# Blur the content/tag input before invoking system back. Maestro's inputText
+# leaves the field focused; on this emulator the system BACK key is consumed by
+# the focused input/IME instead of navigating. Tapping the static "Tags" label
+# removes focus so the next BACK event reaches the navigator's beforeRemove
+# listener, which flushes the pending save and returns to the journal list.
+- tapOn: 'Tags'
+# Give the focus change time to propagate before sending BACK; without this
+# short delay the IME may still consume the key event.
+- extendedWaitUntil:
+    visible:
+      id: 'non-existent-blur-delay'
+    timeout: 500
+    optional: true
+- pressKey: Back
+- waitForAnimationToEnd

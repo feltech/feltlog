@@ -1,0 +1,8 @@
+# Subflow to blur the focused editor input so lower elements become tappable.
+appId: com.feltech.feltlog
+---
+# Maestro's inputText leaves the content/tag field focused and can bring up the
+# soft keyboard, which pushes the tag input below the visible area. Tapping the
+# static "Tags" section label blurs the field and dismisses the keyboard.
+- tapOn: 'Tags'
+- waitForAnimationToEnd
