@@ -1,7 +1,7 @@
 ---
 description: System orchestration and execution planner with enforced verification loop
 mode: primary
-model: ollama-cloud/deepseek-v4-pro
+model: kimi-for-coding/k2p7
 temperature: 0.0
 permission:
   edit: deny

@@ -1,7 +1,7 @@
 ---
 description: Repository search, web search, log analysis, and context retrieval agent
 mode: subagent
-model: ollama-cloud/deepseek-v4-flash
+model: ollama-cloud/minimax-m3
 temperature: 0.1
 permission:
   edit: deny

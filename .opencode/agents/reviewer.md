@@ -1,7 +1,7 @@
 ---
 description: Code review and implementation sanity-check agent
 mode: all
-model: ollama-cloud/minimax-m3
+model: ollama-cloud/deepseek-v4-pro
 temperature: 0.2
 permission:
   edit: deny
