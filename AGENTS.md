@@ -300,6 +300,24 @@ that hide real timing issues.
   EOF
   ```
 
+- To reword an existing commit message without an interactive editor, use an `amend!` commit
+  followed by `git rebase -i --autosquash`. This avoids launching an editor and works reliably in
+  non-interactive shells.
+
+  Example:
+
+  ```bash
+  NEWLINE=$'\n'
+  commit_hash="abc1234"
+  new_message="type(scope): short subject${NEWLINE}${NEWLINE}Body paragraph."
+  git commit --allow-empty --only -m "amend! ${commit_hash}${NEWLINE}${NEWLINE}${new_message}"
+  GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash "${commit_hash}^"
+  ```
+
+- Do not use `--no-verify` to bypass pre-commit hooks. If a hook times out or fails, fix the
+  underlying issue (e.g., run `npm run typecheck` or `npm run lint:fix`) rather than skipping
+  validation.
+
 - Add inline comments explaining **why** code is added — the rationale, the context, the constraint
   that drove the decision. Assume a reader unfamiliar with the tech stack (React Native, Expo,
   Kysely, etc.). For complex code, also explain **what** it is doing step-by-step.
