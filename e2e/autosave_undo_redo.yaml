@@ -45,15 +45,9 @@ name: Autosave and undo/redo features
 # ===== TEST UNDO/REDO WITH KEYSTROKE COALESCING =====
 
 # --- Part A: Undo proof (separate bursts) ---
-# Each chunk gets its own undo entry because the 500ms delay expires between them.
-# The assertion proves undo removed 'World'.
-
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Blur the focused input before system back so the IME does not consume the
+# BACK event. The editor's beforeRemove interceptor flushes the edit.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -102,12 +96,9 @@ name: Autosave and undo/redo features
 - waitForAnimationToEnd
 
 # --- Part B: Redo proof ---
-# The assertion proves redo restored 'Bar' between 'Foo' and 'Baz'.
-
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Blur the focused input before system back so the IME does not consume the
+# BACK event.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -150,10 +141,9 @@ name: Autosave and undo/redo features
 # impossible. Tapping redo should be a no-op. Undo for the new typing
 # must still work.
 
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Blur the focused input before system back so the IME does not consume the
+# BACK event.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'
 
 - tapOn:
@@ -200,10 +190,8 @@ name: Autosave and undo/redo features
 - waitForAnimationToEnd
 - assertVisible: 'X'
 
-# Save and close
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Save and close. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'

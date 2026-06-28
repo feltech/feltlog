@@ -1,8 +1,21 @@
 # Subflow to setup the database
 appId: com.feltech.feltlog
 ---
-- clearState
-- launchApp
+# Dismiss any foreground SAF file picker left open by a previous (interrupted)
+# test run. clearState only clears the app's process state; it does NOT close
+# a system picker activity foregrounded on top of the app. An unconditional
+# BACK press here is safe: if the picker is open, BACK dismisses it; if the
+# app is foreground, BACK navigates back (harmless since state is cleared
+# next); if the launcher is showing, BACK is a no-op.
+- pressKey: BACK
+# Collapse clearState + launchApp into a single launchApp: clearState: true
+# call. This reduces the number of ADB process-kill boundaries (each kill can
+# race with an in-flight Fabric mount transaction and trigger the upstream
+# React Native Scheduler use-after-free, SIGSEGV in mqt_v_js). launchApp
+# applies the clearState atomically as part of the launch, so the separate
+# clearState kill is no longer needed.
+- launchApp:
+    clearState: true
 # Wait for the cold-start to complete before interacting with the setup screen.
 # clearState kills the app process; launchApp returns immediately after sending the
 # intent, so the setup screen may take a few seconds to appear. Make the first wait
@@ -17,6 +30,11 @@ appId: com.feltech.feltlog
       notVisible:
         id: 'db-name-input'
     commands:
+      # clearState can cause a SAF picker that ActivityManager had
+      # backgrounded/frozen during a previous flow to foreground itself on
+      # top of the app. Dismiss it before re-launching, otherwise the
+      # picker covers the setup screen and db-name-input stays invisible.
+      - pressKey: BACK
       - launchApp
       - extendedWaitUntil:
           visible:

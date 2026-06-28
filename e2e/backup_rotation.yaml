@@ -30,7 +30,7 @@ name: Backup rotation
 # Navigate to Settings tab (second tab at bottom)
 - waitForAnimationToEnd
 - tapOn:
-    point: '75%,96%'
+    point: '50%,96%'
 - waitForAnimationToEnd
 - takeScreenshot: rotation-settings-initial
 
@@ -218,3 +218,15 @@ name: Backup rotation
     timeout: 30000
 - assertVisible: ${output.backupFileRegex}
 - takeScreenshot: rotation-backup-6-verified
+
+# ===== CLEANUP: Return to feltlog app to avoid SAF picker contamination =====
+# The flow launched the DocumentsUI Files app to verify the backup file on
+# disk. If the Files app (or a backgrounded SAF picker activity) remains
+# foregrounded, the next flow's setup_database.yaml subflow will fail: its
+# launchApp: clearState: true sequence cannot reliably dismiss a system
+# picker that ActivityManager re-foregrounds after the app dies (see
+# e2e.md pitfall 7). Relaunch feltlog so the next flow starts from a clean
+# app foreground state.
+- launchApp:
+    appId: com.feltech.feltlog
+- waitForAnimationToEnd

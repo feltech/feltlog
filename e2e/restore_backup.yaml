@@ -35,8 +35,14 @@ name: Restore from backup
 # unit tests in useRestoreFlow.test.ts.
 ---
 # ===== INITIAL SETUP: CREATE ENCRYPTED DB + BACKUP =====
-- clearState
-- launchApp
+# Collapse clearState + launchApp into a single launchApp: clearState: true
+# call. This reduces the number of ADB process-kill boundaries (each kill can
+# race with an in-flight Fabric mount transaction and trigger the upstream
+# React Native Scheduler use-after-free, SIGSEGV in mqt_v_js). launchApp
+# applies the clearState atomically as part of the launch, so the separate
+# clearState kill is no longer needed.
+- launchApp:
+    clearState: true
 
 # Wait for the app to fully load after clearState kills the process.
 # Use optional: true so we can retry if the app lands on the home screen.
@@ -132,7 +138,7 @@ name: Restore from backup
 
 - waitForAnimationToEnd
 - tapOn:
-    point: '75%,96%'
+    point: '50%,96%'
 - waitForAnimationToEnd
 - takeScreenshot: restore-merged-settings
 
@@ -208,8 +214,10 @@ name: Restore from backup
 
 # ===== WIPE STATE AND TEST CANCEL/RETURN FLOW =====
 
-- clearState
-- launchApp
+# Collapse clearState + launchApp into a single launchApp: clearState: true
+# call (see INITIAL SETUP above for rationale).
+- launchApp:
+    clearState: true
 
 # Wait for the app to fully load after clearState kills the process.
 # Use optional: true so we can retry if the app lands on the home screen.
@@ -554,7 +562,7 @@ name: Restore from backup
 
 # Navigate to Settings and verify the restored database
 - tapOn:
-    point: '75%,96%'
+    point: '50%,96%'
 - waitForAnimationToEnd
 - takeScreenshot: restore-merged-settings-verified
 

@@ -70,13 +70,9 @@ name: Location features - capture and verify
     id: 'entry-content-input'
 - inputText: ${output.entryText}
 
-# Save entry (system back saves)
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Save entry (system back saves). Blur the focused input first so the system
+# BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible:
     id: 'create-entry-fab'
@@ -116,12 +112,9 @@ name: Location features - capture and verify
 - assertVisible:
     id: 'recenter-button'
 
-# Go back to list (system back)
-# Dismiss keyboard / blur input before system back
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Go back to list (system back). Blur the focused input first so the system
+# BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible: 'Create entry'
 
@@ -172,11 +165,9 @@ name: Location features - capture and verify
 
 - takeScreenshot: screenshot-location-paris
 
-# Close the Paris entry
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Close the Paris entry. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible: 'Create entry'
 
@@ -245,11 +236,10 @@ name: Location features - capture and verify
     condition: ${output.addressBeforeSwipe != output.addressAfterSwipe}
     label: Address changed after map swipe
 
-# Save the entry with the new location (system back saves)
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Save the entry with the new location (system back saves). Blur the focused
+# input first so the system BACK event reaches the navigator instead of being
+# consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible: 'Create entry'
 
@@ -288,11 +278,9 @@ name: Location features - capture and verify
 # Take a screenshot to verify persisted location
 - takeScreenshot: screenshot-location-after-reopen
 
-# Go back to list
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Go back to list. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible: 'Create entry'
 
@@ -397,10 +385,9 @@ name: Location features - capture and verify
 
 - takeScreenshot: screenshot-after-recenter-double-tap
 
-# Save the entry with the re-centered location (system back saves)
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Save the entry with the re-centered location (system back saves). Blur the
+# focused input first so the system BACK event reaches the navigator instead of
+# being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 
 - assertVisible: 'Create entry'

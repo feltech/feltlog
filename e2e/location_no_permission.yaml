@@ -23,11 +23,6 @@ name: Location no-permission state
 ---
 - runFlow: subflows/setup_database.yaml
 
-# ===== SET PERMISSIONS AND MOCK LOCATION =====
-- setPermissions:
-    permissions:
-      all: allow
-
 # ===== TEST 1: Entry with no saved location — no spinner, text visible, re-center present =====
 # Deny location permission, create an entry, save it, reopen it.
 # Verify:
@@ -49,25 +44,17 @@ name: Location no-permission state
 # is enabled in the upgraded version before removing this block.
 #
 # When bumping RN past 0.85.3, re-test Tests 1 and 2 and consider
-# removing the stopApp + clearState + stabilization + retry block
-# below.
-- stopApp
-- clearState
-
-- setPermissions:
-    permissions:
-      location: deny
-
-# Stabilization window: let Android release the old process before
-# cold-starting.
-- extendedWaitUntil:
-    visible:
-      id: 'non-existent-stabilization-wait'
-    timeout: 10000
-    optional: true
-
-# Set up a fresh database with location denied.
+# removing the retry block below.
+#
+# The standalone setPermissions + stopApp + clearState sequence has
+# been collapsed into a single launchApp: clearState: true call. This
+# reduces the number of ADB process-kill boundaries (each kill can
+# race with an in-flight Fabric mount transaction and trigger the
+# Scheduler use-after-free). launchApp applies the permission state
+# atomically as part of the launch, so the separate setPermissions
+# kill is no longer needed.
 - launchApp:
+    clearState: true
     permissions:
       location: deny
 - waitForAnimationToEnd
@@ -166,11 +153,9 @@ name: Location no-permission state
     id: 'entry-content-input'
 - inputText: ${output.noLocationEntryText}
 
-# Save entry (system back saves)
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save entry (system back saves). Blur the focused input first so the system
+# BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'
 
 # Dismiss LogBox warning banner if present
@@ -224,11 +209,9 @@ name: Location no-permission state
 
 - takeScreenshot: screenshot-no-location-entry
 
-# Go back to list
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Go back to list. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'
 
 # ===== TEST 2: Re-center button adds location to a no-location entry =====
@@ -249,22 +232,24 @@ name: Location no-permission state
 # is enabled in the upgraded version before removing this block.
 #
 # When bumping RN past 0.85.3, re-test Tests 1 and 2 and consider
-# removing the stopApp + clearState + stabilization + retry block
-# below.
-- stopApp
-
-- setPermissions:
-    permissions:
-      location: allow
-
-# Stabilization window: give Android time to tear down the process and
-# drain any pending Fabric work before relaunching.
+# removing the retry block below.
+#
+# Settle window: let the JS thread drain any pending rendering updates
+# from the end-of-Test-1 assertions before the next process kill. This
+# narrows the race window in which a Fabric mount transaction is in
+# flight when the app process is killed.
+- waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
-      id: 'non-existent-stabilization-wait'
-    timeout: 10000
+      id: 'non-existent-settle-wait'
+    timeout: 1500
     optional: true
 
+# Collapse the stopApp + setPermissions + launchApp sequence into a
+# single launchApp call. launchApp applies the permission state
+# atomically as part of the launch, so the separate setPermissions
+# kill is no longer needed. clearState is intentionally omitted: Test 2
+# re-opens the entry created in Test 1, so the database must persist.
 - setLocation:
     latitude: 35.6762
     longitude: 139.6503
@@ -307,12 +292,34 @@ name: Location no-permission state
     timeout: 15000
     optional: true
 
+# Dismiss any foreground SAF file picker left open by a previous
+# (interrupted) flow. The upstream React Native Scheduler crash can kill the
+# app during the setPermissions + stopApp sequence, which lets a leftover
+# picker from a prior backup/restore flow foreground itself. The retry block
+# below only re-launches the app and cannot dismiss a system picker, so
+# assertVisible: 'Create entry' would fail against the Pictures gallery.
+#
+# CONDITIONAL: only press BACK when 'Create entry' is NOT visible (i.e. a
+# picker or other screen is on top). An unconditional BACK here would exit
+# the app when the journal list is already showing, which itself triggers
+# the retry block and resurfaces a backgrounded picker.
+- runFlow:
+    when:
+      notVisible: 'Create entry'
+    commands:
+      - pressKey: BACK
+      - waitForAnimationToEnd
+
 # If the journal list never appeared, the app likely crashed during
 # launch after the permission toggle. Retry the launch once.
 - runFlow:
     when:
       notVisible: 'Create entry'
     commands:
+      # clearState/stopApp can foreground a SAF picker that ActivityManager
+      # had backgrounded during a previous flow. Dismiss it before
+      # re-launching, otherwise the picker covers the setup screen.
+      - pressKey: BACK
       - stopApp
       - launchApp:
           permissions:
@@ -396,9 +403,7 @@ name: Location no-permission state
 
 - takeScreenshot: screenshot-no-location-after-recenter
 
-# Save the entry with the new location
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save the entry with the new location. Blur the focused input first so the
+# system BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible: 'Create entry'

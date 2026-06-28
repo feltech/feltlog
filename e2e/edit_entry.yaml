@@ -62,14 +62,9 @@ name: Edit entry flow
 - evalScript: ${output.editedContent = "Edited content " + Date.now().toString()}
 - inputText: ${output.editedContent}
 
-# Close and save (system back saves)
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- waitForAnimationToEnd
-- pressKey: Back
-- waitForAnimationToEnd
+# Close and save (system back saves). Blur the focused input first so the
+# system BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -123,14 +118,10 @@ name: Edit entry flow
 
 # ===== RETURN TO JOURNAL LIST =====
 
-# Blur any focused input before system back so the IME does not consume the BACK
-# event, then navigate back. The editor's beforeRemove interceptor flushes the
-# datetime change to the database.
-- tapOn:
-    id: 'appbar-header'
-- waitForAnimationToEnd
-- pressKey: Back
-- waitForAnimationToEnd
+# Blur any focused input before system back so the IME does not consume the
+# BACK event, then navigate back. The editor's beforeRemove interceptor flushes
+# the time change to the database.
+- runFlow: subflows/blur_and_back.yaml
 
 # Wait for the journal list to reappear and refresh its query.
 - extendedWaitUntil:
@@ -228,12 +219,8 @@ name: Edit entry flow
 
 # Blur any focused input before system back so the IME does not consume the
 # BACK event, then navigate back. The editor's beforeRemove interceptor flushes
-# the time change to the database.
-- tapOn:
-    id: 'appbar-header'
-- waitForAnimationToEnd
-- pressKey: Back
-- waitForAnimationToEnd
+# the datetime change to the database.
+- runFlow: subflows/blur_and_back.yaml
 
 # Wait for the journal list to reappear and refresh its query.
 - extendedWaitUntil:
@@ -275,11 +262,9 @@ name: Edit entry flow
 
 # ===== RETURN TO LIST =====
 
-- tapOn:
-    id: 'appbar-header'
-- waitForAnimationToEnd
-- pressKey: Back
-- waitForAnimationToEnd
+# Blur any focused input before system back so the IME does not consume the
+# BACK event, then navigate back.
+- runFlow: subflows/blur_and_back.yaml
 - extendedWaitUntil:
     visible:
       id: 'create-entry-fab'

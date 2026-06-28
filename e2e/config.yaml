@@ -1,6 +1,6 @@
 testOutputDir: ./test_output
 executionOrder:
-  continueOnFailure: false # Default is true
+  continueOnFailure: true
   flowsOrder:
     - 'Create and view journal entry'
     - 'Edit entry flow'
