@@ -212,6 +212,17 @@ See also the "Maestro text matching" note in Known limitations — Maestro match
 which makes `assertNotVisible` proofs reliable: "FooBaz" will not match an element whose text is
 "FooBarBaz".
 
+## `assertVisible` with `id` does not prove text/value content
+
+`assertVisible` with an `id` selector only confirms the element is present on screen — it does
+**not** verify the element's text or value. Therefore `assertVisible: id: 'tag-input'` cannot prove
+that an input field was cleared after an autocomplete suggestion was selected: the field is still
+visible regardless of its contents.
+
+Input-clearing behavior is better proven by the proof-assertion pattern above: type new text into
+the field afterward and assert the final result. If the old text was not cleared, it will prefix
+the new input and the assertion will fail.
+
 ## Delays between typed chunks
 
 To let the app's coalescing timer expire between typed bursts, use `extendedWaitUntil` with
@@ -270,6 +281,27 @@ Do NOT use `runScript` with a JS sleep file for delays — it's unnecessary comp
   run first in the specified sequence. See
   <https://docs.maestro.dev/maestro-flows/workspace-management/sequential-execution>.
 
+- **`e2e/config.yaml` aborts the full suite on first failure by default.**
+  `continueOnFailure: false` causes `npm run e2e` to stop after the first failing flow, so you
+  never get a complete pass/fail picture from a single run. When diagnosing the overall state of
+  the suite, run with `continueOnFailure: true` (or be aware that only the first failure is
+  reported and subsequent flows were not executed). See
+  <https://docs.maestro.dev/maestro-flows/workspace-management/sequential-execution>.
+
+- **Horizontal `ScrollView` can clip tag chip close buttons.** React Native Paper `Chip` components
+  inside a horizontal `ScrollView` may have their close (×) button scrolled off-screen when the
+  chip is the right-most one. If a test needs to remove a tag, either choose a chip that is not
+  right-most or scroll the `ScrollView` to reveal the close button before tapping it.
+
+- **React Native Paper `Chip` capitalizes displayed text.** A tag stored as lowercase (e.g.,
+  "important") may display as "Important". Maestro's text matching is case-insensitive, but test
+  authors should not assume exact casing when reasoning about selectors or assertions.
+
+- **Keyboard can cover the add-tag icon after `inputText`.** After typing into `tag-input`, the
+  soft keyboard covers the `add-tag-icon`. Always use `scrollUntilVisible` for `add-tag-icon`
+  (direction DOWN) before tapping it, in every location where the plus icon is tapped after typing.
+  Do not rely on the icon being visible after `inputText` — the keyboard reliably obscures it.
+
 - **SAF picker (Storage Access Framework):** The SAF system file picker IS automatable on Android.
   Maestro can see and interact with all picker elements including folder names, breadcrumbs, and
   buttons. Key selectors:
@@ -303,6 +335,73 @@ Do NOT use `runScript` with a JS sleep file for delays — it's unnecessary comp
   — they're essential for diagnosing failures that can't be reproduced locally. Avoid screenshots
   at every step; one per major interaction is sufficient.
 - Always include `waitForAnimationToEnd` after undo/redo button taps
+
+## Proper teardown for flows that open foreign apps / SAF picker
+
+The root cause of SAF picker contamination across suite runs is insufficient teardown in the flow
+that opened the picker — not a missing defensive guard in subsequent flows. Flows that open the
+Android SAF picker or launch another system app (e.g., the DocumentsUI Files app) MUST ensure they
+return to FeltLog and close the foreign activity before the flow ends.
+
+Do NOT rely on defensive `pressKey: BACK` in subsequent flows as the primary fix. BACK may navigate
+within DocumentsUI (e.g., up a directory level) instead of closing it, which leaves the picker
+activity on the stack for the next flow to inherit.
+
+**Pattern:** at the end of any flow that opened the picker, relaunch FeltLog so the next flow
+starts from a clean activity stack:
+
+```yaml
+# ... flow body that opened the SAF picker ...
+
+# Teardown: return to FeltLog so the picker activity is backgrounded/closed,
+# not left foregrounded for the next flow to inherit.
+- launchApp: com.feltech.feltlog
+- extendedWaitUntil:
+    visible:
+      id: 'appbar-header'
+    timeout: 10000
+```
+
+If the flow's final assertion already lands back in FeltLog, the explicit relaunch is unnecessary —
+but verify the assertion proves FeltLog is foregrounded, not just that the picker disappeared.
+
+**`launchApp: com.feltech.feltlog` reliably returns from DocumentsUI:** When a flow verifies files
+by launching the DocumentsUI Files app, ending the flow with `launchApp: com.feltech.feltlog`
+brings FeltLog back to the foreground and prevents contamination of the next flow. No
+`pressKey: BACK` or `force-stop` of DocumentsUI is needed — this is the preferred teardown pattern
+for any flow that foregrounds DocumentsUI.
+
+## `launchApp: clearState: true` pattern
+
+Prefer collapsing separate `clearState` + `launchApp` calls into a single
+`launchApp: clearState: true`:
+
+```yaml
+# Preferred — one command, one ADB process-kill boundary
+- launchApp:
+    appId: com.feltech.feltlog
+    clearState: true
+
+# Avoid — two commands, two ADB boundaries
+- clearState: com.feltech.feltlog
+- launchApp: com.feltech.feltlog
+```
+
+Collapsing into one command reduces ADB process-kill boundaries. This mitigates two failure modes:
+
+- The upstream React Native Scheduler SIGSEGV (see pitfall 12), which is triggered when `stopApp`
+  kills the app during an in-flight mount transaction. Fewer kill boundaries means fewer
+  opportunities for the use-after-free.
+- A backgrounded SAF picker resurfacing: with separate commands, ActivityManager may re-foreground
+  a frozen picker in the gap between `clearState` and `launchApp`. A single atomic
+  `clearState: true` launch minimizes that window.
+
+**Stability evidence:** Across 26+ flow executions (2 full suites × 13 flows), the collapsed
+`launchApp: clearState: true` pattern proved stable. It reduces ADB process-kill boundaries from 2
+to 1, narrowing the window for both the RN Scheduler SIGSEGV and SAF picker resurfacing.
+
+Always follow with `extendedWaitUntil` on a known element (see pitfall 5) — `launchApp` returns
+immediately but the app cold-starts asynchronously.
 
 ## When to use e2e vs unit tests
 
@@ -361,8 +460,10 @@ npm run e2e:start-device
 ```
 
 1. Set up adb reverse port forwarding so the Expo dev client inside the emulator can reach Metro on
-   the host. Without this, repeated `clearState` cycles trigger "Cannot connect to Expo CLI. URL:
-   10.0.2.2:8081" warnings that escalate into native `libreactnative.so` crashes.
+   the host. **This step is not optional.** Without it, the Expo dev client may fall back to a LAN
+   IP for Metro, which is fragile and can vary by network — leading to "Cannot connect to Expo CLI.
+   URL: 10.0.2.2:8081" warnings that escalate into native `libreactnative.so` crashes, and repeated
+   `clearState` cycles triggering connection failures.
 
 ```yaml
 - runFlow:
@@ -443,14 +544,15 @@ If any timeout in steps 2b or 2c expires, report failure and include the content
 flows that take longer than a few minutes and does not pass `--test-output-dir` or sync device
 time. Use MCP tools only for diagnostics (screen inspection, screenshots, device listing).
 
-### Full suite (~15 minutes)
+### Full suite (~33 minutes)
 
 ```bash
 npm run e2e
 ```
 
-When invoking this via the Bash tool, **always pass `timeout: 1200000`** (20 minutes) because the
-default 120 s Bash tool timeout is insufficient.
+The 13-flow suite takes approximately 33 minutes. When invoking this via the Bash tool, **always
+pass `timeout: 2400000`** (40 minutes). The previous 20-minute and 30-minute timeouts are
+insufficient — the Bash tool will kill the run before the suite completes.
 
 ### Single flow (1–3 minutes)
 
@@ -617,6 +719,151 @@ re-run result instead of a full diagnostic report.
 6. App state contamination between test runs:
    - After a failed test run, the app may be left in an unexpected state (e.g., entry editor from a
      previous test). Always run `clearState` between test runs to ensure a clean baseline.
+
+7. SAF picker contamination across suite runs:
+   - If a full suite run is interrupted while a backup/restore flow has the Android SAF file picker
+     open, the picker stays foregrounded. `clearState` clears the app's process but does NOT close
+     the system picker activity. This causes subsequent flows that use `setup_database.yaml` to
+     fail with `db-name-input not visible`.
+   - **Primary fix — proper teardown in the originating flow.** The root cause is insufficient
+     teardown in the flow that opened the picker, not a missing guard in later flows. See the
+     "Proper teardown for flows that open foreign apps / SAF picker" section above: any flow that
+     opens the SAF picker or another system app MUST relaunch FeltLog (or otherwise return to the
+     app) before ending, so the next flow starts from a clean activity stack. Do NOT rely on
+     defensive `pressKey: BACK` in subsequent flows as the primary fix — BACK may navigate within
+     DocumentsUI instead of closing it.
+   - **Picker can foreground AFTER `clearState`:** The picker may have been backgrounded/frozen by
+     ActivityManager during a previous flow. When `clearState` kills the app, a backgrounded picker
+     can re-foreground itself on the next launch. Therefore `pressKey: BACK` before `clearState` is
+     NOT always sufficient — the picker can reappear after the app is gone.
+   - **Secondary safety net — guarded BACK presses.** Keep the `pressKey: BACK` guards described
+     below as a SECONDARY safety net for recovery/retry blocks, but treat them as defense in depth,
+     not the primary fix. The primary fix is teardown in the originating flow. Add `pressKey: BACK`
+     at the start of retry/recovery blocks BEFORE `launchApp` as well as before `clearState`. The
+     pre-`clearState` BACK dismisses a currently-foreground picker; the pre-`launchApp` BACK
+     dismisses a picker that re-foregrounded after the app died. Keep both even when you don't
+     expect a picker to be open — they are harmless no-ops when no picker is present.
+   - See pitfall 11 for why the pre-`clearState` BACK must be CONDITIONAL (guarded), not
+     unconditional, when the desired screen may already be visible.
+
+8. Emulator uptime >24h degrades the Maestro driver:
+   - The on-device Maestro instrumentation server (`dev.mobile.maestro`) becomes unreliable after
+     ~24h of emulator uptime, causing `UNAVAILABLE` / `Command failed (tcp:7001): closed` errors
+     mid-flow. Restart the emulator before suite runs if uptime exceeds 24h (see Step 0).
+
+9. Stale JSON command logs in `test_output/`:
+   - When a flow fails very early (before Maestro writes the command log), the
+     `commands-(FlowName).json` file in `test_output/` may be stale from a previous run. Do not
+     rely on it for diagnostics if the file timestamps don't match the current run.
+
+10. Bash tool timeout too short for the full suite:
+    - The full `npm run e2e` suite of 13 flows takes approximately **33 minutes**. The Bash tool's
+      default timeout (and earlier 20-minute / 30-minute values) is insufficient and will abort a
+      passing run mid-suite. **Always pass `timeout: 2400000` (40 minutes)** when invoking
+      `npm run e2e` via the Bash tool. See the "Full suite" section in Execution Sequence.
+
+11. Unconditional `pressKey: BACK` is dangerous when the desired state is already visible:
+    - If the app is already showing the expected screen (e.g., the setup database screen), an
+      unconditional BACK will exit the app and can create the very contamination it was meant to
+      prevent (the app leaves the foreground, and a backgrounded SAF picker may then
+      re-foreground).
+    - **Fix:** Guard the BACK-with-dismiss-picker step with
+      `runFlow: when: notVisible: <expected-element>`. This ensures BACK only fires when the
+      expected screen is NOT already visible — i.e., when a picker or launcher is actually
+      foregrounded. Example:
+
+      ```yaml
+      - runFlow:
+          when:
+            notVisible: 'db-name-input'
+          commands:
+            - pressKey: BACK
+      ```
+
+    - This refines pitfall 7's older "unconditional BACK" advice: the BACK should be conditional on
+      the expected element being absent, not fired blindly.
+
+12. Distinguishing SAF picker contamination from the RN Scheduler SIGSEGV:
+    - Both failure modes can leave the Android launcher or the SAF picker visible after a
+      `clearState`/`launchApp` cycle, so the visible symptom alone is ambiguous.
+    - **Check `adb logcat`** for `F/libc: Fatal signal 11 (SIGSEGV)` in the `mqt_v_js` process.
+      That signature indicates the upstream React Native Scheduler use-after-free crash, NOT picker
+      contamination. The Scheduler crash is triggered when `setPermissions` + `stopApp` kills the
+      app during an in-flight mount transaction, leaving the JS thread accessing freed memory.
+    - The Scheduler crash is an upstream RN bug fixed in RN 0.86.0 behind the
+      `enableSchedulerDelegateInvalidation` flag. The test flow's TODO comments already document
+      this. Do NOT treat it as picker contamination (pitfall 7) — the fix is different (avoid
+      `stopApp` mid-transaction, or upgrade RN), not more `pressKey: BACK` retries.
+    - **The Scheduler SIGSEGV is nondeterministic across suite runs.** The same suite can pass
+      13/13 on one run and fail on the next with `F/libc: Fatal signal 11 (SIGSEGV)` in `mqt_v_js`
+      with no code changes. Always check `adb logcat` for SIGSEGV signatures before treating a
+      failure as deterministic, and re-run the full suite at least once to confirm crashes are
+      consistent before classifying a failure as a real regression rather than the upstream flake.
+    - Diagnostic procedure: run `adb logcat -d | grep -E 'F/libc.*SIGSEGV|mqt_v_js'` after the
+      failure. If matches are found, classify as the Scheduler crash; otherwise investigate picker
+      contamination per pitfall 7.
+
+13. Manual diagnostic step — force-stop DocumentsUI:
+    - When running flows in isolation after a contaminated suite run, a backgrounded SAF picker may
+      still foreground itself on the next `clearState` even though no flow is actively driving it.
+      This is the ActivityManager-frozen-picker behavior described in pitfall 7.
+    - During manual diagnosis (NOT inside a Maestro flow), clear this state with:
+
+      ```bash
+      adb shell am force-stop com.google.android.documentsui
+      ```
+
+    - This is a manual diagnostic aid, not a flow step. Do NOT add it to test YAML — it targets the
+      system DocumentsUI process and is only appropriate for interactive debugging between flow
+      runs.
+
+14. Metro connection warnings — `adb reverse` tunnel loss:
+    - The warning `Cannot connect to Expo CLI. URL: 10.0.2.2:8081` indicates the Expo dev client is
+      falling back to the LAN IP instead of the `adb reverse` tunnel. This typically follows
+      emulator instability (restart, ADB bridge reset) that drops the reverse port forward.
+    - **Mid-suite tunnel loss on long-uptime emulators:** On long-uptime emulators, the
+      `adb reverse tcp:8081 tcp:8081` tunnel can drop mid-suite. The app usually reconnects, but
+      the degraded connection state dramatically increases the chance of RN Scheduler SIGSEGV
+      crashes (see pitfall 12) at `clearState` boundaries. Re-establish the tunnel with
+      `adb reverse tcp:8081 tcp:8081` before each suite run (not just once at setup). Consider
+      adding this command to the `e2e:sync-time` npm script so it runs automatically before every
+      suite run.
+    - **Fix:** Re-establish the tunnel:
+
+      ```bash
+      adb reverse tcp:8081 tcp:8081
+      ```
+
+    - Verify with `adb reverse --list`. See Step 1 in Execution Sequence for the setup-time
+      invocation; this pitfall covers re-establishing it after mid-run instability.
+
+## Expected diagnostic overhead
+
+The following are normal, expected parts of an e2e agent's diagnostic work. They do NOT require
+planner pre-approval — perform them as needed when diagnosing a failing run, and report them in the
+execution report (see "Learnings and execution reports") so the planner can see what was done.
+
+- **Running all flows individually** to build a complete pass/fail map when the full suite aborts
+  early or fails with an incomplete picture (e.g., `continueOnFailure: false` stopped after the
+  first failure, or the Bash tool timed out mid-suite). Running each flow via
+  `npm run e2e:flow e2e/<flow>.yaml` produces a per-flow result that the full-suite run could not
+  provide.
+
+- **Inspecting application source code (`src/`, `app/`)** to classify a failure as a test bug or an
+  app bug (per Rule 5). Stop as soon as the classification is clear — do NOT perform exhaustive app
+  debugging. Once classified as an app bug, report it to the planner with the gathered evidence
+  rather than continuing to trace through application code.
+
+- **Fixing shared subflows** (e.g., `e2e/subflows/setup_database.yaml`) when a contamination or
+  state-leak issue is discovered, even if that specific file was not named in the original
+  delegation. Shared subflows affect every flow that includes them, so a fix there unblocks the
+  whole suite. This is in-scope for the e2e agent because subflows live under `e2e/` (the agent's
+  write-access directory, per Rule 1).
+
+- **Discovering and applying environment/runtime tweaks** such as the 40-minute Bash timeout for
+  the full suite (see pitfall 10 above), and warning about stale `test_output/` JSON logs from
+  previous runs that can mislead diagnostics (see pitfall 9). These are operational realities of
+  the test environment, not scope creep — apply them and note them in the execution report.
 
 ## Learnings and execution reports
 
