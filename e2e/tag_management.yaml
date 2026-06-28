@@ -34,11 +34,17 @@ name: Tag management in entry
 # Wait for tags section to be visible
 - assertVisible: 'Tags'
 
+# Blur the content field so the soft keyboard is dismissed, then scroll the tag
+# input into view before tapping it.
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
+
 # Find tag input field
 - tapOn:
-    id: 'tag-input'
-
-- assertVisible:
     id: 'tag-input'
 - inputText: ${output.tag1}
 
@@ -47,8 +53,6 @@ name: Tag management in entry
 - waitForAnimationToEnd
 
 # Wait and add the second tag
-- assertVisible:
-    id: 'tag-input'
 - tapOn:
     id: 'tag-input'
 - eraseText
@@ -57,8 +61,6 @@ name: Tag management in entry
 - waitForAnimationToEnd
 
 # Add third tag
-- assertVisible:
-    id: 'tag-input'
 - tapOn:
     id: 'tag-input'
 - eraseText
@@ -66,13 +68,10 @@ name: Tag management in entry
 - pressKey: Enter
 - waitForAnimationToEnd
 
-# Close and save entry (system back saves)
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Close and save entry (system back saves). Blur the focused input first so
+# the system BACK event reaches the navigator instead of being consumed by the
+# IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -84,16 +83,23 @@ name: Tag management in entry
 - assertVisible:
     id: 'entry-content-input'
 
-# Remove one tag - look for close icon on chip
-- runFlow:
-    when:
-      visible: 'personal'
-    commands:
-      - tapOn: 'personal'
+# Remove one tag. Tags wrap to the next line (no horizontal ScrollView), so the
+# Close button of any chip is visible and tappable regardless of position.
+- tapOn:
+    text: 'Close'
+    rightOf:
+      text: 'work'
+- waitForAnimationToEnd
+- assertNotVisible: 'work'
 
-# Add a new tag in edit mode if we can
-- assertVisible:
-    id: 'tag-input'
+# Add a new tag in edit mode. Blur the content field first so the tag input is
+# reachable, then scroll it into view.
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'tag-input'
 - eraseText
@@ -102,13 +108,10 @@ name: Tag management in entry
 - pressKey: Enter
 - waitForAnimationToEnd
 
-# Close and save changes (system back saves)
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Close and save changes (system back saves). Blur the focused input first so
+# the system BACK event reaches the navigator instead of being consumed by the
+# IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -162,7 +165,9 @@ name: Tag management in entry
 - assertVisible: ${output.bugEntryContent}
 
 # The entry has default tags from the most recent entry (personal, work,
-# important, updated). Verify at least one default tag is present.
+# important, updated). Verify at least one default tag is present, then remove
+# it. Tags wrap to the next line, so the Close button of any chip is visible and
+# tappable regardless of position.
 - evalScript: ${output.removedTag = "personal"}
 - assertVisible: ${output.removedTag}
 
@@ -187,12 +192,10 @@ name: Tag management in entry
 # the tag change was never persisted, because the autosave/flushSave
 # logic only triggered on content changes.
 #
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Blur the focused input before system back so the IME does not consume the
+# BACK event, then navigate back. The editor's beforeRemove interceptor flushes
+# the tag change to the database.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 

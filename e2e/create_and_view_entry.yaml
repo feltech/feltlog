@@ -42,19 +42,18 @@ name: Create and view journal entry
 - tapOn:
     id: 'entry-content-input'
 - inputText: ${output.entryText}
-# Back button saves and closes
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-- waitForAnimationToEnd
-- pressKey: Back
-- waitForAnimationToEnd
+# Back button saves and closes. Blur the focused input first so the system
+# BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
 # ===== VERIFY ENTRY CARD VISIBLE AND TAPPABLE =====
-- assertVisible: 'Journal entry card'
+# The journal list refreshes asynchronously when it regains focus; wait for
+# the newly-created card to render before tapping it.
+- extendedWaitUntil:
+    visible: 'Journal entry card'
+    timeout: 5000
 - tapOn: 'Journal entry card'
 
 # Wait for the editor to be visible and verify content

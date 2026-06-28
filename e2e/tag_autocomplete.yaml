@@ -36,6 +36,14 @@ name: Tag autocomplete suggestions
 - inputText: ${output.entry1Content}
 
 - assertVisible: 'Tags'
+# Blur the content field so the soft keyboard is dismissed and the tag input is
+# reachable, then scroll it into view.
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.seedTag}
@@ -44,10 +52,9 @@ name: Tag autocomplete suggestions
 
 - assertVisible: ${output.seedTag}
 
-- tapOn:
-    id: 'appbar-header'
-- pressKey: BACK
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -72,6 +79,14 @@ name: Tag autocomplete suggestions
 
 - takeScreenshot: second-entry-default-groceries
 
+# Wait for the default-tag async population to settle before interacting with
+# the chip's Close button. Without this, the close-button tap can complete
+# before the chip is fully mounted and the tag is not actually removed.
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ${output.seedTag}
+    timeout: 2000
+
 # Remove the default "groceries" chip so we can test autocomplete showing it
 - tapOn:
     text: 'Close'
@@ -85,6 +100,10 @@ name: Tag autocomplete suggestions
 - tapOn:
     id: 'tag-input'
 - inputText: 'gro'
+
+# Dismiss the keyboard so the autocomplete dropdown below the tag input is
+# visible and can be asserted/tapped.
+- runFlow: subflows/blur_editor_input.yaml
 
 # Wait for the autocomplete dropdown to appear
 - extendedWaitUntil:
@@ -114,16 +133,20 @@ name: Tag autocomplete suggestions
 - assertNotVisible:
     id: 'tag-suggestions'
 
-# Verify the tag input is present (cleared after selecting suggestion)
-- assertVisible:
-    id: 'tag-input'
-
 # ===== ADD A BRAND-NEW TAG VIA THE PLUS ICON =====
 
 - evalScript: ${output.newTag = "shopping"}
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.newTag}
+
+# The soft keyboard may cover the add-tag-icon after typing. Scroll it into
+# view before tapping.
+- scrollUntilVisible:
+    element:
+      id: 'add-tag-icon'
+    direction: DOWN
+    timeout: 5000
 
 # Tap the plus icon to add the new tag
 - tapOn:
@@ -139,11 +162,9 @@ name: Tag autocomplete suggestions
 - assertVisible: ${output.seedTag}
 - assertVisible: ${output.newTag}
 
-# Save and return
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -169,6 +190,14 @@ name: Tag autocomplete suggestions
 - inputText: ${output.excludeSeedContent}
 
 - assertVisible: 'Tags'
+# Blur the content field so the soft keyboard is dismissed and the tag input is
+# reachable, then scroll it into view.
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.excludeTag}
@@ -177,10 +206,9 @@ name: Tag autocomplete suggestions
 
 - assertVisible: ${output.excludeTag}
 
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -193,10 +221,16 @@ name: Tag autocomplete suggestions
 - assertVisible:
     id: 'entry-content-input'
 
-# Add "exercise" to this entry via the plus icon
+# Add "exercise" to this entry via the plus icon. The soft keyboard may cover
+# the add-tag-icon after typing; scroll it into view before tapping.
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.excludeTag}
+- scrollUntilVisible:
+    element:
+      id: 'add-tag-icon'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'add-tag-icon'
 - waitForAnimationToEnd
@@ -229,10 +263,8 @@ name: Tag autocomplete suggestions
 
 - takeScreenshot: autocomplete-excludes-added-tag
 
-# Save and return
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'

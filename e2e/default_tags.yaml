@@ -42,6 +42,15 @@ name: Default tags
 
 - takeScreenshot: fresh-db-no-default-tags
 
+# Blur the content field so the soft keyboard is dismissed, then scroll the tag
+# input into view before tapping it.
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
+
 # Verify the tag input is present and empty (ready for input)
 - assertVisible:
     id: 'tag-input'
@@ -67,11 +76,9 @@ name: Default tags
 
 - takeScreenshot: fresh-db-after-manual-tag
 
-# Save and return
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -104,8 +111,15 @@ name: Default tags
     id: 'entry-content-input'
 - inputText: ${output.recentEntryContent}
 
-# Add first tag "work"
+# Add first tag "work". Blur the content field so the tag input is reachable,
+# then scroll it into view.
 - assertVisible: 'Tags'
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.tag1}
@@ -113,8 +127,6 @@ name: Default tags
 - waitForAnimationToEnd
 
 # Add second tag "personal"
-- assertVisible:
-    id: 'tag-input'
 - tapOn:
     id: 'tag-input'
 - eraseText
@@ -128,11 +140,9 @@ name: Default tags
 
 - takeScreenshot: first-entry-with-tags
 
-# Save and return to journal list
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return to journal list. Blur the focused input first so the system
+# BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
 
@@ -167,8 +177,15 @@ name: Default tags
 
 # ===== VERIFY USER CAN STILL ADD/REMOVE TAGS NORMALLY =====
 
-# Add a new tag "extra"
+# Add a new tag "extra". Blur the content field so the tag input is reachable,
+# then scroll it into view.
 - evalScript: ${output.tag3 = "extra"}
+- runFlow: subflows/blur_editor_input.yaml
+- scrollUntilVisible:
+    element:
+      id: 'tag-input'
+    direction: DOWN
+    timeout: 5000
 - tapOn:
     id: 'tag-input'
 - inputText: ${output.tag3}
@@ -199,10 +216,8 @@ name: Default tags
 - assertVisible: ${output.tag2}
 - assertVisible: ${output.tag3}
 
-# Save and return
-- tapOn:
-    id: 'appbar-header'
-- pressKey: Back
-- waitForAnimationToEnd
+# Save and return. Blur the focused input first so the system BACK event
+# reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
