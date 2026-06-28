@@ -1,5 +1,6 @@
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Snackbar } from 'react-native-paper';
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted before any imports below.
@@ -30,12 +31,6 @@ jest.mock('expo-status-bar', () => ({
 /** Mock the database hook so we can control DB readiness. */
 jest.mock('@/src/data/database/database', () => ({
   useDatabase: jest.fn(),
-}));
-
-/** Mock react-native-paper-dates so the layout test does not load its ESM deps. */
-jest.mock('react-native-paper-dates', () => ({
-  en: {},
-  registerTranslation: jest.fn(),
 }));
 
 /** Mock backup functions to avoid file system operations. */
@@ -198,7 +193,7 @@ import { getBackupDirectoryUri } from '@/src/data/database/dbBackupStorage';
 import { useThemePreference } from '@/src/presentation/theme/ThemePreferenceContext';
 import { lightTheme, darkTheme } from '@/src/presentation/theme/appTheme';
 import { Stack } from 'expo-router';
-import RootLayout from '../_layout';
+import RootLayout from '../RootLayoutProvider';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -240,10 +235,10 @@ async function renderLayout(
 // ---------------------------------------------------------------------------
 
 /**
- * Test suite for the root layout component. Covers font loading, database
- * initialization states, and lifecycle backup behavior.
+ * Test suite for the RootLayoutProvider component. Covers font loading, database
+ * initialization states, lifecycle backup behavior, and theme propagation.
  */
-describe('RootLayout', () => {
+describe('RootLayoutProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -378,6 +373,33 @@ describe('RootLayout', () => {
       const postDb = await renderLayout(true, true);
       expect(postDb.queryByText('DatabaseSetupProvider')).toBeNull();
     });
+
+    /** The global StatusBar is rendered in the pre-DB phase as well. */
+    it('renders StatusBar in the pre-DB phase', async () => {
+      (StatusBar as unknown as jest.Mock).mockClear();
+      await renderLayout(true, false);
+
+      expect(StatusBar as unknown as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ style: expect.any(String) }),
+        undefined,
+      );
+    });
+
+    /** The StatusBar in the pre-DB phase uses a light style in dark mode. */
+    it('renders StatusBar with light style in pre-DB dark mode', async () => {
+      (useThemePreference as jest.Mock).mockReturnValue({
+        themeMode: 'dark',
+        setThemeMode: jest.fn(),
+      });
+      (StatusBar as unknown as jest.Mock).mockClear();
+
+      await renderLayout(true, false);
+
+      expect(StatusBar as unknown as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ style: 'light' }),
+        undefined,
+      );
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -466,6 +488,55 @@ describe('RootLayout', () => {
         '20260523_one_create_initial_tables',
         'test.db',
       );
+    });
+
+    /** Tests that lifecycle backup is not triggered for non-background states. */
+    it('does not call performLifecycleBackup for non-background states', async () => {
+      const listeners: Array<(state: string) => void> = [];
+      (AppState.addEventListener as jest.Mock).mockImplementation(
+        (_event: string, handler: (state: string) => void) => {
+          listeners.push(handler);
+          return { remove: jest.fn() };
+        },
+      );
+
+      await renderLayout(true, true, null, 'content://mock-dir');
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      (performLifecycleBackup as jest.Mock).mockClear();
+
+      await act(async () => {
+        listeners.forEach(handler => handler('active'));
+        await Promise.resolve();
+      });
+
+      expect(performLifecycleBackup).not.toHaveBeenCalled();
+    });
+
+    /** The backup saved snackbar can be dismissed. */
+    it('dismisses the backup saved snackbar', async () => {
+      (performLifecycleBackup as jest.Mock).mockResolvedValue('saved');
+      const { getByText, queryByText, UNSAFE_getByType } = await renderLayout(
+        true,
+        true,
+        null,
+        'content://mock-dir',
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(getByText('Backup saved')).toBeTruthy();
+
+      fireEvent(UNSAFE_getByType(Snackbar), 'onDismiss');
+
+      await waitFor(() => {
+        expect(queryByText('Backup saved')).toBeNull();
+      });
     });
   });
 
