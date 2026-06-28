@@ -13,12 +13,8 @@ appId: com.feltech.feltlog
 - tapOn:
     id: 'entry-content-input'
 - inputText: ${content || "Default entry content"}
-# Dismiss keyboard / blur input before system back to prevent IME from
-# consuming the BACK event on real devices.
-- tapOn:
-    id: 'appbar-header'
-# System back button saves and closes
-- pressKey: BACK
-- waitForAnimationToEnd
+# Blur the focused input before system back so the IME does not consume the
+# BACK event. The editor's beforeRemove interceptor flushes the new entry.
+- runFlow: blur_and_back.yaml
 - assertVisible:
     id: 'create-entry-fab'
