@@ -2,8 +2,18 @@ appId: com.feltech.feltlog
 name: Autosave and undo/redo features
 
 
-# This flow tests the autosave and undo/redo features in the journal entry modal.
-# Prerequisites: App already set up with a test database. Run create_and_view_entry.yaml first.
+# This flow tests the undo/redo features in the journal entry editor and
+# verifies that pending edits are persisted via the back-navigation flush.
+#
+# Save model (current behaviour):
+#   - There is NO in-session debounced autosave. Pending edits are persisted
+#     only when the user leaves the editor via back navigation (beforeRemove
+#     flush) or when the app moves to background/inactive (AppState listener).
+#   - The autoSaving/lastSaved/saved indicators only appear during those
+#     explicit flush moments, not while the user is typing. We therefore do
+#     NOT assert on a saved-indicator appearing mid-edit.
+#
+# Prerequisites: App already set up with a test database.
 ---
 - runFlow:
     file: subflows/setup_database.yaml
@@ -20,27 +30,22 @@ name: Autosave and undo/redo features
     env:
       content: ${output.testEntry}
 
-# ===== TEST EDIT MODE - AUTOSAVE =====
+# ===== TEST EDIT MODE - BACK FLUSH PERSISTS EDIT =====
 
 # Edit the entry we just created
 - tapOn: 'Journal entry card'
 - assertVisible:
     id: 'entry-content-input'
 
-# Wait for initial autosave to complete (triggered by content loading in edit mode)
-- extendedWaitUntil:
-    visible:
-      id: 'saved-indicator'
-    timeout: 10000
-
-# Type some additional content to trigger autosave (verify via console logs
-# that the autosave mechanism fires; skip fragile visual "Saved" check)
+# Type some additional content. Under the new save model this does NOT
+# trigger a mid-session autosave; the edit is only persisted on back
+# navigation. We verify persistence by re-opening the entry after the
+# back flush below.
 - tapOn:
     id: 'entry-content-input'
 - inputText: ' additional text'
-
-# Brief wait for autosave debounce to fire
 - waitForAnimationToEnd
+- takeScreenshot: edit-mode-after-typing
 
 # ===== TEST UNDO/REDO WITH KEYSTROKE COALESCING =====
 

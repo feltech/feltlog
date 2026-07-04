@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Chip, PaperProvider } from 'react-native-paper';
 import * as ExpoLocation from 'expo-location';
@@ -9,7 +10,6 @@ const POSITION_TIMEOUT_MS = 15000;
 const BALANCED_TIMEOUT_MS = 5000;
 const CONTENT_UNDO_COALESCE_MS = 500;
 const MAP_INTERACTION_LOCK_MS = 300;
-const AUTOSAVE_DELAY_MS = 500;
 
 type TestInstance = { props: Record<string, unknown> };
 
@@ -600,7 +600,7 @@ describe('JournalEntryEditorScreen', () => {
       expect(result.getByText('tag2')).toBeTruthy();
     });
 
-    it('autosaves edited content after debounce', async () => {
+    it('does not autosave edited content during typing (debounce removed)', async () => {
       jest.useFakeTimers();
       const entry: JournalEntry = {
         id: 'entry-1',
@@ -619,18 +619,13 @@ describe('JournalEntryEditorScreen', () => {
       await act(async () => {
         fireEvent.changeText(input, 'updated content');
       });
+      // Advance well past the former AUTOSAVE_DELAY_MS window. No save should
+      // fire because the debounced autosave effect has been removed.
       await act(async () => {
-        jest.advanceTimersByTime(AUTOSAVE_DELAY_MS + 50);
+        jest.advanceTimersByTime(2000);
       });
-      await waitFor(() => {
-        expect(actions.updateEntry).toHaveBeenCalledWith(
-          'entry-1',
-          expect.objectContaining({ content: 'updated content' }),
-        );
-      });
-      await waitFor(() => {
-        expect(result.queryByTestId('saved-indicator')).toBeTruthy();
-      });
+      await flushEffects();
+      expect(actions.updateEntry).not.toHaveBeenCalled();
     });
 
     it('shows delete button and confirms deletion', async () => {
@@ -943,6 +938,296 @@ describe('JournalEntryEditorScreen', () => {
         [],
         expect.objectContaining({ latitude: 0, longitude: 0 }),
       );
+    });
+
+    /**
+     * Captures the AppState 'change' listener registered by the editor screen so the
+     * test can simulate app backgrounding.
+     *
+     * @returns The captured listener function.
+     */
+    function captureAppStateListener(): (state: AppStateStatus) => void {
+      const listeners: Array<(state: AppStateStatus) => void> = [];
+      (AppState.addEventListener as jest.Mock).mockImplementation(
+        (_event: string, handler: (state: AppStateStatus) => void) => {
+          listeners.push(handler);
+          return { remove: jest.fn() };
+        },
+      );
+      // The mock is consumed at render time; return a getter that reads the
+      // most recently registered listener.
+      return (state: AppStateStatus) => listeners[listeners.length - 1](state);
+    }
+
+    it('flushes pending edits when the app is backgrounded', async () => {
+      const triggerBackground = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      const result = await renderScreen('entry-1');
+      const input = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(input, 'backgrounded content');
+      });
+      await act(async () => {
+        triggerBackground('background');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledWith(
+        'entry-1',
+        expect.objectContaining({ content: 'backgrounded content' }),
+      );
+    });
+
+    it('flushes pending edits when the app becomes inactive', async () => {
+      const triggerInactive = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      const result = await renderScreen('entry-1');
+      const input = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(input, 'inactive content');
+      });
+      await act(async () => {
+        triggerInactive('inactive');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledWith(
+        'entry-1',
+        expect.objectContaining({ content: 'inactive content' }),
+      );
+    });
+
+    it('does not flush when the app returns to the active state', async () => {
+      const triggerActive = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      const result = await renderScreen('entry-1');
+      const input = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(input, 'active content');
+      });
+      await act(async () => {
+        triggerActive('active');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).not.toHaveBeenCalled();
+    });
+
+    it('does not attach an AppState listener in create mode', async () => {
+      (AppState.addEventListener as jest.Mock).mockClear();
+      await renderScreen();
+      // The editor only flushes on AppState changes in edit mode; create mode
+      // persists solely on back navigation.
+      expect(AppState.addEventListener).not.toHaveBeenCalled();
+    });
+
+    it('persists tag-only edits on AppState background flush', async () => {
+      const triggerBackground = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      const result = await renderScreen('entry-1');
+      const tagInput = result.getByTestId('tag-input');
+      await act(async () => {
+        fireEvent.changeText(tagInput, 'mood');
+      });
+      const addIcon = result.getByTestId('add-tag-icon');
+      await act(async () => {
+        fireEvent.press(addIcon);
+      });
+      await act(async () => {
+        triggerBackground('background');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledWith(
+        'entry-1',
+        expect.objectContaining({ tags: ['mood'] }),
+      );
+    });
+
+    /**
+     * Verifies that a second AppState background event arriving while a save is already
+     * in-flight does not start a concurrent write and does not lose the latest edits.
+     * The second flush must await the in-flight save and then re-save the latest dirty
+     * state.
+     */
+    it('awaits an in-flight save on a second background event and re-saves latest edits', async () => {
+      const triggerBackground = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      // Block the first updateEntry so a save stays in-flight when the second
+      // background event fires.
+      let resolveFirstSave: (value: unknown) => void;
+      const firstSavePromise = new Promise(resolve => {
+        resolveFirstSave = resolve;
+      });
+      actions.updateEntry.mockImplementationOnce(() => firstSavePromise);
+
+      const result = await renderScreen('entry-1');
+      const input = result.getByTestId('entry-content-input');
+      // First edit triggers a dirty state.
+      await act(async () => {
+        fireEvent.changeText(input, 'first edit');
+      });
+      // First background event starts a save (in-flight, unresolved).
+      await act(async () => {
+        triggerBackground('background');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // Second edit while the first save is still in-flight.
+      await act(async () => {
+        fireEvent.changeText(input, 'first edit plus more');
+      });
+      // Second background event must await the in-flight save, then re-save.
+      await act(async () => {
+        triggerBackground('background');
+      });
+      await flushEffects();
+      // Still only one call — the second save is queued behind the first.
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // Resolve the first save; the queued second save should now fire.
+      await act(async () => {
+        resolveFirstSave({
+          id: 'entry-1',
+          content: 'first edit',
+          datetime: new Date(),
+          created_at: new Date(),
+          modified_at: new Date(),
+          tags: [],
+        });
+      });
+      await flushEffects();
+      // The second save fired with the latest content — no data loss, no
+      // concurrent write.
+      expect(actions.updateEntry).toHaveBeenCalledTimes(2);
+      expect(actions.updateEntry).toHaveBeenLastCalledWith(
+        'entry-1',
+        expect.objectContaining({ content: 'first edit plus more' }),
+      );
+    });
+
+    /**
+     * Verifies that a beforeRemove back-navigation flush arriving while an
+     * AppState-triggered save is in-flight awaits the in-flight save and then skips a
+     * redundant save when the in-flight save already cleared dirty state, without
+     * concurrent writes or data loss.
+     */
+    it('awaits an in-flight AppState save when beforeRemove fires and skips redundant save when no longer dirty', async () => {
+      const triggerBackground = captureAppStateListener();
+      const entry: JournalEntry = {
+        id: 'entry-1',
+        content: 'initial',
+        datetime: new Date(),
+        created_at: new Date(),
+        modified_at: new Date(),
+        tags: [],
+      };
+      (useJournalViewModel as jest.Mock).mockReturnValue({
+        state: { ...DEFAULT_STATE, entries: [entry] },
+        actions,
+      });
+      // Block the AppState-triggered save so it stays in-flight when
+      // beforeRemove fires.
+      let resolveAppStateSave: (value: unknown) => void;
+      const appStateSavePromise = new Promise(resolve => {
+        resolveAppStateSave = resolve;
+      });
+      actions.updateEntry.mockImplementationOnce(() => appStateSavePromise);
+
+      const result = await renderScreen('entry-1');
+      const input = result.getByTestId('entry-content-input');
+      await act(async () => {
+        fireEvent.changeText(input, 'appstate edit');
+      });
+      // AppState background starts a save (in-flight, unresolved).
+      await act(async () => {
+        triggerBackground('background');
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // Now the user presses back — beforeRemove must await the in-flight save.
+      expect(beforeRemoveHandler).toBeTruthy();
+      await act(async () => {
+        beforeRemoveHandler!({
+          preventDefault: jest.fn(),
+          data: { action: { type: 'GO_BACK' } },
+        });
+      });
+      await flushEffects();
+      // The in-flight save has not resolved yet, so no second write has
+      // started — no concurrent write.
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+
+      // Resolve the AppState save. dirtyRef was cleared by the first save, and
+      // no further mutation happened, so the beforeRemove flush should NOT
+      // trigger a second save.
+      await act(async () => {
+        resolveAppStateSave({
+          id: 'entry-1',
+          content: 'appstate edit',
+          datetime: new Date(),
+          created_at: new Date(),
+          modified_at: new Date(),
+          tags: [],
+        });
+      });
+      await flushEffects();
+      expect(actions.updateEntry).toHaveBeenCalledTimes(1);
+      // The back navigation was dispatched after the flush completed.
+      expect(mockDispatch).toHaveBeenCalledWith({ type: 'GO_BACK' });
     });
   });
 

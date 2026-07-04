@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
+import {
+  AppState,
+  type AppStateStatus,
+  ScrollView,
+  StyleSheet,
+  View,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import {
   Appbar,
   Button,
@@ -25,7 +32,6 @@ import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
-const AUTOSAVE_DELAY_MS = 500;
 const MAX_HISTORY_LENGTH = 50;
 const GEOCODE_DEBOUNCE_MS = 600;
 const GEOCODE_TIMEOUT_MS = 3000;
@@ -140,26 +146,23 @@ export default function JournalEntryEditorScreen() {
     isFetchingLocation: false,
   });
 
-  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const pendingSaveRef = useRef(false);
-  // Tracks whether any saveable field (content, tags, datetime) has changed
-  // since the last successful save. Unlike pendingSaveRef (which is only set
-  // by the autosave debounce for content changes), dirtyRef covers tag-only
-  // and datetime-only mutations so that flushSaveRef persist them on back
-  // navigation even when no autosave was scheduled.
+  // Tracks whether any saveable field (content, tags, datetime, location) has
+  // changed since the last successful save. Flush paths (back navigation and
+  // AppState background/inactive) consult this ref to decide whether a save is
+  // needed, so tag-only, datetime-only, and location-only mutations are
+  // persisted even though they never schedule a debounced autosave.
   const dirtyRef = useRef(false);
   // Tracks whether a save API call is currently in-flight to prevent stacking.
   const savingRef = useRef(false);
   // Holds the in-flight save promise so flushSave can await it instead of
   // starting a concurrent write.
   const saveInFlightRef = useRef<Promise<void> | null>(null);
-  // Ref to a stable autosave function that always has access to latest state.
-  // Avoids re-running the debounce effect when non-content deps (like actions)
-  // change.
-  const autosaveFnRef = useRef<() => Promise<void>>(undefined);
+  // Ref to a stable save function that always has access to latest state.
+  // Avoids stale closures when called from the AppState listener.
+  const saveFnRef = useRef<() => Promise<void>>(undefined);
   // Prevents the sync effect from overwriting the user's current editing
-  // content with a trimmed DB value after autosave completes. Content is
-  // initialized from the existing entry once on mount only.
+  // content with a trimmed DB value after a save completes (via any flush path).
+  // Content is initialized from the existing entry once on mount only.
   //
   // NOTE: If entryId were ever to change while the modal stays mounted
   // (e.g., deep-link navigation swapping entries in-place), this ref would
@@ -168,9 +171,9 @@ export default function JournalEntryEditorScreen() {
   const contentInitializedRef = useRef(false);
 
   // Ref to the shared edit-save function. Reassigned every render to close over
-  // the latest state. Both autosaveFnRef and flushSaveRef call this to avoid
-  // duplicating the save payload and the bookkeeping around
-  // savingRef / saveInFlightRef / pendingSaveRef.
+  // the latest state. Both the AppState flush path and flushSaveRef call this to
+  // avoid duplicating the save payload and the bookkeeping around
+  // savingRef / saveInFlightRef.
   const doEditSaveRef = useRef<() => Promise<void>>(undefined);
 
   // Location refs
@@ -536,12 +539,11 @@ export default function JournalEntryEditorScreen() {
   }, [isEditing, resolvedEntryId, setState]);
 
   // Shared edit-save logic extracted into a ref to avoid duplicating the
-  // payload and bookkeeping between autosaveFnRef and flushSaveRef.
+  // payload and bookkeeping between saveFnRef and flushSaveRef.
   // Reassigned every render to close over the latest state and actions.
   doEditSaveRef.current = async () => {
     if (!resolvedEntryId) return;
     savingRef.current = true;
-    pendingSaveRef.current = false;
     dirtyRef.current = false;
     setState(draft => {
       draft.autoSaving = true;
@@ -571,56 +573,68 @@ export default function JournalEntryEditorScreen() {
         draft.lastSaved = new Date();
       });
     } catch {
-      // silently fail autosave
+      // silently fail save
     } finally {
       saveInFlightRef.current = null;
       setState(draft => {
         draft.autoSaving = false;
       });
       savingRef.current = false;
-      // If content changed while saving, debounce another save so
-      // the "Saved" indicator is briefly visible between saves.
-      if (pendingSaveRef.current) {
-        pendingSaveRef.current = false;
-        clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = setTimeout(() => {
-          autosaveFnRef.current?.();
-        }, AUTOSAVE_DELAY_MS);
-      }
     }
   };
 
-  // Stable autosave fn — reassigned every render to close over latest state.
-  // Only called from the debounce timeout, never during render.
-  autosaveFnRef.current = async () => {
+  // Stable save fn — reassigned every render to close over latest state.
+  // Called from the AppState background/inactive listener. Not invoked during
+  // normal typing (the previous debounced autosave was removed to fix a
+  // scroll-jump bug where the autoSaving/lastSaved state mutation re-rendered
+  // the ScrollView and reset the visible region).
+  //
+  // If a save is already in-flight, this awaits it and then re-checks
+  // dirtyRef so that a second background event (or a background event arriving
+  // while the beforeRemove flush is mid-save) does not lose edits. This mirrors
+  // the flushSaveRef path and avoids the dead pendingSaveRef flag that
+  // previously dropped edits on rapid background/foreground/background cycles.
+  saveFnRef.current = async () => {
     if (!isEditing || !resolvedEntryId || !state.content.trim()) return;
     if (savingRef.current) {
-      pendingSaveRef.current = true;
-      return;
+      // A save is in-flight — await it instead of starting a concurrent write.
+      if (saveInFlightRef.current) {
+        await saveInFlightRef.current;
+      }
+      // After awaiting, re-check whether a save is still needed. The
+      // in-flight save may have already persisted everything (dirtyRef false),
+      // or a subsequent mutation may have set dirtyRef true again — in which
+      // case we must save the latest state to avoid losing edits.
+      if (!dirtyRef.current || !state.content.trim()) return;
     }
     await doEditSaveRef.current?.();
   };
 
-  // Autosave: debounced save after content changes (edit mode only).
+  // Flush pending edits when the app is backgrounded or becomes inactive.
+  // This complements the beforeRemove back-navigation flush so that unsaved
+  // changes are not lost when the user switches apps or the OS suspends the
+  // process. The listener is only attached in edit mode (create-mode entries
+  // are persisted solely on back navigation, matching the previous behaviour).
   useEffect(() => {
-    if (!isEditing || !state.content.trim()) return;
-    pendingSaveRef.current = true;
-    dirtyRef.current = true;
-    clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = setTimeout(() => {
-      autosaveFnRef.current?.();
-    }, AUTOSAVE_DELAY_MS);
-    return () => clearTimeout(autosaveTimerRef.current);
-    // NOTE: intentionally omit actions/date/tags from deps – the ref closure
-    // always reads latest values, and only content changes should trigger a
-    // save.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, state.content]);
+    if (!isEditing) return;
+    /**
+     * Flushes pending edits when the app leaves the active state.
+     *
+     * @param nextState - The next AppState status.
+     */
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState !== 'background' && nextState !== 'inactive') return;
+      void saveFnRef.current?.();
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [isEditing]);
 
   // Cleanup timers on unmount.
   useEffect(() => {
     return () => {
-      clearTimeout(autosaveTimerRef.current);
       clearTimeout(geoDebounceRef.current);
       clearTimeout(contentUndoTimerRef.current);
       clearTimeout(mapInteractionTimerRef.current);
@@ -944,14 +958,15 @@ export default function JournalEntryEditorScreen() {
   const flushSaveRef = useRef<() => Promise<void>>(undefined);
 
   flushSaveRef.current = async () => {
-    // Flush any pending autosave for edit mode.
-    // Use dirtyRef instead of pendingSaveRef to also cover tag-only and
-    // datetime-only mutations that never trigger the content-based autosave.
-    clearTimeout(autosaveTimerRef.current);
+    // Flush any pending edits for edit mode.
+    // Use dirtyRef to cover content, tag-only, datetime-only, and
+    // location-only mutations — all of which set dirtyRef but none of which
+    // schedule a debounced autosave anymore (the debounce was removed to fix
+    // a scroll-jump bug).
     if (isEditing && resolvedEntryId && dirtyRef.current && state.content.trim()) {
-      // If an autosave is already in-flight, wait for it to finish. This
+      // If a save is already in-flight, wait for it to finish. This
       // avoids a concurrent write to the same entry when the user presses
-      // back while an autosave is pending.
+      // back while a save is pending.
       if (saveInFlightRef.current) {
         await saveInFlightRef.current;
       }
@@ -1111,6 +1126,11 @@ export default function JournalEntryEditorScreen() {
       contentUndoTimerRef.current = setTimeout(() => {
         isContentUndoCoalescingRef.current = false;
       }, CONTENT_UNDO_COALESCE_MS);
+
+      // Mark the entry dirty so the back-navigation / AppState flush paths
+      // persist the content change. The previous debounced autosave effect
+      // set this flag; it is now set here directly.
+      dirtyRef.current = true;
 
       setState(draft => {
         draft.content = newContent;
