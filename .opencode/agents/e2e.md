@@ -837,6 +837,125 @@ re-run result instead of a full diagnostic report.
     - Verify with `adb reverse --list`. See Step 1 in Execution Sequence for the setup-time
       invocation; this pitfall covers re-establishing it after mid-run instability.
 
+15. Host suspend/resume breaks the ADB bridge and Maestro MCP connection:
+    - When the host machine sleeps, the Android emulator's QEMU process is paused and the ADB TCP
+      socket to the emulator is closed. On resume, `adb` often reports the device as `offline` or
+      drops it from `adb devices` entirely, and the on-device Maestro instrumentation server
+      (`dev.mobile.maestro`) may fail to re-register with the ADB bridge.
+    - This is an environment failure, not an app or test bug. See the "Host suspend/resume and ADB
+      timeout recovery" section below for the full recovery procedure, prevention guidance, and how
+      to distinguish this from pitfall 12 (RN Scheduler SIGSEGV) and pitfall 7 (SAF picker
+      contamination).
+
+## Host suspend/resume and ADB timeout recovery
+
+The Android emulator runs as a QEMU process on the host. When the host suspends (laptop lid closed,
+idle sleep, manual `systemctl suspend`), QEMU is paused and the ADB TCP socket to the emulator is
+torn down. On resume the ADB bridge is frequently left in a broken state: the device shows as
+`offline` in `adb devices`, or is absent entirely, and the on-device Maestro instrumentation server
+(`dev.mobile.maestro`) may not re-register. This manifests as `maestro_list_devices` returning
+`"Not connected"` or hanging, `npm run e2e:adb-check` hanging, and `maestro test` failing with
+`Command failed (tcp:7001): closed` or `UNAVAILABLE`.
+
+This is an environment failure, not an app or test bug. Distinguish it from the failure modes in
+the Common pitfalls list:
+
+- **Not pitfall 12 (RN Scheduler SIGSEGV):** there is no `F/libc: Fatal signal 11 (SIGSEGV)` in
+  `mqt_v_js` in `adb logcat`. The device is simply unreachable, not crashed.
+- **Not pitfall 7 (SAF picker contamination):** no DocumentsUI activity is foregrounded. The break
+  happens at the ADB/transport layer, not the Android activity stack.
+- **Not pitfall 8 (long-uptime driver degradation):** the trigger is a suspend/resume event, not
+  cumulative uptime. A freshly started emulator can hit this if the host suspends minutes after
+  boot.
+
+### Recovery procedure
+
+Run these steps in order. Stop at the first step that restores a healthy state, where "healthy"
+means `maestro_list_devices` returns a device list (not `"Not connected"`) and `adb devices` lists
+`emulator-5554` as `device` (not `offline`).
+
+1. **Re-establish the ADB bridge without restarting the emulator.** This is the cheapest fix and
+   works when QEMU resumed cleanly but the ADB socket did not:
+
+   ```bash
+   adb kill-server && adb start-server
+   adb wait-for-device
+   adb devices
+   ```
+
+   If `adb devices` lists `emulator-5554  device`, re-verify MCP health with
+   `maestro_list_devices`. If it returns a device list, the bridge is restored — proceed with the
+   next test step. No rebuild is needed; the app process survived the suspend.
+
+2. **Restart the emulator.** If step 1 leaves the device `offline` or absent, QEMU is wedged and
+   must be restarted. The app process and Metro tunnel do not survive an emulator restart, so a
+   full rebuild is required afterward:
+
+   ```bash
+   npm run e2e:kill-metro
+   npm run e2e:start-device
+   ```
+
+   Then re-run Step 1 (Emulator setup) and Step 2 (Build and install) of the Execution Sequence in
+   full, including `adb reverse tcp:8081 tcp:8081` and a fresh `npm run android` build.
+
+3. **Restart opencode.** If the emulator is back and `adb devices` lists it as `device`, but
+   `maestro_list_devices` still returns `"Not connected"`, the `maestro mcp` process owned by
+   opencode has a stale connection that cannot recover within the current session. Report this to
+   the user and ask them to restart opencode. Do NOT run `npm run e2e:kill-maestro-mcp` from within
+   opencode — that kills the very process opencode depends on (see Rule 9).
+
+### Prevention
+
+A full suite run takes approximately 33 minutes and will reliably trigger idle suspend on default
+laptop power settings. **Preventing host suspend is the user's responsibility, not the e2e
+agent's.** The user should disable automatic suspend on the host before starting a long suite run.
+
+Options the user may choose (run these themselves; the e2e agent MUST NOT run them):
+
+- On NixOS, hold a systemd sleep inhibitor lock for the lifetime of the suite, e.g.:
+
+  ```bash
+  systemd-inhibit --what=sleep --who="Maestro e2e suite" \
+    --why="Running e2e test suite; suspend would break the ADB bridge" \
+    npm run e2e
+  ```
+
+  The lock is released automatically when the suite finishes.
+
+- Alternatively, mask the suspend targets temporarily for the whole session:
+
+  ```bash
+  sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+  # ... run the suite ...
+  sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target
+  ```
+
+- On a desktop environment with a GUI power settings panel, set "Blank screen" to "Never" and
+  "Automatic suspend" to "Off" for the duration.
+
+**Agent scope rule:** The e2e agent MUST NOT run `systemctl`, `systemd-inhibit`, `sudo`, or any
+other host power-management command. Its recovery scope is limited to ADB and the emulator —
+`adb kill-server`, `adb start-server`, `adb emu kill`, `npm run e2e:start-device`
+(`maestro start-device`), and the npm scripts that wrap them. If a suspend/resume break is
+detected, the agent runs only the ADB/emulator recovery steps above and reports the event; it does
+not attempt to alter host power settings.
+
+### Detection in mid-suite runs
+
+If a `npm run e2e` invocation fails mid-suite with `tcp:7001: closed` or `UNAVAILABLE` after a
+previously-healthy start, suspect a suspend/resume event before any in-app cause. Check
+`adb devices` first:
+
+- If the device is `offline` or absent → this section applies; run the recovery procedure.
+- If the device is `device` but `maestro_list_devices` hangs → likely pitfall 8 (long-uptime
+  degradation) or a wedged MCP process; see those sections.
+- If the device is `device` and MCP responds → the failure is in-app or in-test; proceed with the
+  normal diagnostic checklist in Step 4.
+
+Always record a suspend/resume event in the execution report (see "Learnings and execution
+reports") so the planner can distinguish environment-induced failures from real regressions.
+
 ## Expected diagnostic overhead
 
 The following are normal, expected parts of an e2e agent's diagnostic work. They do NOT require
