@@ -1,15 +1,16 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { FAB, Snackbar, useTheme } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { Appbar, FAB, Snackbar, useTheme } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { JournalList } from '@/src/presentation/components/JournalList';
+import { JournalFilterPanel } from '@/src/presentation/components/JournalFilterPanel';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
 
 /**
- * Screen displaying the list of journal entries.
+ * Screen displaying the list of journal entries with a custom header and filter panel.
  *
  * @returns The rendered journal screen.
  */
@@ -54,7 +55,41 @@ export default function JournalScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top']}
+    >
+      {/* Custom Appbar.Header rendered in the screen content so Maestro can
+          interact with the filter and create-entry actions. The native Stack
+          header wraps headerRight in an opaque ViewGroup that strips testIDs.
+          SafeAreaView with the top edge offsets the header below the Android
+          status bar so the system status bar no longer intercepts touches on
+          the header action buttons. statusBarHeight={0} avoids double padding. */}
+      <Appbar.Header statusBarHeight={0} testID="appbar-header">
+        <Appbar.Content title="Journal" />
+        <Appbar.Action
+          icon="filter-variant"
+          testID="filter-button"
+          accessibilityLabel="Toggle filter panel"
+          onPress={actions.toggleFilterPanel}
+        />
+        <Appbar.Action
+          icon="plus"
+          testID="create-entry-header-button"
+          accessibilityLabel="Create entry"
+          onPress={handleCreateEntry}
+        />
+      </Appbar.Header>
+
+      {state.filterPanelOpen && (
+        <JournalFilterPanel
+          draft={state.filterDraft}
+          onUpdateDraft={actions.updateFilterDraft}
+          onClear={actions.clearFilterDraft}
+          onApply={actions.applyFilter}
+        />
+      )}
+
       <JournalList
         entries={state.entries}
         loading={state.loading}
@@ -83,7 +118,7 @@ export default function JournalScreen() {
       >
         {state.error}
       </Snackbar>
-    </View>
+    </SafeAreaView>
   );
 }
 

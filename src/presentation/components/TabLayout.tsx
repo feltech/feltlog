@@ -1,7 +1,7 @@
 import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { ColorValue, Pressable } from 'react-native';
+import { Tabs } from 'expo-router';
+import { ColorValue } from 'react-native';
 import { useTheme } from 'react-native-paper';
 
 import { useClientOnlyValue } from './useClientOnlyValue';
@@ -45,20 +45,10 @@ export default function TabLayout() {
         options={{
           title: 'Journal',
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
-          headerRight: () => (
-            <Link href="/entry-editor" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="plus"
-                    size={25}
-                    color={theme.colors.onBackground}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          // The Journal screen renders its own custom Appbar.Header so Maestro can
+          // interact with the filter and create-entry actions (the native Stack
+          // header wraps headerRight in an opaque ViewGroup that strips testIDs).
+          headerShown: false,
         }}
       />
       <Tabs.Screen

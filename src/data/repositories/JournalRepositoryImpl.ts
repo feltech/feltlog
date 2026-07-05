@@ -7,7 +7,7 @@ if (
   import('react-native-get-random-values');
 }
 import { v4 as uuidv4 } from 'uuid';
-import { JournalRepository } from '../../domain/repositories/JournalRepository';
+import { JournalRepository, JournalFilter } from '../../domain/repositories/JournalRepository';
 import { JournalEntry, Location, Tag } from '../../domain/entities/JournalEntry';
 import { Kysely } from 'kysely';
 import type { Database } from '../database/schema';
@@ -241,6 +241,55 @@ export class JournalRepositoryImpl implements JournalRepository {
       .limit(limit)
       .offset(offset)
       .execute();
+
+    const entriesWithTags: JournalEntry[] = [];
+    for (const entry of entries) {
+      const tags = await this.getTagsForEntry(entry.id);
+      entriesWithTags.push(this.mapDbEntryToDomain(entry, tags));
+    }
+
+    return entriesWithTags;
+  }
+
+  /**
+   * Searches for journal entries matching a combination of phrase and date range.
+   *
+   * The phrase (when provided) is matched case-insensitively as a substring of the
+   * entry `content` using SQLite's `LIKE`, which is case-insensitive for ASCII by
+   * default. The start and end dates (when provided) form an inclusive range over the
+   * entry `datetime` column, which stores ISO 8601 strings that sort lexicographically
+   * in chronological order, so direct string comparisons are correct. Any filter field
+   * left undefined means no constraint on that dimension. Results are ordered by
+   * `datetime` DESC.
+   *
+   * @param filter - Optional filter criteria (phrase, start date, end date).
+   * @param offset - The number of entries to skip.
+   * @param limit - The maximum number of entries to retrieve.
+   *
+   * @returns A list of matching journal entries ordered by datetime descending.
+   */
+  async searchEntriesWithFilter(
+    filter: JournalFilter = {},
+    offset: number = 0,
+    limit: number = 10,
+  ): Promise<JournalEntry[]> {
+    const db = this.db;
+
+    let query = db.selectFrom('journal_entries').selectAll();
+
+    if (filter.phrase !== undefined && filter.phrase.length > 0) {
+      // SQLite LIKE is case-insensitive for ASCII characters by default, which
+      // satisfies the case-insensitive exact-phrase match requirement.
+      query = query.where('content', 'like', `%${filter.phrase}%`);
+    }
+    if (filter.startDate !== undefined) {
+      query = query.where('datetime', '>=', filter.startDate.toISOString());
+    }
+    if (filter.endDate !== undefined) {
+      query = query.where('datetime', '<=', filter.endDate.toISOString());
+    }
+
+    const entries = await query.orderBy('datetime', 'desc').limit(limit).offset(offset).execute();
 
     const entriesWithTags: JournalEntry[] = [];
     for (const entry of entries) {

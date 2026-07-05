@@ -5,6 +5,7 @@ import { PaperProvider } from 'react-native-paper';
 import JournalScreen from '../JournalScreen';
 import { useJournalViewModel } from '@/src/presentation/viewmodels/JournalViewModel';
 import type { JournalEntry } from '@/src/domain/entities/JournalEntry';
+import type { JournalFilterDraft } from '@/src/presentation/viewmodels/JournalViewModel';
 
 const mockPush = jest.fn();
 
@@ -27,6 +28,56 @@ const { useRouter } = require('expo-router') as { useRouter: jest.Mock };
 jest.mock('@/src/presentation/viewmodels/JournalViewModel', () => ({
   useJournalViewModel: jest.fn(),
 }));
+
+/**
+ * Mock react-native-paper-dates to avoid the transitive `color` ESM dependency that
+ * Jest cannot transform. Mirrors the mock used by the entry editor tests.
+ */
+jest.mock('react-native-paper-dates', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { View, Pressable, Text } = require('react-native');
+
+  return {
+    en: {},
+    registerTranslation: jest.fn(),
+    DatePickerModal: ({
+      visible,
+      onDismiss,
+      onConfirm,
+      testID,
+    }: {
+      visible: boolean;
+      onDismiss: () => void;
+      onConfirm: (params: { date?: Date }) => void;
+      testID?: string;
+    }) => {
+      if (!visible) return null;
+      return React.createElement(
+        View,
+        { testID },
+        React.createElement(
+          Pressable,
+          {
+            testID: 'date-picker-save',
+            onPress: () => onConfirm({ date: new Date(2026, 5, 17) }),
+          },
+          React.createElement(Text, null, 'Save'),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            testID: 'date-picker-dismiss',
+            onPress: onDismiss,
+          },
+          React.createElement(Text, null, 'Cancel'),
+        ),
+      );
+    },
+    TimePickerModal: () => null,
+  };
+});
 
 jest.mock('react-native-paper', () => {
   const actual = jest.requireActual('react-native-paper');
@@ -64,6 +115,9 @@ const DEFAULT_STATE = {
   searchQuery: '',
   selectedTags: [] as string[],
   hasMore: false,
+  filterPanelOpen: false,
+  filterDraft: { phrase: '' } as JournalFilterDraft,
+  appliedFilter: null as ReturnType<typeof useJournalViewModel>['state']['appliedFilter'],
 };
 
 /** Default actions for the mock view model. */
@@ -79,6 +133,10 @@ const DEFAULT_ACTIONS = {
   setError: jest.fn(),
   getEntryById: jest.fn(),
   loadDefaultTags: jest.fn(),
+  toggleFilterPanel: jest.fn(),
+  updateFilterDraft: jest.fn(),
+  clearFilterDraft: jest.fn(),
+  applyFilter: jest.fn(),
 };
 
 /**
@@ -221,5 +279,133 @@ describe('JournalScreen', () => {
     // Find the RefreshControl and assert it reports refreshing=true.
     const refreshControl = UNSAFE_root.findByProps({ refreshing: true });
     expect(refreshControl).toBeTruthy();
+  });
+
+  // -------------------------------------------------------------------------
+  // Filter header and panel
+  // -------------------------------------------------------------------------
+
+  /** Tests that the custom Appbar header renders the filter and create buttons. */
+  it('renders the filter and create-entry header buttons', () => {
+    setupMocks();
+    const { getByTestId } = renderScreen();
+
+    expect(getByTestId('filter-button')).toBeTruthy();
+    expect(getByTestId('create-entry-header-button')).toBeTruthy();
+  });
+
+  /** Tests that pressing the filter button calls toggleFilterPanel. */
+  it('calls toggleFilterPanel when the filter button is pressed', () => {
+    const toggleFilterPanel = jest.fn();
+    setupMocks({ actions: { toggleFilterPanel } });
+
+    const { getByTestId } = renderScreen();
+    fireEvent.press(getByTestId('filter-button'));
+
+    expect(toggleFilterPanel).toHaveBeenCalled();
+  });
+
+  /** Tests that pressing the header create-entry button navigates to the editor. */
+  it('navigates to the entry editor when the header create button is pressed', () => {
+    setupMocks();
+    const { getByTestId } = renderScreen();
+    fireEvent.press(getByTestId('create-entry-header-button'));
+
+    expect(mockPush).toHaveBeenCalledWith('/entry-editor');
+  });
+
+  /** Tests that the filter panel is not rendered when filterPanelOpen is false. */
+  it('does not render the filter panel when filterPanelOpen is false', () => {
+    setupMocks({ state: { filterPanelOpen: false } });
+    const { queryByTestId } = renderScreen();
+
+    expect(queryByTestId('filter-panel')).toBeNull();
+  });
+
+  /** Tests that the filter panel renders when filterPanelOpen is true. */
+  it('renders the filter panel when filterPanelOpen is true', () => {
+    setupMocks({ state: { filterPanelOpen: true } });
+    const { getByTestId } = renderScreen();
+
+    expect(getByTestId('filter-panel')).toBeTruthy();
+    expect(getByTestId('filter-start-date-button')).toBeTruthy();
+    expect(getByTestId('filter-end-date-button')).toBeTruthy();
+    expect(getByTestId('filter-phrase-input')).toBeTruthy();
+    expect(getByTestId('filter-clear-button')).toBeTruthy();
+    expect(getByTestId('filter-ok-button')).toBeTruthy();
+  });
+
+  /** Tests that pressing the OK button calls applyFilter. */
+  it('calls applyFilter when the OK button is pressed', () => {
+    const applyFilter = jest.fn();
+    setupMocks({ state: { filterPanelOpen: true }, actions: { applyFilter } });
+
+    const { getByTestId } = renderScreen();
+    fireEvent.press(getByTestId('filter-ok-button'));
+
+    expect(applyFilter).toHaveBeenCalled();
+  });
+
+  /** Tests that pressing the clear button calls clearFilterDraft. */
+  it('calls clearFilterDraft when the clear button is pressed', () => {
+    const clearFilterDraft = jest.fn();
+    setupMocks({ state: { filterPanelOpen: true }, actions: { clearFilterDraft } });
+
+    const { getByTestId } = renderScreen();
+    fireEvent.press(getByTestId('filter-clear-button'));
+
+    expect(clearFilterDraft).toHaveBeenCalled();
+  });
+
+  /**
+   * Tests that typing into the phrase input calls updateFilterDraft with the new
+   * phrase.
+   */
+  it('calls updateFilterDraft when the phrase input changes', () => {
+    const updateFilterDraft = jest.fn();
+    setupMocks({
+      state: { filterPanelOpen: true },
+      actions: { updateFilterDraft },
+    });
+
+    const { getByTestId } = renderScreen();
+    fireEvent.changeText(getByTestId('filter-phrase-input'), 'hello');
+
+    expect(updateFilterDraft).toHaveBeenCalledWith({ phrase: 'hello' });
+  });
+
+  /** Tests that the start-date button shows the formatted start date when set. */
+  it('displays the start date in the start-date button when set', () => {
+    const startDate = new Date('2024-03-15T00:00:00.000Z');
+    setupMocks({
+      state: {
+        filterPanelOpen: true,
+        filterDraft: { phrase: '', startDate },
+      },
+    });
+
+    const { getByText } = renderScreen();
+    // The button label should contain the locale-formatted date string.
+    expect(getByText(startDate.toLocaleDateString())).toBeTruthy();
+  });
+
+  /**
+   * Tests that the end-date clear button calls updateFilterDraft with endDate
+   * undefined.
+   */
+  it('clears the end date via the end-date clear button', () => {
+    const updateFilterDraft = jest.fn();
+    setupMocks({
+      state: {
+        filterPanelOpen: true,
+        filterDraft: { phrase: '', endDate: new Date('2024-03-20T00:00:00.000Z') },
+      },
+      actions: { updateFilterDraft },
+    });
+
+    const { getByTestId } = renderScreen();
+    fireEvent.press(getByTestId('filter-end-date-clear'));
+
+    expect(updateFilterDraft).toHaveBeenCalledWith({ endDate: undefined });
   });
 });

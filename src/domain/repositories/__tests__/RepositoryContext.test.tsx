@@ -22,6 +22,7 @@ describe('RepositoryContext', () => {
       getEntry: jest.fn(),
       getAllEntries: jest.fn(),
       searchEntries: jest.fn(),
+      searchEntriesWithFilter: jest.fn(),
       getEntriesByTags: jest.fn(),
       getAllTags: jest.fn(),
       createTag: jest.fn(),

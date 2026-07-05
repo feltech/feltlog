@@ -1,6 +1,22 @@
 import type { JournalEntry, Tag } from '../entities/JournalEntry';
 
 /**
+ * Filter criteria for querying journal entries.
+ *
+ * All fields are optional. An unset field means no constraint on that dimension. Used
+ * by {@link JournalRepository.searchEntriesWithFilter} to combine a phrase search with
+ * an inclusive date range in a single query.
+ */
+export interface JournalFilter {
+  /** Case-insensitive exact-phrase substring to match against entry content. */
+  phrase?: string;
+  /** Inclusive lower bound on entry datetime (start of day, 00:00:00.000). */
+  startDate?: Date;
+  /** Inclusive upper bound on entry datetime (end of day, 23:59:59.999). */
+  endDate?: Date;
+}
+
+/**
  * Interface for journal repository.
  *
  * Provides methods for managing journal entries and tags.
@@ -69,6 +85,27 @@ export interface JournalRepository {
    * @returns A list of matching journal entries.
    */
   searchEntries(query: string, offset?: number, limit?: number): Promise<JournalEntry[]>;
+
+  /**
+   * Search for journal entries matching a combination of phrase and date range.
+   *
+   * The phrase (when provided) is matched case-insensitively as a substring of the
+   * entry `content`. The start and end dates (when provided) form an inclusive range
+   * over the entry `datetime` column, which stores ISO 8601 strings that sort
+   * lexicographically in chronological order. Any filter field left undefined means no
+   * constraint on that dimension. Results are ordered by `datetime` DESC.
+   *
+   * @param filter - Optional filter criteria (phrase, start date, end date).
+   * @param offset - The number of entries to skip.
+   * @param limit - The maximum number of entries to return.
+   *
+   * @returns A list of matching journal entries ordered by datetime descending.
+   */
+  searchEntriesWithFilter(
+    filter?: JournalFilter,
+    offset?: number,
+    limit?: number,
+  ): Promise<JournalEntry[]>;
 
   /**
    * Retrieve journal entries that have all specified tags.

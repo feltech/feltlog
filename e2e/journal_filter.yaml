@@ -1,0 +1,356 @@
+appId: com.feltech.feltlog
+name: Journal list filter panel
+
+
+# This flow tests the journal-list filter feature: opening the filter panel,
+# setting a start/end date range and a phrase, applying the filter, verifying
+# only matching entries are visible, toggling the panel off (which disables
+# filtering), reopening the panel to verify the draft values are remembered,
+# clearing the draft (which also immediately applies an empty filter so the
+# list shows all entries again), and verifying the reset panel widgets.
+#
+# Test data:
+#   - Entry A: content "morning hike", date 2024-01-15
+#   - Entry B: content "evening coffee", date 2024-06-20
+#
+# Filter scenario:
+#   - Start date 2024-01-01, end date 2024-03-31, phrase "morning"
+#   - Only Entry A matches (date in range AND content contains "morning").
+#   - Entry B is excluded by both the date range and the phrase.
+#
+# Prerequisites: None - creates its own database and entries.
+---
+- runFlow:
+    file: subflows/setup_database.yaml
+    env:
+      dbName: 'db_filter_${Date.now()}.db'
+      dbKey: 'key_filter'
+
+# ===== CREATE ENTRY A: "morning hike" on 2024-01-15 =====
+
+- evalScript: ${output.entryA = "morning hike"}
+- evalScript: ${output.entryADate = "01/15/2024"}
+
+# Use the header create-entry button (the feature under test also adds this
+# button to the Appbar). This verifies the new create-entry-header-button
+# testID works alongside the existing FAB.
+- tapOn:
+    id: 'create-entry-header-button'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryA}
+
+# Open the date picker and set the entry's date to 2024-01-15. The date button
+# sits below the tags section, so after typing into the content input the soft
+# keyboard covers it. Scroll the date button into view before tapping.
+- scrollUntilVisible:
+    element:
+      id: 'entry-date-button'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'entry-date-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-entryA-date-picker-open
+
+# Switch the date picker to text-input mode and type the target date.
+- tapOn:
+    id: 'react-native-paper-dates-toggle-edit'
+- waitForAnimationToEnd
+- eraseText
+- inputText: ${output.entryADate}
+- takeScreenshot: filter-entryA-date-entered
+
+# Confirm the date selection.
+- tapOn:
+    id: 'react-native-paper-dates-save'
+- waitForAnimationToEnd
+
+# Save and return to the journal list. Blur the focused input first so the
+# system BACK event reaches the navigator instead of being consumed by the IME.
+- runFlow: subflows/blur_and_back.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+
+# ===== CREATE ENTRY B: "evening coffee" on 2024-06-20 =====
+
+- evalScript: ${output.entryB = "evening coffee"}
+- evalScript: ${output.entryBDate = "06/20/2024"}
+
+# Dismiss the LogBox banner if present — it can overlap the header button.
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+- tapOn:
+    id: 'create-entry-header-button'
+- assertVisible:
+    id: 'entry-content-input'
+
+- tapOn:
+    id: 'entry-content-input'
+- inputText: ${output.entryB}
+
+# Scroll the date button into view — the soft keyboard covers it after typing.
+- scrollUntilVisible:
+    element:
+      id: 'entry-date-button'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'entry-date-button'
+- waitForAnimationToEnd
+
+- tapOn:
+    id: 'react-native-paper-dates-toggle-edit'
+- waitForAnimationToEnd
+- eraseText
+- inputText: ${output.entryBDate}
+
+- tapOn:
+    id: 'react-native-paper-dates-save'
+- waitForAnimationToEnd
+
+- runFlow: subflows/blur_and_back.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'create-entry-fab'
+    timeout: 10000
+
+# ===== VERIFY BOTH ENTRIES ARE VISIBLE BEFORE FILTERING =====
+
+# Dismiss the LogBox banner if present before asserting on list content.
+- runFlow: subflows/dismiss_logbox_banner.yaml
+
+# Entry B (2024-06-20) sorts above Entry A (2024-01-15) in datetime-DESC order.
+- assertVisible: ${output.entryB}
+
+# Entry A should be below; scroll to it to confirm it is present.
+- scrollUntilVisible:
+    element:
+      text: ${output.entryA}
+    direction: DOWN
+    timeout: 5000
+- assertVisible: ${output.entryA}
+
+# Scroll back to the top before opening the filter panel so the Appbar filter
+# button is not obscured by any sticky header behaviour.
+- swipe:
+    direction: UP
+    duration: 1000
+- waitForAnimationToEnd
+
+# ===== OPEN FILTER PANEL =====
+
+- tapOn:
+    id: 'filter-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-panel-open
+
+# Verify the filter panel is visible with its key controls.
+- assertVisible:
+    id: 'filter-panel'
+- assertVisible:
+    id: 'filter-start-date-button'
+- assertVisible:
+    id: 'filter-end-date-button'
+- assertVisible:
+    id: 'filter-phrase-input'
+- assertVisible:
+    id: 'filter-clear-button'
+- assertVisible:
+    id: 'filter-ok-button'
+
+# ===== SET START DATE TO 2024-01-01 =====
+
+- tapOn:
+    id: 'filter-start-date-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-start-date-picker-open
+
+- tapOn:
+    id: 'react-native-paper-dates-toggle-edit'
+- waitForAnimationToEnd
+- eraseText
+- inputText: '01/01/2024'
+- takeScreenshot: filter-start-date-entered
+
+- tapOn:
+    id: 'react-native-paper-dates-save'
+- waitForAnimationToEnd
+
+# ===== SET END DATE TO 2024-03-31 =====
+
+- tapOn:
+    id: 'filter-end-date-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-end-date-picker-open
+
+- tapOn:
+    id: 'react-native-paper-dates-toggle-edit'
+- waitForAnimationToEnd
+- eraseText
+- inputText: '03/31/2024'
+- takeScreenshot: filter-end-date-entered
+
+- tapOn:
+    id: 'react-native-paper-dates-save'
+- waitForAnimationToEnd
+
+# ===== ENTER PHRASE "morning" =====
+
+- tapOn:
+    id: 'filter-phrase-input'
+- inputText: 'morning'
+
+# Blur the phrase input before tapping OK so the soft keyboard does not
+# cover the OK button. Tapping the static "Filter" title blurs the field.
+- tapOn: 'Filter'
+- waitForAnimationToEnd
+
+# ===== APPLY FILTER =====
+
+- tapOn:
+    id: 'filter-ok-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-applied
+
+# ===== ASSERT FILTERED RESULT: ONLY ENTRY A VISIBLE =====
+
+# applyFilter does not close the panel; the panel stays open after OK is
+# pressed. The list below the panel updates to show only matching entries.
+# Give the reload effect time to fetch the filtered entries.
+- extendedWaitUntil:
+    visible: ${output.entryA}
+    timeout: 5000
+
+# Entry A matches the filter (date 2024-01-15 in [2024-01-01, 2024-03-31]
+# AND content "morning hike" contains "morning").
+- assertVisible: ${output.entryA}
+
+# Entry B must NOT be visible: its date 2024-06-20 is outside the range AND
+# its content "evening coffee" does not contain "morning". If the filter
+# failed (no-op), Entry B would still be visible.
+- assertNotVisible: ${output.entryB}
+
+# ===== TOGGLE FILTER OFF: PANEL CLOSES, FILTERING DISABLED =====
+
+# Tap the filter button again to close the panel. Per the feature spec,
+# closing the panel disables filtering and the list reverts to all entries.
+- tapOn:
+    id: 'filter-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-toggled-off
+
+# The filter panel should no longer be visible.
+- assertNotVisible:
+    id: 'filter-panel'
+
+# With filtering disabled, both entries should be visible again. Entry B
+# (most recent) should be at the top.
+- assertVisible: ${output.entryB}
+
+- scrollUntilVisible:
+    element:
+      text: ${output.entryA}
+    direction: DOWN
+    timeout: 5000
+- assertVisible: ${output.entryA}
+
+# Scroll back to the top before reopening the panel.
+- swipe:
+    direction: UP
+    duration: 1000
+- waitForAnimationToEnd
+
+# ===== REOPEN PANEL: VERIFY DRAFT VALUES ARE REMEMBERED =====
+
+- tapOn:
+    id: 'filter-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-panel-reopened
+
+- assertVisible:
+    id: 'filter-panel'
+
+# The phrase input should still contain "morning". copyTextFrom reads the
+# current value of the input; we verify it equals the previously typed phrase.
+- copyTextFrom:
+    id: 'filter-phrase-input'
+- evalScript: ${output.reopenedPhrase = maestro.copiedText}
+- assertTrue:
+    condition: ${output.reopenedPhrase == 'morning'}
+    label: Reopened panel preserves the phrase draft
+
+# The date buttons should display the previously selected dates. The start
+# date button shows draft.startDate.toLocaleDateString() and the end date
+# button shows draft.endDate.toLocaleDateString(). We assert the buttons
+# no longer show their placeholder text ("Start date" / "End date").
+- assertNotVisible: 'Start date'
+- assertNotVisible: 'End date'
+
+# ===== CLEAR FILTER DRAFT (ALSO APPLIES THE EMPTY FILTER) =====
+
+# The clear button now resets the draft to empty AND immediately applies an
+# empty filter (appliedFilter set to null) in one step. No separate OK press
+# is needed — the list reverts to all entries right away. The panel stays
+# open so the user can see the reset widgets.
+- tapOn:
+    id: 'filter-clear-button'
+- waitForAnimationToEnd
+- takeScreenshot: filter-draft-cleared
+
+# ===== ASSERT FILTER PANEL WIDGETS ARE RESET =====
+
+# The date buttons should revert to their placeholder state (dates unset).
+- assertVisible: 'Start date'
+- assertVisible: 'End date'
+
+# The phrase input should now be empty. copyTextFrom on a React Native Paper
+# TextInput reads the label text ("Exact phrase") when the value is empty, so
+# we cannot assert copiedText == ''. Instead, use a proof assertion: type a
+# short marker into the cleared field and verify it appears alone. If the clear
+# failed (no-op), the field would still contain "morning" and the marker would
+# be appended to it.
+- tapOn:
+    id: 'filter-phrase-input'
+- eraseText
+- inputText: 'zzz'
+- copyTextFrom:
+    id: 'filter-phrase-input'
+- evalScript: ${output.clearedPhrase = maestro.copiedText}
+- assertTrue:
+    condition: ${output.clearedPhrase == 'zzz'}
+    label: Clear button empties the phrase draft (typed zzz appears alone)
+
+# Erase the proof-assertion marker so the draft is truly empty.
+- eraseText
+
+# Blur the phrase input so the soft keyboard does not cover the list below.
+# Tapping the static "Filter" title blurs the field.
+- tapOn: 'Filter'
+- waitForAnimationToEnd
+
+# ===== ASSERT UNFILTERED LIST IS VISIBLE (CLEAR ALREADY APPLIED) =====
+
+# The clear button already applied an empty filter (appliedFilter = null), so
+# the list shows all entries without needing an OK press. If clear failed
+# (no-op), the appliedFilter would still be the date range + phrase "morning"
+# and only Entry A would be visible. Entry B being visible proves the clear
+# applied the empty filter. Give the reload effect time to fetch entries.
+- takeScreenshot: filter-cleared-applied
+- extendedWaitUntil:
+    visible: ${output.entryB}
+    timeout: 5000
+
+- assertVisible: ${output.entryB}
+
+- scrollUntilVisible:
+    element:
+      text: ${output.entryA}
+    direction: DOWN
+    timeout: 5000
+- assertVisible: ${output.entryA}

@@ -1,8 +1,34 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useImmer } from 'use-immer';
 import { JournalEntry, Tag } from '../../domain/entities/JournalEntry';
-import { JournalRepository } from '../../domain/repositories/JournalRepository';
+import { JournalRepository, JournalFilter } from '../../domain/repositories/JournalRepository';
 import { useRepository } from '@/src/domain/repositories/RepositoryContext';
+
+/**
+ * Draft filter values being edited in the filter panel.
+ *
+ * These reflect the current state of the panel inputs. They are only applied to the
+ * entry list when the user presses the OK button (see {@link applyFilter}). Kept
+ * in-memory only; never persisted.
+ */
+export interface JournalFilterDraft {
+  /** Draft start date (inclusive lower bound). Undefined means no lower bound. */
+  startDate?: Date;
+  /** Draft end date (inclusive upper bound). Undefined means no upper bound. */
+  endDate?: Date;
+  /** Draft exact-phrase search text. Empty string means no phrase constraint. */
+  phrase: string;
+}
+
+/**
+ * The currently applied filter, or null when filtering is disabled.
+ *
+ * When non-null, {@link loadEntries} calls
+ * {@link JournalRepository.searchEntriesWithFilter} with these values. When null, the
+ * panel is considered off and the unfiltered `getAllEntries` / `searchEntries` /
+ * `getEntriesByTags` paths are used.
+ */
+export type AppliedJournalFilter = JournalFilterDraft | null;
 
 /** Represents the state of a journal view model. */
 export interface JournalViewModelState {
@@ -34,6 +60,37 @@ export interface JournalViewModelState {
    * pagination.
    */
   hasMore: boolean;
+
+  /** Whether the filter panel is currently open (visible to the user). */
+  filterPanelOpen: boolean;
+
+  /** The draft filter values currently shown in the filter panel. */
+  filterDraft: JournalFilterDraft;
+
+  /**
+   * The filter values currently applied to the entry list, or null when filtering is
+   * disabled (panel off or cleared).
+   */
+  appliedFilter: AppliedJournalFilter;
+}
+
+/** The default draft filter (all fields unset / empty). */
+const EMPTY_DRAFT: JournalFilterDraft = { phrase: '' };
+
+/**
+ * Determines whether an applied filter has any active constraints.
+ *
+ * Callers always pass a non-null filter (the null case is handled at the call site), so
+ * this function only checks whether any constraint is actually set.
+ *
+ * @param filter - The applied filter. Must be non-null.
+ *
+ * @returns True when the filter has at least one constraint set.
+ */
+function hasActiveConstraints(filter: JournalFilterDraft): boolean {
+  return (
+    filter.phrase.length > 0 || filter.startDate !== undefined || filter.endDate !== undefined
+  );
 }
 
 /**
@@ -52,6 +109,9 @@ export const useJournalViewModel = () => {
     searchQuery: '',
     selectedTags: [],
     hasMore: false,
+    filterPanelOpen: false,
+    filterDraft: { ...EMPTY_DRAFT },
+    appliedFilter: null,
   });
 
   const repository: JournalRepository = useRepository();
@@ -72,7 +132,13 @@ export const useJournalViewModel = () => {
   );
 
   /**
-   * Loads journal entries based on current filters (search query and selected tags).
+   * Loads journal entries based on current filters (search query, selected tags, and
+   * the applied date/phrase filter from the filter panel).
+   *
+   * When the filter panel has an applied filter with active constraints, the
+   * repository's `searchEntriesWithFilter` method is used (combining phrase and date
+   * range in a single query). Otherwise the existing `searchQuery` / `selectedTags` /
+   * `getAllEntries` paths are preserved unchanged.
    *
    * @param offset - Starting position for pagination, defaults to 0.
    * @param append - If true, appends results to existing entries; if false, replaces
@@ -92,8 +158,19 @@ export const useJournalViewModel = () => {
         // fetch happens after the draft callback has already completed.
         const query = state.searchQuery;
         const tags = state.selectedTags;
+        const applied = state.appliedFilter;
 
-        if (query) {
+        if (applied && hasActiveConstraints(applied)) {
+          // The filter panel's applied filter takes precedence over the legacy
+          // searchQuery / selectedTags paths. Build the JournalFilter for the
+          // repository, normalising empty phrase to undefined.
+          const repoFilter: JournalFilter = {
+            phrase: applied.phrase.length > 0 ? applied.phrase : undefined,
+            startDate: applied.startDate,
+            endDate: applied.endDate,
+          };
+          entries = await repository.searchEntriesWithFilter(repoFilter, offset, batchSize);
+        } else if (query) {
           entries = await repository.searchEntries(query, offset, batchSize);
         } else if (tags.length > 0) {
           entries = await repository.getEntriesByTags(tags, offset, batchSize);
@@ -109,7 +186,15 @@ export const useJournalViewModel = () => {
         setError(error instanceof Error ? error.message : 'Failed to load entries');
       }
     },
-    [state.searchQuery, state.selectedTags, setState, setError, batchSize, repository],
+    [
+      state.searchQuery,
+      state.selectedTags,
+      state.appliedFilter,
+      setState,
+      setError,
+      batchSize,
+      repository,
+    ],
   );
 
   /**
@@ -318,6 +403,132 @@ export const useJournalViewModel = () => {
   }, [setState]);
 
   /**
+   * Toggles the filter panel visibility.
+   *
+   * When opening the panel, the draft is initialised from the currently applied filter
+   * (if any) so the panel shows the last-applied values. When closing, the applied
+   * filter is cleared so the entry list reverts to unfiltered, but the draft is
+   * preserved in memory so reopening restores the previous values. The user must press
+   * OK to re-apply the filter after reopening.
+   */
+  const toggleFilterPanel = useCallback(() => {
+    setState(draft => {
+      const willOpen = !draft.filterPanelOpen;
+      draft.filterPanelOpen = willOpen;
+      if (willOpen) {
+        // Restore the draft from the previously applied filter (if any) so the
+        // panel opens with the last-applied (or empty) values. The draft is
+        // preserved across close/reopen cycles, so this is mainly relevant the
+        // first time the panel is opened after an applyFilter call.
+        draft.filterDraft = draft.appliedFilter
+          ? {
+              startDate: draft.appliedFilter.startDate,
+              endDate: draft.appliedFilter.endDate,
+              phrase: draft.appliedFilter.phrase,
+            }
+          : draft.filterDraft;
+      } else {
+        // Closing the panel disables filtering: the list reverts to all entries
+        // (or the legacy searchQuery/selectedTags path). The draft is left
+        // untouched so reopening restores the previous widget values; the user
+        // must press OK to re-apply.
+        draft.appliedFilter = null;
+      }
+    });
+  }, [setState]);
+
+  /**
+   * Updates a single draft filter field in the panel.
+   *
+   * Pass `undefined` for a date field to clear it.
+   *
+   * When a date is changed, the cross-bound is constrained so the range stays valid: a
+   * start date after the current end date pulls the end date up to the same day
+   * (end-of-day), and an end date before the current start date pulls the start date
+   * down to the same day (start-of-day). Comparisons use the normalised bounds
+   * (start-of-day for startDate, end-of-day for endDate) so the UI stays consistent
+   * with how the bounds are applied.
+   *
+   * @param patch - Partial draft values to merge into the current draft.
+   */
+  const updateFilterDraft = useCallback(
+    (patch: Partial<JournalFilterDraft>) => {
+      setState(draft => {
+        const current = draft.filterDraft;
+        const next: JournalFilterDraft = { ...current, ...patch };
+
+        // Compare against the already-merged `next` bounds so that a single
+        // updateFilterDraft call touching both dates still constrains
+        // correctly. Using `current` here would miss the case where both
+        // bounds change in the same patch.
+        if (patch.startDate !== undefined && next.endDate !== undefined) {
+          // Normalise the new start to start-of-day for comparison.
+          const startNorm = new Date(patch.startDate);
+          startNorm.setHours(0, 0, 0, 0);
+          // Compare against the (possibly just-updated) end bound.
+          if (startNorm.getTime() > next.endDate.getTime()) {
+            // Pull the end date up to the same day, end-of-day.
+            const newEnd = new Date(patch.startDate);
+            newEnd.setHours(23, 59, 59, 999);
+            next.endDate = newEnd;
+          }
+        }
+
+        if (patch.endDate !== undefined && next.startDate !== undefined) {
+          // Normalise the new end to end-of-day for comparison.
+          const endNorm = new Date(patch.endDate);
+          endNorm.setHours(23, 59, 59, 999);
+          // Compare against the (possibly just-updated) start bound.
+          if (endNorm.getTime() < next.startDate.getTime()) {
+            // Pull the start date down to the same day, start-of-day.
+            const newStart = new Date(patch.endDate);
+            newStart.setHours(0, 0, 0, 0);
+            next.startDate = newStart;
+          }
+        }
+
+        draft.filterDraft = next;
+      });
+    },
+    [setState],
+  );
+
+  /**
+   * Resets the draft filter values to empty (no constraints) and immediately disables
+   * the applied filter.
+   *
+   * Clearing is a destructive reset: the panel inputs are blanked AND the entry list
+   * reverts to unfiltered in one step. The reload effect picks up the `appliedFilter`
+   * change (null) and re-fetches via the unfiltered path. This matches the user's
+   * mental model of a "clear/reset" button — the visible state and the active filter
+   * both go away together, without requiring a separate OK press.
+   */
+  const clearFilterDraft = useCallback(() => {
+    setState(draft => {
+      draft.filterDraft = { ...EMPTY_DRAFT };
+      draft.appliedFilter = null;
+    });
+  }, [setState]);
+
+  /**
+   * Applies the current draft filter to the entry list.
+   *
+   * Copies the draft values into `appliedFilter`. The reload effect will pick up the
+   * change and call `searchEntriesWithFilter`. If the draft has no constraints, the
+   * applied filter is set to null so the unfiltered path is used.
+   */
+  const applyFilter = useCallback(() => {
+    setState(draft => {
+      const draftSnapshot = {
+        startDate: draft.filterDraft.startDate,
+        endDate: draft.filterDraft.endDate,
+        phrase: draft.filterDraft.phrase,
+      };
+      draft.appliedFilter = hasActiveConstraints(draftSnapshot) ? draftSnapshot : null;
+    });
+  }, [setState]);
+
+  /**
    * Refreshes all journal data (entries and tags) from the repository. Sets loading
    * state during refresh and handles errors.
    *
@@ -350,7 +561,7 @@ export const useJournalViewModel = () => {
     // re-running due to state updates inside loadEntries.
     void loadEntriesRef.current(0, false);
     // Only react to filter changes.
-  }, [state.searchQuery, state.selectedTags]);
+  }, [state.searchQuery, state.selectedTags, state.appliedFilter]);
 
   // Keep a stable ref to the latest refreshData implementation. This
   // is to break circular references. I.e. we can depend on the ref
@@ -422,6 +633,10 @@ export const useJournalViewModel = () => {
       setError,
       getEntryById,
       loadDefaultTags,
+      toggleFilterPanel,
+      updateFilterDraft,
+      clearFilterDraft,
+      applyFilter,
     },
   };
 };

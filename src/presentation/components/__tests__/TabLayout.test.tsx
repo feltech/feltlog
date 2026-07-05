@@ -226,11 +226,14 @@ describe('TabLayout', () => {
     expect(screen.getByText('Lock')).toBeTruthy();
   });
 
-  /** Tests that the headerRight link for creating a new entry is rendered. */
-  it('renders the headerRight link', () => {
+  /**
+   * Tests that the Journal tab no longer renders a headerRight link (the screen now
+   * renders its own custom Appbar.Header).
+   */
+  it('does not render a headerRight link for the Journal tab', () => {
     render(<TabLayout />);
 
-    expect(screen.getByTestId('link')).toBeTruthy();
+    expect(screen.queryByTestId('link')).toBeNull();
   });
 
   /** Tests that the tab bar icons are rendered for each configured tab. */

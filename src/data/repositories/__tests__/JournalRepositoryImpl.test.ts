@@ -697,9 +697,150 @@ describe('JournalRepositoryImpl', () => {
     });
   });
 
+  describe('searchEntriesWithFilter', () => {
+    /** Creates a set of entries spanning multiple days for filter tests. */
+    async function seedFilterEntries() {
+      await repository.createEntry({
+        content: 'Morning work notes',
+        datetime: new Date('2024-03-10T08:00:00.000Z'),
+        tags: [],
+      });
+      await repository.createEntry({
+        content: 'Afternoon personal reflection',
+        datetime: new Date('2024-03-15T14:30:00.000Z'),
+        tags: [],
+      });
+      await repository.createEntry({
+        content: 'Evening work summary',
+        datetime: new Date('2024-03-20T19:45:00.000Z'),
+        tags: [],
+      });
+      await repository.createEntry({
+        content: 'Late night personal thoughts',
+        datetime: new Date('2024-03-25T23:59:00.000Z'),
+        tags: [],
+      });
+    }
+
+    /**
+     * Helper to build an end-of-day Date (23:59:59.999 local).
+     *
+     * @param date - The date to normalise.
+     *
+     * @returns The end-of-day date.
+     */
+    function endOfDay(date: Date): Date {
+      const d = new Date(date);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    /**
+     * Helper to build a start-of-day Date (00:00:00.000 local).
+     *
+     * @param date - The date to normalise.
+     *
+     * @returns The start-of-day date.
+     */
+    function startOfDay(date: Date): Date {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    it('returns all entries when no filter is provided', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter();
+      expect(results).toHaveLength(4);
+      // Ordered by datetime desc.
+      expect(results[0].content).toBe('Late night personal thoughts');
+      expect(results[3].content).toBe('Morning work notes');
+    });
+
+    it('filters by phrase case-insensitively on content', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter({ phrase: 'WORK' });
+      expect(results).toHaveLength(2);
+      expect(results.map(e => e.content).sort()).toEqual([
+        'Evening work summary',
+        'Morning work notes',
+      ]);
+    });
+
+    it('filters by start date inclusive of the whole day', async () => {
+      await seedFilterEntries();
+      // Start date at midnight of the 15th should include the afternoon entry.
+      const results = await repository.searchEntriesWithFilter({
+        startDate: startOfDay(new Date('2024-03-15T00:00:00.000Z')),
+      });
+      expect(results).toHaveLength(3);
+      expect(results.map(e => e.content)).toEqual([
+        'Late night personal thoughts',
+        'Evening work summary',
+        'Afternoon personal reflection',
+      ]);
+    });
+
+    it('filters by end date inclusive of the whole day', async () => {
+      await seedFilterEntries();
+      // End date at end-of-day of the 15th should include the afternoon entry.
+      const results = await repository.searchEntriesWithFilter({
+        endDate: endOfDay(new Date('2024-03-15T00:00:00.000Z')),
+      });
+      expect(results).toHaveLength(2);
+      expect(results.map(e => e.content)).toEqual([
+        'Afternoon personal reflection',
+        'Morning work notes',
+      ]);
+    });
+
+    it('combines phrase and date range', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter({
+        phrase: 'personal',
+        startDate: startOfDay(new Date('2024-03-16T00:00:00.000Z')),
+      });
+      expect(results).toHaveLength(1);
+      expect(results[0].content).toBe('Late night personal thoughts');
+    });
+
+    it('returns empty when no entries match the filter', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter({ phrase: 'nonexistent' });
+      expect(results).toHaveLength(0);
+    });
+
+    it('treats empty phrase as no phrase constraint', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter({ phrase: '' });
+      expect(results).toHaveLength(4);
+    });
+
+    it('paginates results with offset and limit', async () => {
+      await seedFilterEntries();
+      const page1 = await repository.searchEntriesWithFilter({}, 0, 2);
+      const page2 = await repository.searchEntriesWithFilter({}, 2, 2);
+      const page3 = await repository.searchEntriesWithFilter({}, 4, 2);
+      expect(page1).toHaveLength(2);
+      expect(page2).toHaveLength(2);
+      expect(page3).toHaveLength(0);
+      const allIds = [...page1, ...page2].map(e => e.id);
+      expect(new Set(allIds).size).toBe(4);
+    });
+
+    it('returns entries ordered by datetime desc', async () => {
+      await seedFilterEntries();
+      const results = await repository.searchEntriesWithFilter();
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i].datetime.getTime()).toBeLessThanOrEqual(
+          results[i - 1].datetime.getTime(),
+        );
+      }
+    });
+  });
+
   describe('getMostRecentEntryTags', () => {
     it('returns tag names of the most recently created entry', async () => {
-      // Older entry with different tags.
       await repository.createEntry({
         content: 'Older entry',
         datetime: new Date('2024-01-01T10:00:00Z'),
