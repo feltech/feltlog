@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, ScrollView } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Chip, PaperProvider } from 'react-native-paper';
 import * as ExpoLocation from 'expo-location';
@@ -9,7 +9,6 @@ const GEOCODE_DEBOUNCE_MS = 600;
 const POSITION_TIMEOUT_MS = 15000;
 const BALANCED_TIMEOUT_MS = 5000;
 const CONTENT_UNDO_COALESCE_MS = 500;
-const MAP_INTERACTION_LOCK_MS = 300;
 
 type TestInstance = { props: Record<string, unknown> };
 
@@ -868,23 +867,143 @@ describe('JournalEntryEditorScreen', () => {
       expect(addressText.children.join('')).toContain('New Spot');
     });
 
-    it('disables outer ScrollView while user is interacting with the map', async () => {
+    it('imperatively locks the outer ScrollView via setNativeProps when the map is dragged', async () => {
+      // The scroll lock is now toggled imperatively via setNativeProps on the
+      // ScrollView host instance (held in a ref) instead of via the
+      // `scrollEnabled` React prop. This avoids re-rendering the ScrollView +
+      // TextInput subtree during a map gesture, which was the root cause of
+      // the scroll-offset reset that made the outer scroll jump up and
+      // obscure the map.
+      //
+      // The jest-preset ScrollView mock exposes setNativeProps on its
+      // prototype (via MockNativeMethods), so spying on
+      // ScrollView.prototype.setNativeProps captures the imperative calls.
       jest.useFakeTimers();
+      const setNativePropsSpy = jest.spyOn(ScrollView.prototype, 'setNativeProps');
+
       const result = await renderScreen();
       await waitForMap(result);
-      const scrollView = result.getByTestId('entry-scroll-view');
       const map = result.getByTestId('entry-location-map');
-      expect(scrollView.props.scrollEnabled).toBe(true);
+
+      // No lock call before any interaction.
+      const lockCallsBefore = setNativePropsSpy.mock.calls.filter(
+        ([props]) => (props as { scrollEnabled?: boolean }).scrollEnabled === false,
+      );
+      expect(lockCallsBefore).toHaveLength(0);
+
+      // A user-driven region change locks scrolling.
       await act(async () => {
         map.props.onRegionDidChange({
           nativeEvent: { center: [-122.4, 37.8], userInteraction: true },
         });
       });
-      expect(scrollView.props.scrollEnabled).toBe(false);
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: false });
+
+      // A subsequent programmatic region change (userInteraction: false, i.e.
+      // the gesture has ended) releases the lock. No debounce timer is
+      // involved — the lock is released directly on gesture end.
+      setNativePropsSpy.mockClear();
       await act(async () => {
-        jest.advanceTimersByTime(MAP_INTERACTION_LOCK_MS + 50);
+        map.props.onRegionDidChange({
+          nativeEvent: { center: [-122.4, 37.8], userInteraction: false },
+        });
       });
-      expect(scrollView.props.scrollEnabled).toBe(true);
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: true });
+
+      setNativePropsSpy.mockRestore();
+    });
+
+    it('does not re-render the ScrollView subtree on repeated user-driven region changes', async () => {
+      // Regression test for the scroll-jump bug: a series of user-driven
+      // onRegionDidChange events must NOT flip the `scrollEnabled` React
+      // prop (which would re-render the ScrollView and reset the scroll
+      // offset). The lock is toggled imperatively via setNativeProps, so the
+      // prop stays at its default (true) throughout the gesture.
+      jest.useFakeTimers();
+      const setNativePropsSpy = jest.spyOn(ScrollView.prototype, 'setNativeProps');
+
+      const result = await renderScreen();
+      await waitForMap(result);
+      const scrollView = result.getByTestId('entry-scroll-view');
+      const map = result.getByTestId('entry-location-map');
+
+      // The scrollEnabled prop is never set in JSX, so it remains undefined
+      // (the native default is true). It must NOT become false during a drag.
+      expect(scrollView.props.scrollEnabled).toBeUndefined();
+
+      // Simulate a rapid series of drag events.
+      for (let i = 0; i < 5; i++) {
+        await act(async () => {
+          map.props.onRegionDidChange({
+            nativeEvent: { center: [-122.4 + i * 0.001, 37.8], userInteraction: true },
+          });
+        });
+      }
+
+      // The prop must still be undefined (no re-render with scrollEnabled=false).
+      // The lock was applied imperatively, not via the prop.
+      const scrollViewAfter = result.getByTestId('entry-scroll-view');
+      expect(scrollViewAfter.props.scrollEnabled).toBeUndefined();
+
+      // setNativeProps should have been called exactly once with
+      // scrollEnabled: false (the first user-driven event locks; subsequent
+      // user-driven events are no-ops because mapTouchedRef is already true).
+      const lockCalls = setNativePropsSpy.mock.calls.filter(
+        ([props]) => (props as { scrollEnabled?: boolean }).scrollEnabled === false,
+      );
+      expect(lockCalls).toHaveLength(1);
+
+      setNativePropsSpy.mockRestore();
+    });
+
+    it('locks the outer ScrollView on touch start and releases on touch end', async () => {
+      // The map container's onTouchStart/onTouchEnd handlers also toggle the
+      // imperative lock, covering the case where a touch lands on the map
+      // without producing a region change (e.g. a tap without a drag).
+      jest.useFakeTimers();
+      const setNativePropsSpy = jest.spyOn(ScrollView.prototype, 'setNativeProps');
+
+      const result = await renderScreen();
+      await waitForMap(result);
+      const mapContainer = result.getByTestId('map-container');
+
+      await act(async () => {
+        mapContainer.props.onTouchStart();
+      });
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: false });
+
+      setNativePropsSpy.mockClear();
+      await act(async () => {
+        mapContainer.props.onTouchEnd();
+      });
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: true });
+
+      setNativePropsSpy.mockRestore();
+    });
+
+    it('releases the scroll lock on touch cancel', async () => {
+      // onTouchCancel mirrors onTouchEnd: a system-interrupted gesture must
+      // still release the imperative scroll lock so the outer ScrollView
+      // becomes scrollable again.
+      jest.useFakeTimers();
+      const setNativePropsSpy = jest.spyOn(ScrollView.prototype, 'setNativeProps');
+
+      const result = await renderScreen();
+      await waitForMap(result);
+      const mapContainer = result.getByTestId('map-container');
+
+      await act(async () => {
+        mapContainer.props.onTouchStart();
+      });
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: false });
+
+      setNativePropsSpy.mockClear();
+      await act(async () => {
+        mapContainer.props.onTouchCancel();
+      });
+      expect(setNativePropsSpy).toHaveBeenCalledWith({ scrollEnabled: true });
+
+      setNativePropsSpy.mockRestore();
     });
   });
 

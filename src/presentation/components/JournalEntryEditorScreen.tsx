@@ -40,12 +40,6 @@ const POSITION_TIMEOUT_MS = 15000;
 /** Timeout for the reverseGeocodeAsync call during the initial location fetch. */
 const INITIAL_GEOCODE_TIMEOUT_MS = 15000;
 const CONTENT_UNDO_COALESCE_MS = 500;
-/**
- * How long to keep the outer ScrollView locked after the last user-driven map region
- * change. Subsequent onRegionDidChange events with userInteraction reset this timer, so
- * rapid drags keep scrolling disabled until the user pauses.
- */
-const MAP_INTERACTION_LOCK_MS = 300;
 // OpenFreeMap — free OpenStreetMap-based vector tiles, no API key required.
 // See: https://openfreemap.org
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
@@ -74,8 +68,6 @@ interface ModalState {
   locDenied: boolean;
   /** Transient location error message (timeout, fetch failure, etc.). */
   locError: string | null;
-  /** Whether a reverse-geocode is in progress. */
-  isUpdatingLocation: boolean;
   /** Whether an active GPS position fetch is in progress. */
   isFetchingLocation: boolean;
 }
@@ -142,7 +134,6 @@ export default function JournalEntryEditorScreen() {
     editLocation: undefined,
     locDenied: false,
     locError: null,
-    isUpdatingLocation: false,
     isFetchingLocation: false,
   });
 
@@ -190,9 +181,6 @@ export default function JournalEntryEditorScreen() {
   // Render signals derived from stack state.
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  // Tracks whether the user is touching the map area, so the outer
-  // ScrollView can disable its scroll to let map gestures through.
-  const [isMapTouched, setIsMapTouched] = useState(false);
   // Controls visibility of the delete confirmation dialog.
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   // Controls visibility of the date picker modal.
@@ -200,9 +188,6 @@ export default function JournalEntryEditorScreen() {
   // Controls visibility of the time picker modal. Independent from the date
   // picker so the user can edit only the time without touching the date.
   const [timePickerVisible, setTimePickerVisible] = useState(false);
-  // Timer ref for the debounce that re-enables ScrollView scrolling after
-  // the last user-driven map region change. Cleared on unmount.
-  const mapInteractionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Timer-based keystroke coalescing for undo/redo: fast consecutive content
   // changes are collapsed into a single undo entry so the user can undo an
@@ -216,6 +201,70 @@ export default function JournalEntryEditorScreen() {
   // see the stale false value. The ref is set synchronously on entry and
   // provides immediate protection against rapid double-taps.
   const recenterInProgressRef = useRef(false);
+
+  // Imperative scroll-lock for the outer ScrollView during map gestures.
+  //
+  // The "map is being touched" flag is intentionally kept in a ref (not React
+  // state) so that toggling it does NOT re-render the ScrollView + TextInput
+  // subtree. Re-rendering that subtree during a map drag was resetting the
+  // scroll offset and causing the outer scroll to jump up and obscure the map
+  // (see commit history for the scroll-jump bug).
+  //
+  // Instead of binding `scrollEnabled` to React state, we imperatively toggle
+  // the native `scrollEnabled` prop via `setNativeProps` on the ScrollView
+  // host instance. This bypasses the React render cycle entirely for the
+  // duration of the gesture.
+  const mapTouchedRef = useRef(false);
+  // Ref to the ScrollView host instance so we can call setNativeProps on it
+  // without triggering a re-render. Typed loosely since the mock and the real
+  // host component both expose setNativeProps but the exact type is internal.
+  const scrollViewRef = useRef<ScrollView | null>(null);
+
+  /**
+   * Imperatively locks or unlocks the outer ScrollView's `scrollEnabled` native prop
+   * without triggering a React re-render.
+   *
+   * This is the crux of the scroll-jump fix: toggling scroll via `setNativeProps`
+   * bypasses the render cycle, so the TextInput/ScrollView subtree is not re-rendered
+   * and the scroll offset is preserved during map gestures.
+   *
+   * @param enabled - Whether the ScrollView should be scrollable.
+   */
+  const setScrollEnabled = useCallback((enabled: boolean) => {
+    // setNativeProps is available on the real host component and on the
+    // jest-preset ScrollView mock. Guard for safety in non-native renderers.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const instance = scrollViewRef.current as any;
+    instance?.setNativeProps?.({ scrollEnabled: enabled });
+  }, []);
+
+  /**
+   * Locks the outer ScrollView's scroll when the user begins a map gesture.
+   *
+   * Idempotent: only flips the ref and calls `setNativeProps` when not already locked,
+   * so repeated touch/region-change events do not re-issue native prop writes or
+   * re-render the subtree.
+   */
+  const lockScroll = useCallback(() => {
+    if (!mapTouchedRef.current) {
+      mapTouchedRef.current = true;
+      setScrollEnabled(false);
+    }
+  }, [setScrollEnabled]);
+
+  /**
+   * Releases the outer ScrollView's scroll lock when a map gesture ends.
+   *
+   * Idempotent: only flips the ref and calls `setNativeProps` when currently locked, so
+   * a stray unlock (e.g. touch end with no preceding region change) does not issue a
+   * redundant native prop write.
+   */
+  const unlockScroll = useCallback(() => {
+    if (mapTouchedRef.current) {
+      mapTouchedRef.current = false;
+      setScrollEnabled(true);
+    }
+  }, [setScrollEnabled]);
 
   /**
    * Snapshots the undo-able entry fields onto the undo stack and clears redo. Enforces
@@ -481,9 +530,6 @@ export default function JournalEntryEditorScreen() {
         // Reverse geocode is optional; attempt with a timeout.
         let address: string | undefined = undefined;
         try {
-          setState(draft => {
-            draft.isUpdatingLocation = true;
-          });
           let geocodeTimeoutId: ReturnType<typeof setTimeout>;
           const geocodePromise = ExpoLocation.reverseGeocodeAsync({
             latitude: pos.coords.latitude,
@@ -502,12 +548,6 @@ export default function JournalEntryEditorScreen() {
           }
         } catch {
           // ignore reverse geocode errors or timeout
-        } finally {
-          if (!cancelled) {
-            setState(draft => {
-              draft.isUpdatingLocation = false;
-            });
-          }
         }
         const elevation = typeof pos.coords.altitude === 'number' ? pos.coords.altitude : 0;
         const loc: JournalEntry['location'] = {
@@ -637,7 +677,6 @@ export default function JournalEntryEditorScreen() {
     return () => {
       clearTimeout(geoDebounceRef.current);
       clearTimeout(contentUndoTimerRef.current);
-      clearTimeout(mapInteractionTimerRef.current);
     };
   }, []);
 
@@ -804,16 +843,9 @@ export default function JournalEntryEditorScreen() {
       // Reverse geocode with timeout.
       let address: string | undefined;
       try {
-        setState(draft => {
-          draft.isUpdatingLocation = true;
-        });
         address = await reverseGeocodeWithTimeout(pos.coords.latitude, pos.coords.longitude);
       } catch {
         // ignore
-      } finally {
-        setState(draft => {
-          draft.isUpdatingLocation = false;
-        });
       }
 
       const elevation = typeof pos.coords.altitude === 'number' ? pos.coords.altitude : 0;
@@ -848,8 +880,10 @@ export default function JournalEntryEditorScreen() {
    * Called when the map region finishes changing after a user gesture. Updates the
    * target location to the new centre coordinate and manages the outer ScrollView
    * scroll lock: while the user is actively dragging (userInteraction is true),
-   * scrolling is disabled so map gestures are not stolen by the parent ScrollView. The
-   * lock auto-releases after MAP_INTERACTION_LOCK_MS of inactivity.
+   * scrolling is disabled imperatively via setNativeProps so map gestures are not
+   * stolen by the parent ScrollView. The lock is released directly when a
+   * non-user-driven (programmatic) region change arrives, signalling the gesture has
+   * ended — no debounce timer is needed.
    *
    * In MapLibre v11, the event payload is a `ViewStateChangeEvent` delivered via
    * `event.nativeEvent`, replacing the v10 GeoJSON Feature payload. The new center is
@@ -865,18 +899,18 @@ export default function JournalEntryEditorScreen() {
   const handleRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
       const { center, userInteraction } = event.nativeEvent;
-      // Manage the ScrollView scroll lock based on user interaction.
-      // Each user-driven region change disables scrolling and starts (or
-      // restarts) a debounce timer. While the user keeps dragging, repeated
-      // events keep resetting the timer, so scrolling stays disabled. Once
-      // the user stops for MAP_INTERACTION_LOCK_MS, the timer fires and
-      // scrolling re-enables.
+      // Imperatively toggle the outer ScrollView scroll lock WITHOUT going
+      // through React state. Holding this flag in a ref (instead of state)
+      // avoids re-rendering the ScrollView + TextInput subtree on every map
+      // gesture event, which was the root cause of the scroll-offset reset
+      // that made the outer scroll jump up and obscure the map during a drag.
+      //
+      // userInteraction === true  → user is actively dragging → lock scroll.
+      // userInteraction === false  → programmatic move (gesture ended) → unlock.
       if (userInteraction) {
-        setIsMapTouched(true);
-        clearTimeout(mapInteractionTimerRef.current);
-        mapInteractionTimerRef.current = setTimeout(() => {
-          setIsMapTouched(false);
-        }, MAP_INTERACTION_LOCK_MS);
+        lockScroll();
+      } else {
+        unlockScroll();
       }
 
       // Only react to user-driven gestures, not programmatic camera moves.
@@ -917,9 +951,9 @@ export default function JournalEntryEditorScreen() {
       pendingGeocodeRef.current += 1;
       const geocodeId = pendingGeocodeRef.current;
 
-      setState(draft => {
-        draft.isUpdatingLocation = true;
-      });
+      // Debounce the reverse-geocode so a continuous drag does not fire a
+      // request on every region-change event. Only the final resting position
+      // is geocoded.
       clearTimeout(geoDebounceRef.current);
 
       geoDebounceRef.current = setTimeout(async () => {
@@ -938,19 +972,39 @@ export default function JournalEntryEditorScreen() {
               }
             });
           }
-        } finally {
-          // Always clear the updating flag for this geocode generation,
-          // even if the component unmounted or an error occurred.
-          if (geocodeId === pendingGeocodeRef.current) {
-            setState(draft => {
-              draft.isUpdatingLocation = false;
-            });
-          }
+        } catch {
+          // ignore geocode errors or timeouts during a drag
         }
       }, GEOCODE_DEBOUNCE_MS);
     },
-    [isEditing, reverseGeocodeWithTimeout, setState],
+    [isEditing, reverseGeocodeWithTimeout, setState, lockScroll, unlockScroll],
   );
+
+  /**
+   * Locks the outer ScrollView the instant the user touches the map, before any
+   * region-change event fires. Done via the ref (not state) so the ScrollView subtree
+   * is not re-rendered.
+   */
+  const handleMapTouchStart = useCallback(() => {
+    lockScroll();
+  }, [lockScroll]);
+
+  /**
+   * Releases the lock when the touch lifts. A subsequent programmatic
+   * `onRegionDidChange` (`userInteraction: false`) would also release it, but releasing
+   * here covers the case where no region change fires (e.g. a tap without a drag).
+   */
+  const handleMapTouchEnd = useCallback(() => {
+    unlockScroll();
+  }, [unlockScroll]);
+
+  /**
+   * Releases the lock when the touch is cancelled (e.g. interrupted by a system
+   * gesture). Same semantics as `handleMapTouchEnd`.
+   */
+  const handleMapTouchCancel = useCallback(() => {
+    unlockScroll();
+  }, [unlockScroll]);
 
   // Ref to hold the latest flush-save function (without router.back) so the
   // beforeRemove listener always calls the current version without stale closures.
@@ -1329,21 +1383,11 @@ export default function JournalEntryEditorScreen() {
         )}
       </Appbar.Header>
 
-      {state.isUpdatingLocation && (
-        <Text
-          testID="location-updating-hint"
-          variant="bodySmall"
-          style={[styles.locationUpdatingHint, { color: theme.colors.onSurfaceVariant }]}
-        >
-          Looking up address, please wait…
-        </Text>
-      )}
-
       <ScrollView
+        ref={scrollViewRef}
         style={styles.content}
         keyboardShouldPersistTaps="handled"
         testID="entry-scroll-view"
-        scrollEnabled={!isMapTouched}
       >
         <TextInput
           testID="entry-content-input"
@@ -1530,26 +1574,12 @@ export default function JournalEntryEditorScreen() {
             <View
               style={styles.mapContainer}
               testID="map-container"
-              onTouchStart={() => {
-                setIsMapTouched(true);
-              }}
-              onTouchEnd={() => {
-                setIsMapTouched(false);
-              }}
-              onTouchCancel={() => {
-                setIsMapTouched(false);
-              }}
+              onTouchStart={handleMapTouchStart}
+              onTouchEnd={handleMapTouchEnd}
+              onTouchCancel={handleMapTouchCancel}
             >
               {/* Geocoded location text above the map */}
-              {state.isUpdatingLocation ? (
-                <Text
-                  variant="bodySmall"
-                  testID="location-address-placeholder"
-                  style={[styles.locationAddressText, { color: theme.colors.onSurfaceVariant }]}
-                >
-                  Getting address…
-                </Text>
-              ) : mapLocation.address ? (
+              {mapLocation.address ? (
                 <Text
                   variant="bodySmall"
                   testID="location-address-text"
@@ -1590,19 +1620,6 @@ export default function JournalEntryEditorScreen() {
                   <View style={styles.markerDot} />
                 </View>
               </View>
-            </View>
-          )}
-
-          {state.isUpdatingLocation && (
-            <View style={styles.locationUpdating}>
-              <ActivityIndicator animating={true} size={16} />
-              <Text
-                testID="location-updating-text"
-                variant="bodySmall"
-                style={[styles.locationUpdatingText, { color: theme.colors.onSurfaceVariant }]}
-              >
-                Updating location…
-              </Text>
             </View>
           )}
         </Surface>
@@ -1816,19 +1833,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e74c3c',
     borderWidth: 2,
     borderColor: '#fff',
-  },
-  locationUpdating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  locationUpdatingText: {
-    marginLeft: 8,
-  },
-  locationUpdatingHint: {
-    textAlign: 'center',
-    paddingVertical: 2,
   },
   locationAddressText: {
     marginBottom: 4,
