@@ -1,7 +1,7 @@
 ---
 description: System orchestration and execution planner with enforced verification loop
 mode: primary
-model: kimi-for-coding/k2p7
+model: ollama-cloud/kimi-k2.7-code
 temperature: 0.0
 permission:
   edit: deny
