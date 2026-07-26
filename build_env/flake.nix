@@ -12,6 +12,8 @@
       let
         pkgs = import nixpkgs { inherit system; config = { allowUnfree = true; };};
 
+        # Bleeding-edge opencode - unused/disabled (see below) due to potential database
+        # corruption with non-backward-compatible changes.
         opencode-dev = pkgs.opencode.overrideAttrs (prev: {
           pname = "opencode-dev";
           version = "dev";
@@ -119,8 +121,10 @@
             sqlcipher # encryption support
 
             # AI coding agent
-            opencode
-            opencode-dev
+            # WARNING: opencode db is in .local, and new version migration
+            #   is not necessarily backward compatible!
+            # opencode
+            # opencode-dev
           ];
 
           shellHook = ''
